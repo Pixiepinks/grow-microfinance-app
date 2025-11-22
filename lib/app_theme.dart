@@ -22,10 +22,12 @@ class AppTheme {
           borderSide: const BorderSide(color: Color(0xFF2563EB)),
         ),
       ),
-      cardTheme: CardTheme(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 0,
+      cardTheme: CardThemeData(
         color: Colors.white,
+        surfaceTintColor: Colors.white,
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
