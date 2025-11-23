@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -47,9 +48,42 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Map<String, String> _headers() {
+  Future<Map<String, dynamic>> putJson(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(),
+      body: jsonEncode(body ?? {}),
+    );
+    _throwIfNeeded(response);
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required File file,
+    String fieldName = 'file',
+    Map<String, String>? fields,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final request = http.MultipartRequest('POST', uri);
+    request.headers.addAll(_headers(jsonContentType: false));
+    if (fields != null) {
+      request.fields.addAll(fields);
+    }
+    request.files
+        .add(await http.MultipartFile.fromPath(fieldName, file.path));
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    _throwIfNeeded(response);
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Map<String, String> _headers({bool jsonContentType = true}) {
     final headers = <String, String>{
-      'Content-Type': 'application/json',
+      if (jsonContentType) 'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
     if (_token != null) {

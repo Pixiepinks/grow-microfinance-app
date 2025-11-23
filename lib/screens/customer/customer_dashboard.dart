@@ -3,13 +3,21 @@ import 'package:flutter/material.dart';
 import '../../models/loan.dart';
 import '../../models/user_profile.dart';
 import '../../services/customer_repository.dart';
+import '../../services/loan_application_service.dart';
 import '../../widgets/dashboard_card.dart';
+import 'loan_application_form_screen.dart';
+import 'my_loan_applications_screen.dart';
 import 'loan_detail_screen.dart';
 
 class CustomerDashboardScreen extends StatefulWidget {
-  const CustomerDashboardScreen({super.key, required this.repository});
+  const CustomerDashboardScreen({
+    super.key,
+    required this.repository,
+    required this.loanApplicationService,
+  });
 
   final CustomerRepository repository;
+  final LoanApplicationService loanApplicationService;
 
   @override
   State<CustomerDashboardScreen> createState() => _CustomerDashboardScreenState();
@@ -89,6 +97,50 @@ class _CustomerDashboardScreenState extends State<CustomerDashboardScreen> {
                 ],
               ),
             ),
+          DashboardCard(
+            title: 'Loan Applications',
+            icon: Icons.assignment,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Create and track your loan applications in one place.',
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => MyLoanApplicationsScreen(
+                              service: widget.loanApplicationService,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.list_alt),
+                      label: const Text('My Applications'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => LoanApplicationFormScreen(
+                              service: widget.loanApplicationService,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('New Application'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           if (_loans.isNotEmpty)
             ..._loans.map(
               (loan) => GestureDetector(

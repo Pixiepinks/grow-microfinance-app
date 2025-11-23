@@ -9,6 +9,7 @@ import 'services/admin_repository.dart';
 import 'services/api_client.dart';
 import 'services/auth_repository.dart';
 import 'services/customer_repository.dart';
+import 'services/loan_application_service.dart';
 import 'services/staff_repository.dart';
 
 void main() {
@@ -29,6 +30,8 @@ class _GrowMicrofinanceAppState extends State<GrowMicrofinanceApp> {
   late final AdminRepository _adminRepository = AdminRepository(_apiClient);
   late final StaffRepository _staffRepository = StaffRepository(_apiClient);
   late final CustomerRepository _customerRepository = CustomerRepository(_apiClient);
+  late final LoanApplicationService _loanApplicationService =
+      LoanApplicationService(_apiClient);
 
   bool _loadingSession = true;
   String? _role;
@@ -76,6 +79,7 @@ class _GrowMicrofinanceAppState extends State<GrowMicrofinanceApp> {
                   adminRepository: _adminRepository,
                   staffRepository: _staffRepository,
                   customerRepository: _customerRepository,
+                  loanApplicationService: _loanApplicationService,
                 ),
     );
   }
@@ -88,6 +92,7 @@ class _HomeShell extends StatefulWidget {
     required this.adminRepository,
     required this.staffRepository,
     required this.customerRepository,
+    required this.loanApplicationService,
   });
 
   final String role;
@@ -95,6 +100,7 @@ class _HomeShell extends StatefulWidget {
   final AdminRepository adminRepository;
   final StaffRepository staffRepository;
   final CustomerRepository customerRepository;
+  final LoanApplicationService loanApplicationService;
 
   @override
   State<_HomeShell> createState() => _HomeShellState();
@@ -114,7 +120,10 @@ class _HomeShellState extends State<_HomeShell> {
         break;
       case 'customer':
       default:
-        body = CustomerDashboardScreen(repository: widget.customerRepository);
+        body = CustomerDashboardScreen(
+          repository: widget.customerRepository,
+          loanApplicationService: widget.loanApplicationService,
+        );
         break;
     }
 
