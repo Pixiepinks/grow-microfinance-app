@@ -37,7 +37,7 @@ class _CustomerRegistrationScreenState
     'Both',
   ];
 
-  final RegExp _emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+  final RegExp _emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+\$');
 
   DateTime? _selectedDob;
   bool _submitting = false;
