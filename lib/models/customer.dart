@@ -25,13 +25,15 @@ class Customer {
 
   factory Customer.fromJson(Map<String, dynamic> json) {
     return Customer(
-      id: json['id'] as String?,
-      fullName: json['fullName'] as String? ?? '',
-      nic: json['nic'] as String? ?? '',
-      mobile: json['mobile'] as String? ?? '',
-      address: json['address'] as String? ?? '',
-      branch: json['branch'] as String? ?? '',
-      customerType: json['customerType'] as String? ?? '',
+      id: json['id']?.toString(),
+      fullName:
+          (json['fullName'] ?? json['full_name'] ?? '') as String,
+      nic: (json['nic'] ?? json['nicNumber'] ?? '') as String,
+      mobile: (json['mobile'] ?? json['phone'] ?? '') as String,
+      address: (json['address'] ?? '') as String,
+      branch: (json['branch'] ?? '') as String,
+      customerType:
+          (json['customerType'] ?? json['customer_type'] ?? '') as String,
       email: json['email'] as String?,
       dateOfBirth: json['dateOfBirth'] != null
           ? DateTime.tryParse(json['dateOfBirth'] as String)
@@ -42,16 +44,16 @@ class Customer {
 
   Map<String, dynamic> toJson() {
     return {
-      if (id != null) 'id': id,
+      'id': id,
       'fullName': fullName,
       'nic': nic,
       'mobile': mobile,
       'address': address,
       'branch': branch,
       'customerType': customerType,
-      if (email != null) 'email': email,
-      if (dateOfBirth != null) 'dateOfBirth': dateOfBirth!.toIso8601String(),
-      if (notes != null) 'notes': notes,
+      'email': email,
+      'dateOfBirth': dateOfBirth?.toIso8601String(),
+      'notes': notes,
     };
   }
 }
