@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/admin_repository.dart';
 import '../../widgets/dashboard_card.dart';
+import '../customer_registration_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key, required this.repository});
@@ -48,6 +49,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           Text(
             'Admin dashboard',
             style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 12),
+          DashboardCard(
+            title: 'Customers',
+            icon: Icons.person_add_alt,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const CustomerRegistrationScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.person_add),
+                label: const Text('New Customer'),
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           if (_loading) const Center(child: CircularProgressIndicator()),
