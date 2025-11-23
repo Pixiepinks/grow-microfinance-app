@@ -14,7 +14,7 @@ A Flutter mobile client for the Grow Microfinance platform. The backend API is a
 - Material 3 styling with card-based layout
 
 ## Getting Started
-1. Update the `baseUrl` in `lib/services/api_client.dart` to point to your deployed backend.
+1. Configure the API base URL (defaults to the production Railway deployment). For local or staging backends, pass `--dart-define=API_BASE_URL=https://your-host` when running or building the app.
 2. Install Flutter 3.10+ and run `flutter pub get`.
 3. Launch the app with `flutter run` on an emulator or device.
 
