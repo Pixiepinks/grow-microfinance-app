@@ -1,5 +1,6 @@
 import '../models/loan.dart';
 import '../models/payment.dart';
+import '../models/customer.dart';
 import '../models/user_profile.dart';
 import 'api_client.dart';
 
@@ -24,5 +25,13 @@ class CustomerRepository {
     final data = await _client.getJson('/customer/loans/$loanId/payments');
     final paymentsJson = data['payments'] as List<dynamic>? ?? [];
     return paymentsJson.map((e) => Payment.fromJson(e)).toList();
+  }
+
+  Future<Customer> createCustomer(Customer customer) async {
+    final response = await _client.postJson(
+      '/customers',
+      body: customer.toJson(),
+    );
+    return Customer.fromJson(response);
   }
 }
