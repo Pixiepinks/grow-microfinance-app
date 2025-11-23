@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/customer.dart';
-import '../services/api_client.dart';
-import '../services/auth_repository.dart';
 import '../services/customer_repository.dart';
 
 class CustomerRegistrationScreen extends StatefulWidget {
@@ -17,11 +15,13 @@ class CustomerRegistrationScreen extends StatefulWidget {
 class _CustomerRegistrationScreenState
     extends State<CustomerRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _fullNameController = TextEditingController();
+  final _nameController = TextEditingController();
   final _nicController = TextEditingController();
   final _mobileController = TextEditingController();
   final _addressController = TextEditingController();
+  final _branchController = TextEditingController();
   final _emailController = TextEditingController();
+  final _customerTypeController = TextEditingController();
   final _dobController = TextEditingController();
   final _notesController = TextEditingController();
 
@@ -37,33 +37,20 @@ class _CustomerRegistrationScreenState
     'Both',
   ];
 
-  String? _selectedBranch;
-  String? _selectedCustomerType;
+  final _emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+
   DateTime? _selectedDob;
   bool _submitting = false;
 
-  late final ApiClient _apiClient = ApiClient();
-  late final CustomerRepository _customerRepository =
-      CustomerRepository(_apiClient);
-  late final AuthRepository _authRepository = AuthRepository(_apiClient);
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeAuth();
-  }
-
-  Future<void> _initializeAuth() async {
-    await _authRepository.loadToken();
-  }
-
   @override
   void dispose() {
-    _fullNameController.dispose();
+    _nameController.dispose();
     _nicController.dispose();
     _mobileController.dispose();
     _addressController.dispose();
+    _branchController.dispose();
     _emailController.dispose();
+    _customerTypeController.dispose();
     _dobController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -93,8 +80,7 @@ class _CustomerRegistrationScreenState
   String? _validateEmail(String? value) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return null;
-    final emailRegex = RegExp('^[^@]+@[^@]+\\.[^@]+$');
-    if (!emailRegex.hasMatch(trimmed)) {
+    if (!_emailRegex.hasMatch(trimmed)) {
       return 'Enter a valid email address';
     }
     return null;
@@ -120,18 +106,45 @@ class _CustomerRegistrationScreenState
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _pickOption(
+    String title,
+    List<String> options,
+    TextEditingController controller,
+  ) async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(title),
+        children: options
+            .map(
+              (option) => SimpleDialogOption(
+                onPressed: () => Navigator.of(context).pop(option),
+                child: Text(option),
+              ),
+            )
+            .toList(),
+      ),
+    );
+
+    if (selected != null) {
+      setState(() {
+        controller.text = selected;
+      });
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _submitting = true);
 
     final customer = Customer(
-      fullName: _fullNameController.text.trim(),
+      fullName: _nameController.text.trim(),
       nic: _nicController.text.trim(),
-      mobile: _mobileController.text.replaceAll(' ', ''),
+      mobile: _mobileController.text.trim(),
       address: _addressController.text.trim(),
-      branch: _selectedBranch!,
-      customerType: _selectedCustomerType!,
+      branch: _branchController.text.trim(),
+      customerType: _customerTypeController.text.trim(),
       email: _emailController.text.trim().isEmpty
           ? null
           : _emailController.text.trim(),
@@ -142,7 +155,7 @@ class _CustomerRegistrationScreenState
     );
 
     try {
-      await _customerRepository.createCustomer(customer);
+      await CustomerRepository().createCustomer(customer);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Customer created successfully')),
@@ -152,7 +165,7 @@ class _CustomerRegistrationScreenState
       if (!mounted) return;
       final message = e.toString().isNotEmpty
           ? e.toString()
-          : 'Failed to create customer. Please check your connection and try again.';
+          : 'Failed to create customer. Please try again.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
@@ -182,7 +195,7 @@ class _CustomerRegistrationScreenState
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       TextFormField(
-                        controller: _fullNameController,
+                        controller: _nameController,
                         decoration: const InputDecoration(
                           labelText: 'Full name',
                           hintText: 'Enter full name',
@@ -232,39 +245,39 @@ class _CustomerRegistrationScreenState
                         validator: (value) => _validateRequired(value, 'Address'),
                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
+                      TextFormField(
+                        controller: _branchController,
                         decoration: const InputDecoration(
                           labelText: 'Branch',
+                          hintText: 'Select branch',
                           prefixIcon: Icon(Icons.account_tree_outlined),
+                          suffixIcon: Icon(Icons.arrow_drop_down),
                         ),
-                        items: _branches
-                            .map((branch) => DropdownMenuItem(
-                                  value: branch,
-                                  child: Text(branch),
-                                ))
-                            .toList(),
-                        value: _selectedBranch,
-                        onChanged: (value) => setState(() => _selectedBranch = value),
-                        validator: (value) =>
-                            value == null ? 'Branch is required' : null,
+                        readOnly: true,
+                        onTap: () => _pickOption(
+                          'Select branch',
+                          _branches,
+                          _branchController,
+                        ),
+                        validator: (value) => _validateRequired(value, 'Branch'),
                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
+                      TextFormField(
+                        controller: _customerTypeController,
                         decoration: const InputDecoration(
                           labelText: 'Customer type',
+                          hintText: 'Select customer type',
                           prefixIcon: Icon(Icons.category_outlined),
+                          suffixIcon: Icon(Icons.arrow_drop_down),
                         ),
-                        items: _customerTypes
-                            .map((type) => DropdownMenuItem(
-                                  value: type,
-                                  child: Text(type),
-                                ))
-                            .toList(),
-                        value: _selectedCustomerType,
-                        onChanged: (value) =>
-                            setState(() => _selectedCustomerType = value),
+                        readOnly: true,
+                        onTap: () => _pickOption(
+                          'Select customer type',
+                          _customerTypes,
+                          _customerTypeController,
+                        ),
                         validator: (value) =>
-                            value == null ? 'Customer type is required' : null,
+                            _validateRequired(value, 'Customer type'),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(

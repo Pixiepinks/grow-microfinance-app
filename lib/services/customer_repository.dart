@@ -5,7 +5,7 @@ import '../models/user_profile.dart';
 import 'api_client.dart';
 
 class CustomerRepository {
-  CustomerRepository(this._client);
+  CustomerRepository([ApiClient? client]) : _client = client ?? ApiClient();
   final ApiClient _client;
 
   Future<UserProfile> fetchProfile() async {
