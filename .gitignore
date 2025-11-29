@@ -2,7 +2,7 @@
 .dart_tool/
 .packages
 .pub-cache/
-build/
+# build/
 node_modules/
 flutter_*.png
 .flutter-plugins
