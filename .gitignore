@@ -3,6 +3,7 @@
 .packages
 .pub-cache/
 build/
+node_modules/
 flutter_*.png
 .flutter-plugins
 .flutter-plugins-dependencies
