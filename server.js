@@ -6,7 +6,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Path to Flutter web build folder
-const webBuildPath = path.join(__dirname, '..', 'build', 'web');
+const webBuildPath = path.join(__dirname, 'build', 'web');
 
 // Serve static assets (JS, CSS, images, etc.)
 app.use(express.static(webBuildPath));
