@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api_config.dart';
 import 'api_client.dart';
 
 class AuthRepository {
@@ -16,7 +17,7 @@ class AuthRepository {
     required String password,
   }) async {
     final response = await _client.postJson(
-      '/auth/login',
+      ApiConfig.endpoint('login'),
       body: {
         'email': email,
         'password': password,

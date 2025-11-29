@@ -1,3 +1,4 @@
+import '../api_config.dart';
 import 'api_client.dart';
 
 class StaffRepository {
@@ -5,7 +6,7 @@ class StaffRepository {
   final ApiClient _client;
 
   Future<List<dynamic>> fetchTodayCollections() async {
-    return _client.getJsonList('/staff/today-collections');
+    return _client.getJsonList(ApiConfig.endpoint('staffTodayCollections'));
   }
 
   Future<Map<String, dynamic>> submitPayment({
@@ -14,7 +15,7 @@ class StaffRepository {
     String? method,
   }) async {
     return _client.postJson(
-      '/staff/payments',
+      ApiConfig.endpoint('staffPayments'),
       body: {
         // Match backend /staff/payments payload
         'loan_id': int.tryParse(loanId) ?? loanId,

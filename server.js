@@ -8,6 +8,7 @@ const port = process.env.PORT || 3000;
 // Path to Flutter web build folder
 const webBuildPath = path.join(__dirname, 'build', 'web');
 const indexHtmlPath = path.join(webBuildPath, 'index.html');
+const apiConfigPath = path.join(__dirname, 'assets', 'api_config.json');
 
 // Create a minimal placeholder build when the Flutter web output is missing
 if (!fs.existsSync(indexHtmlPath)) {
@@ -43,6 +44,15 @@ if (!fs.existsSync(indexHtmlPath)) {
   );
   console.warn('Warning: build/web missing. Generated placeholder index.html.');
 }
+
+// Serve the shared API configuration for both Flutter web and mobile builds
+app.get('/api_config.json', (req, res) => {
+  if (fs.existsSync(apiConfigPath)) {
+    return res.sendFile(apiConfigPath);
+  }
+
+  res.status(404).json({ error: 'api_config.json not found' });
+});
 
 // Serve static assets (JS, CSS, images, etc.)
 app.use(express.static(webBuildPath));
