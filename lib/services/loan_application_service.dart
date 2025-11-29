@@ -1,6 +1,4 @@
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'dart:io';
 
 import '../models/loan_application.dart';
 import 'api_client.dart';
@@ -45,32 +43,13 @@ class LoanApplicationService {
   Future<void> uploadDocument(
     String id,
     String documentType,
-    PlatformFile file,
+    File file,
   ) async {
-    final multipartFile = await _toMultipartFile(file);
     await _client.postMultipart(
-        '/api/loan-applications/$id/documents',
-        file: multipartFile,
-        fields: {'document_type': documentType});
-  }
-
-  Future<http.MultipartFile> _toMultipartFile(PlatformFile file) async {
-    if (kIsWeb) {
-      if (file.bytes == null) {
-        throw Exception('No file data found for ${file.name}');
-      }
-      return http.MultipartFile.fromBytes(
-        'document',
-        file.bytes!,
-        filename: file.name,
-      );
-    }
-
-    if (file.path != null) {
-      return http.MultipartFile.fromPath('document', file.path!,
-          filename: file.name.isNotEmpty ? file.name : null);
-    }
-
-    throw Exception('Unsupported file input for ${file.name}');
+      '/api/loan-applications/$id/documents',
+      file: file,
+      fieldName: 'document',
+      fields: {'document_type': documentType},
+    );
   }
 }
