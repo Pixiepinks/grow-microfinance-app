@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'api_config.dart';
 import 'screens/admin/admin_dashboard.dart';
 import 'screens/customer/customer_dashboard.dart';
 import 'screens/login_screen.dart';
@@ -12,8 +13,9 @@ import 'services/customer_repository.dart';
 import 'services/loan_application_service.dart';
 import 'services/staff_repository.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ApiConfig.ensureInitialized();
   runApp(const GrowMicrofinanceApp());
 }
 

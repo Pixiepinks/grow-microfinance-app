@@ -1,4 +1,20 @@
-const baseUrl = 'https://grow-microfinance-api-production.up.railway.app';
+const defaultApiConfig = {
+  baseUrl: 'https://grow-microfinance-api-production.up.railway.app',
+  endpoints: {
+    login: '/auth/login',
+    adminDashboard: '/admin/dashboard',
+    staffTodayCollections: '/staff/today-collections',
+    staffPayments: '/staff/payments',
+    customerProfile: '/customer/me',
+    customerLoans: '/customer/loans',
+    customerLoanPayments: '/customer/loans/{id}/payments',
+    loanApplications: '/api/loan-applications',
+    customers: '/customers',
+  },
+};
+
+let apiConfig = { ...defaultApiConfig };
+
 const storageKeys = { token: 'gm_jwt', role: 'gm_role' };
 
 const loginForm = document.querySelector('#login-form');
@@ -43,6 +59,29 @@ let cachedProfile = null;
 let cachedLoans = [];
 let cachedApplications = [];
 
+async function loadApiConfig() {
+  try {
+    const response = await fetch('/api_config.json');
+    if (!response.ok) throw new Error('Failed to load api_config.json');
+    const data = await response.json();
+    apiConfig = {
+      baseUrl: data.baseUrl || defaultApiConfig.baseUrl,
+      endpoints: { ...defaultApiConfig.endpoints, ...(data.endpoints || {}) },
+    };
+  } catch (error) {
+    console.warn('Using default API config:', error.message);
+    apiConfig = defaultApiConfig;
+  }
+}
+
+const endpoint = (key, params = {}) => {
+  let template = apiConfig.endpoints?.[key] || key;
+  Object.entries(params).forEach(([param, value]) => {
+    template = template.replace(`{${param}}`, value);
+  });
+  return template;
+};
+
 function setMessage(text, type = 'info') {
   loginMessage.textContent = text;
   loginMessage.className = 'alert ' + (type === 'error' ? 'error' : 'success');
@@ -77,7 +116,7 @@ async function api(path, { method = 'GET', body } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${apiConfig.baseUrl}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -234,7 +273,7 @@ function renderApplications(applications) {
 }
 
 async function loadAdmin() {
-  const data = await api('/admin/dashboard');
+  const data = await api(endpoint('adminDashboard'));
   const metrics = [
     { label: 'Total customers', value: data.total_customers ?? '—', hint: 'Across all segments' },
     { label: 'Active loans', value: data.active_loans ?? '—', hint: 'Current portfolio' },
@@ -244,16 +283,16 @@ async function loadAdmin() {
 }
 
 async function loadStaff() {
-  const data = await api('/staff/today-collections');
+  const data = await api(endpoint('staffTodayCollections'));
   renderCollections(data.collections || data || []);
 }
 
 async function loadCustomer() {
-  const profile = await api('/customer/me');
+  const profile = await api(endpoint('customerProfile'));
   cachedProfile = profile;
   renderProfile(profile);
 
-  const loansResponse = await api('/customer/loans');
+  const loansResponse = await api(endpoint('customerLoans'));
   const loans = Array.isArray(loansResponse) ? loansResponse : loansResponse.loans || [];
   cachedLoans = loans;
   const activeLoans = loans.filter((loan) => (loan.status || '').toLowerCase() === 'active').length;
@@ -268,7 +307,7 @@ async function loadCustomer() {
 }
 
 async function loadApplications() {
-  const data = await api('/api/loan-applications');
+  const data = await api(endpoint('loanApplications'));
   const applications = Array.isArray(data) ? data : data.applications || [];
   cachedApplications = applications;
   renderApplications(applications);
@@ -293,6 +332,12 @@ async function hydrateFromSession() {
   }
 }
 
+async function bootstrap() {
+  await loadApiConfig();
+  populateLoanTypes();
+  await hydrateFromSession();
+}
+
 loginForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
   setMessage('');
@@ -302,7 +347,7 @@ loginForm?.addEventListener('submit', async (event) => {
   const payload = Object.fromEntries(formData.entries());
 
   try {
-    const data = await api('/auth/login', { method: 'POST', body: payload });
+    const data = await api(endpoint('login'), { method: 'POST', body: payload });
     if (!data.access_token || !data.role) {
       throw new Error('Invalid response from server.');
     }
@@ -389,7 +434,7 @@ loanApplicationForm?.addEventListener('submit', async (event) => {
 
   try {
     setInlineAlert(applicationFormMessage, 'Saving draft...', 'success');
-    const app = await api('/api/loan-applications', { method: 'POST', body: payload });
+    const app = await api(endpoint('loanApplications'), { method: 'POST', body: payload });
     cachedApplications = [...cachedApplications.filter((existing) => existing.id !== app.id), app];
     setInlineAlert(applicationFormMessage, 'Draft saved successfully.', 'success');
     loanApplicationForm.reset();
@@ -401,5 +446,4 @@ loanApplicationForm?.addEventListener('submit', async (event) => {
   }
 });
 
-populateLoanTypes();
-hydrateFromSession();
+bootstrap();

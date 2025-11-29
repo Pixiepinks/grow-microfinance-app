@@ -1,0 +1,14 @@
+{
+  "baseUrl": "https://grow-microfinance-api-production.up.railway.app",
+  "endpoints": {
+    "login": "/auth/login",
+    "adminDashboard": "/admin/dashboard",
+    "staffTodayCollections": "/staff/today-collections",
+    "staffPayments": "/staff/payments",
+    "customerProfile": "/customer/me",
+    "customerLoans": "/customer/loans",
+    "customerLoanPayments": "/customer/loans/{id}/payments",
+    "loanApplications": "/api/loan-applications",
+    "customers": "/customers"
+  }
+}
