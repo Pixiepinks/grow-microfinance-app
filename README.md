@@ -57,12 +57,18 @@ Then open <http://localhost:3000> in the browser.
 
 Connect this GitHub repo to Railway as a new service.
 
-In Railway settings, set the start command to:
+Railway looks for a `start.sh` script by default. A helper script is included in the repo to install the Node server dependencies and launch the web build:
+
+```bash
+./start.sh
+```
+
+Make sure `build/web` is present and committed (run `flutter build web --release` before committing when you change the app). The `start.sh` script will exit with an error if the build output is missing so the deployment fails fast.
+
+If you prefer to set a custom start command in Railway instead of using the script, use:
 
 ```bash
 npm install --prefix web_server && npm start --prefix web_server
 ```
-
-Make sure `build/web` is present and committed (run `flutter build web --release` before committing when you change the app).
 
 The Railway URL for this service will be the web app URL that staff/customers can open in Chrome.
