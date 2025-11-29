@@ -22,4 +22,6 @@ web/
 windows/
 linux/
 
-# Misc
+# Allow committed Flutter web build for hosting
+!build/web/
+!build/web/**
