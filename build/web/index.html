@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grow Microfinance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark">GM</div>
+          <div>
+            <div class="brand-name">Grow Microfinance</div>
+            <div class="brand-subtitle">Secure lending platform</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span id="user-role" class="pill hidden"></span>
+          <button id="logout-btn" class="ghost hidden">Logout</button>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <section id="login-card" class="card">
+          <div class="card-header">
+            <div>
+              <div class="eyebrow">Welcome back</div>
+              <h1>Sign in to your account</h1>
+              <p class="muted">
+                Use your Grow Microfinance credentials to continue.
+              </p>
+            </div>
+            <div class="badge">Web preview</div>
+          </div>
+
+          <form id="login-form" class="form-grid">
+            <label class="form-field">
+              <span>Email</span>
+              <input
+                type="email"
+                name="email"
+                autocomplete="email"
+                placeholder="admin@grow.com"
+                required
+              />
+            </label>
+            <label class="form-field">
+              <span>Password</span>
+              <input
+                type="password"
+                name="password"
+                autocomplete="current-password"
+                placeholder="••••••••"
+                required
+              />
+            </label>
+            <button type="submit" id="login-submit" class="primary">
+              <span id="login-submit-label">Sign in</span>
+              <span id="login-spinner" class="spinner hidden"></span>
+            </button>
+          </form>
+          <div id="login-message" class="alert" role="status"></div>
+        </section>
+
+        <section id="dashboards" class="grid hidden">
+          <div id="admin-panel" class="card hidden">
+            <div class="card-header">
+              <div>
+                <div class="eyebrow">Admin</div>
+                <h2>Platform overview</h2>
+              </div>
+            </div>
+            <div id="admin-metrics" class="metric-grid"></div>
+          </div>
+
+          <div id="staff-panel" class="card hidden">
+            <div class="card-header">
+              <div>
+                <div class="eyebrow">Staff</div>
+                <h2>Today&rsquo;s collections</h2>
+              </div>
+            </div>
+            <div id="staff-collections" class="list"></div>
+          </div>
+
+          <div id="customer-panel" class="card hidden">
+            <div class="card-header">
+              <div>
+                <div class="eyebrow">Customer</div>
+                <h2>Your loans</h2>
+              </div>
+            </div>
+            <div id="customer-summary" class="metric-grid"></div>
+            <div id="customer-loans" class="list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="metric-template">
+      <div class="metric">
+        <div class="metric-label"></div>
+        <div class="metric-value"></div>
+        <div class="metric-hint"></div>
+      </div>
+    </template>
+
+    <template id="collection-template">
+      <div class="list-item">
+        <div>
+          <div class="item-title"></div>
+          <div class="item-subtitle"></div>
+        </div>
+        <div class="pill"></div>
+      </div>
+    </template>
+
+    <template id="loan-template">
+      <div class="list-item">
+        <div>
+          <div class="item-title"></div>
+          <div class="item-subtitle"></div>
+        </div>
+        <div class="pill"></div>
+      </div>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
