@@ -1,0 +1,11 @@
+# Explicit Nixpacks configuration so Railway installs Node and runs the embedded web server.
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = [
+  "npm install --prefix web_server"
+]
+
+[start]
+cmd = "npm start --prefix web_server"
