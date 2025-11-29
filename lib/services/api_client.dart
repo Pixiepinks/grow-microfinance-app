@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:grow_microfinance_app/api_config.dart';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
@@ -10,8 +11,7 @@ class ApiClient {
   String? _token;
 
   /// Deployed backend URL on Railway (no trailing slash).
-  static const baseUrl =
-      'https://grow-microfinance-api-production.up.railway.app';
+  static String get baseUrl => ApiConfig.baseUrl;
 
   void updateToken(String? token) {
     _token = token;
