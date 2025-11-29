@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:grow_microfinance_app/api_config.dart';
 import 'package:http/http.dart' as http;
@@ -63,8 +62,7 @@ class ApiClient {
 
   Future<Map<String, dynamic>> postMultipart(
     String path, {
-    required File file,
-    String fieldName = 'file',
+    required http.MultipartFile file,
     Map<String, String>? fields,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
@@ -73,8 +71,7 @@ class ApiClient {
     if (fields != null) {
       request.fields.addAll(fields);
     }
-    request.files
-        .add(await http.MultipartFile.fromPath(fieldName, file.path));
+    request.files.add(file);
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
     _throwIfNeeded(response);
