@@ -13,6 +13,49 @@ const defaultApiConfig = {
   },
 };
 
+const loanTypes = [
+  'Grow Online Business Loan',
+  'Grow Business Loan',
+  'Grow Personal Loan',
+  'Grow Team Loan',
+];
+
+const loanPurposes = {
+  'Grow Online Business Loan': [
+    'Inventory purchase',
+    'Digital marketing',
+    'Platform ads',
+    'Working capital',
+  ],
+  'Grow Business Loan': [
+    'Expand store',
+    'Purchase equipment',
+    'Inventory',
+    'Renovation',
+  ],
+  'Grow Personal Loan': ['Education', 'Medical', 'Home improvement', 'Emergency'],
+  'Grow Team Loan': ['Group business', 'Community project', 'Savings cycle'],
+};
+
+const documentLabels = {
+  nic_front: 'NIC front',
+  nic_back: 'NIC back',
+  nic_selfie: 'Selfie with NIC',
+  online_proof: 'Online store proof',
+  business_registration: 'Business registration',
+  utility_bill: 'Utility bill',
+  salary_slip: 'Salary slip',
+  member_list: 'Member list',
+  group_photo: 'Group photo',
+};
+
+const documentsByLoanType = {
+  'Grow Online Business Loan': ['nic_front', 'nic_back', 'nic_selfie', 'online_proof'],
+  'Grow Business Loan': ['nic_front', 'nic_back', 'nic_selfie', 'business_registration', 'utility_bill'],
+  'Grow Personal Loan': ['nic_front', 'nic_back', 'nic_selfie', 'salary_slip'],
+  'Grow Team Loan': ['nic_front', 'nic_back', 'nic_selfie', 'member_list', 'group_photo'],
+};
+
 let apiConfig = { ...defaultApiConfig };
 
 const storageKeys = { token: 'gm_jwt', role: 'gm_role' };
@@ -45,19 +88,28 @@ const refreshApplicationsBtn = document.querySelector('#refresh-applications');
 const applicationFormCard = document.querySelector('#application-form-card');
 const loanApplicationForm = document.querySelector('#loan-application-form');
 const applicationFormMessage = document.querySelector('#application-form-message');
-const loanTypeSelect = document.querySelector('#loan-type-select');
 const closeApplicationForm = document.querySelector('#close-application-form');
-
-const loanTypes = [
-  'Grow Online Business Loan',
-  'Grow Business Loan',
-  'Grow Personal Loan',
-  'Grow Team Loan',
-];
+const stepperIndicator = document.querySelectorAll('.stepper-indicator .step');
+const formSteps = document.querySelectorAll('.form-step');
+const prevStepBtn = document.querySelector('#prev-step');
+const nextStepBtn = document.querySelector('#next-step');
+const saveDraftBtn = document.querySelector('#save-draft');
+const submitApplicationBtn = document.querySelector('#submit-application');
+const loanTypeOptions = document.querySelector('#loan-type-options');
+const loanTypeInput = document.querySelector('#loan-type-input');
+const loanPurposeSelect = document.querySelector('#loan-purpose-select');
+const documentUploads = document.querySelector('#document-uploads');
+const reviewSummary = document.querySelector('#review-summary');
+const reviewAlert = document.querySelector('#review-alert');
+const typeSpecificFields = document.querySelectorAll('.type-specific');
 
 let cachedProfile = null;
 let cachedLoans = [];
 let cachedApplications = [];
+let currentStep = 0;
+let currentDraftId = null;
+let selectedLoanType = loanTypes[0];
+const selectedDocuments = new Map();
 
 async function loadApiConfig() {
   try {
@@ -130,6 +182,24 @@ async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+async function apiMultipart(path, formData) {
+  const { token } = getSession();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const response = await fetch(`${apiConfig.baseUrl}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data.message || data.error || 'Upload failed';
+    throw new Error(message);
+  }
+  return data;
+}
+
 function formatCurrency(value) {
   const amount = Number(value ?? 0);
   return amount ? `$${amount.toFixed(2)}` : '—';
@@ -147,25 +217,6 @@ function setInlineAlert(target, text, type = 'success') {
   target.textContent = text;
   target.className = `alert ${type === 'error' ? 'error' : 'success'}`;
   target.classList.toggle('hidden', !text);
-}
-
-function showApplicationForm(show = true) {
-  if (!applicationFormCard) return;
-  applicationFormCard.classList.toggle('hidden', !show);
-  if (show) {
-    setInlineAlert(applicationFormMessage, '');
-  }
-}
-
-function populateLoanTypes() {
-  if (!loanTypeSelect) return;
-  loanTypeSelect.innerHTML = '';
-  loanTypes.forEach((type) => {
-    const option = document.createElement('option');
-    option.value = type;
-    option.textContent = type;
-    loanTypeSelect.appendChild(option);
-  });
 }
 
 function togglePanels(role) {
@@ -332,9 +383,309 @@ async function hydrateFromSession() {
   }
 }
 
+function updateStepperUI() {
+  stepperIndicator.forEach((el, idx) => {
+    el.classList.toggle('active', idx === currentStep);
+    el.classList.toggle('completed', idx < currentStep);
+  });
+  formSteps.forEach((step, idx) => {
+    step.classList.toggle('hidden', idx !== currentStep);
+  });
+
+  prevStepBtn.disabled = currentStep === 0;
+  nextStepBtn.classList.toggle('hidden', currentStep === formSteps.length - 1);
+  saveDraftBtn.classList.toggle('hidden', currentStep !== formSteps.length - 1);
+  submitApplicationBtn.classList.toggle('hidden', currentStep !== formSteps.length - 1);
+}
+
+function renderLoanTypeOptions() {
+  if (!loanTypeOptions) return;
+  loanTypeOptions.innerHTML = '';
+  loanTypes.forEach((type) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'loan-type-card';
+    card.dataset.loanType = type;
+    card.innerHTML = `<strong>${type}</strong><p class="muted">Tap to select</p>`;
+    card.addEventListener('click', () => selectLoanType(type));
+    loanTypeOptions.appendChild(card);
+  });
+}
+
+function selectLoanType(type) {
+  selectedLoanType = type;
+  loanTypeInput.value = type;
+  document.querySelectorAll('.loan-type-card').forEach((card) => {
+    card.classList.toggle('selected', card.dataset.loanType === type);
+  });
+  populateLoanPurpose();
+  updateTypeSpecificVisibility();
+  renderDocumentUploads();
+  updateReviewSummary();
+}
+
+function populateLoanPurpose() {
+  if (!loanPurposeSelect) return;
+  const purposes = loanPurposes[selectedLoanType] || [];
+  loanPurposeSelect.innerHTML = '';
+  purposes.forEach((purpose, index) => {
+    const option = document.createElement('option');
+    option.value = purpose;
+    option.textContent = purpose;
+    if (index === 0) option.selected = true;
+    loanPurposeSelect.appendChild(option);
+  });
+}
+
+function updateTypeSpecificVisibility() {
+  typeSpecificFields.forEach((field) => {
+    const shouldShow = field.dataset.type === selectedLoanType;
+    field.classList.toggle('visible', shouldShow);
+    const input = field.querySelector('input');
+    if (input) {
+      input.required = shouldShow;
+    }
+  });
+}
+
+function renderDocumentUploads() {
+  if (!documentUploads) return;
+  documentUploads.innerHTML = '';
+  const requiredDocs = documentsByLoanType[selectedLoanType] || [];
+  requiredDocs.forEach((doc) => {
+    const card = document.createElement('div');
+    card.className = 'document-card';
+    card.dataset.docType = doc;
+    card.innerHTML = `
+      <h5>${documentLabels[doc] || doc}</h5>
+      <p class="muted">Upload ${documentLabels[doc] || doc}</p>
+      <input type="file" name="${doc}" data-doc-type="${doc}" accept="image/*,.pdf" required />
+    `;
+    const fileInput = card.querySelector('input[type="file"]');
+    fileInput.addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        selectedDocuments.set(doc, file);
+      } else {
+        selectedDocuments.delete(doc);
+      }
+      updateReviewSummary();
+    });
+    documentUploads.appendChild(card);
+  });
+}
+
+function validateStep(stepIndex) {
+  const step = formSteps[stepIndex];
+  if (!step) return true;
+  const requiredFields = step.querySelectorAll('input[required], select[required], textarea[required]');
+  for (const field of requiredFields) {
+    if (field.type === 'file' && !(field.files?.length)) {
+      field.reportValidity();
+      return false;
+    }
+    if (field.type !== 'file' && !field.value) {
+      field.reportValidity();
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildApplicationPayload() {
+  const formData = new FormData(loanApplicationForm);
+  const values = Object.fromEntries(formData.entries());
+  const hasExistingLoans = formData.get('has_existing_loans') === 'on';
+
+  const applicantDetails = {
+    full_name: values.full_name || cachedProfile?.name || '',
+    nic: values.nic || '',
+    mobile: values.mobile || cachedProfile?.mobile || cachedProfile?.phone || '',
+    email: values.email || cachedProfile?.email || '',
+    address_line1: values.address_line1 || '',
+    address_line2: values.address_line2 || '',
+    city: values.city || '',
+    district: values.district || '',
+    province: values.province || '',
+    date_of_birth: values.date_of_birth || '',
+    monthly_income: Number(values.monthly_income) || 0,
+    monthly_expenses: Number(values.monthly_expenses) || 0,
+    has_existing_loans: hasExistingLoans,
+    existing_loans_description: values.existing_loans_description || '',
+  };
+
+  const loanDetails = {
+    applied_amount: Number(values.applied_amount) || 0,
+    tenure_months: Number(values.tenure_months) || 0,
+    loan_purpose: values.loan_purpose || '',
+  };
+
+  const typeSpecific = {};
+  switch (selectedLoanType) {
+    case 'Grow Online Business Loan':
+      typeSpecific.store_url = values.store_url || '';
+      typeSpecific.store_platform = values.store_platform || '';
+      break;
+    case 'Grow Business Loan':
+      typeSpecific.business_name = values.business_name || '';
+      typeSpecific.business_registration = values.business_registration || '';
+      break;
+    case 'Grow Personal Loan':
+      typeSpecific.employment_status = values.employment_status || '';
+      typeSpecific.employer_name = values.employer_name || '';
+      typeSpecific.guarantor_name = values.guarantor_name || '';
+      typeSpecific.guarantor_contact = values.guarantor_contact || '';
+      break;
+    case 'Grow Team Loan':
+      typeSpecific.team_name = values.team_name || '';
+      typeSpecific.member_count = Number(values.member_count) || 0;
+      typeSpecific.meeting_location = values.meeting_location || '';
+      break;
+    default:
+      break;
+  }
+
+  return {
+    loan_type: selectedLoanType,
+    loan_purpose: values.loan_purpose || '',
+    loan_details: loanDetails,
+    applicant_details: applicantDetails,
+    type_specific: typeSpecific,
+  };
+}
+
+function updateReviewSummary() {
+  if (!reviewSummary) return;
+  const data = buildApplicationPayload();
+  const rows = [
+    ['Loan type', data.loan_type],
+    ['Purpose', data.loan_details.loan_purpose],
+    ['Applied amount', formatCurrency(data.loan_details.applied_amount)],
+    ['Tenure', `${data.loan_details.tenure_months} months`],
+    ['Full name', data.applicant_details.full_name],
+    ['NIC', data.applicant_details.nic],
+    ['Mobile', data.applicant_details.mobile],
+    ['Email', data.applicant_details.email || '—'],
+    [
+      'Address',
+      `${data.applicant_details.address_line1}, ${data.applicant_details.address_line2 || ''} ${
+        data.applicant_details.city
+      }, ${data.applicant_details.district}, ${data.applicant_details.province}`,
+    ],
+  ];
+
+  reviewSummary.innerHTML = '';
+  rows.forEach(([label, value]) => {
+    const row = document.createElement('div');
+    row.className = 'review-row';
+    row.innerHTML = `<span>${label}</span><span>${value || '—'}</span>`;
+    reviewSummary.appendChild(row);
+  });
+
+  const requiredDocs = documentsByLoanType[selectedLoanType] || [];
+  const missingDocs = requiredDocs.filter((doc) => !selectedDocuments.has(doc));
+  reviewAlert.textContent = missingDocs.length
+    ? `Missing documents: ${missingDocs.map((d) => documentLabels[d] || d).join(', ')}`
+    : '';
+  reviewAlert.classList.toggle('hidden', !reviewAlert.textContent);
+  reviewAlert.classList.toggle('error', !!missingDocs.length);
+}
+
+async function saveDraft(showMessage = true) {
+  const payload = buildApplicationPayload();
+  try {
+    setInlineAlert(applicationFormMessage, 'Saving draft...', 'success');
+    const endpointPath = currentDraftId
+      ? `${endpoint('loanApplications')}/${currentDraftId}`
+      : endpoint('loanApplications');
+    const method = currentDraftId ? 'PUT' : 'POST';
+    const app = await api(endpointPath, { method, body: payload });
+    currentDraftId = app.id;
+    cachedApplications = [...cachedApplications.filter((a) => a.id !== app.id), app];
+    renderApplications(cachedApplications);
+    if (showMessage) {
+      setInlineAlert(applicationFormMessage, 'Draft saved successfully.', 'success');
+    }
+    return app;
+  } catch (err) {
+    console.error(err);
+    setInlineAlert(applicationFormMessage, err.message || 'Unable to save application', 'error');
+    throw err;
+  }
+}
+
+async function uploadDocumentsIfNeeded() {
+  if (!currentDraftId || selectedDocuments.size === 0) return;
+  for (const [docType, file] of selectedDocuments.entries()) {
+    const formData = new FormData();
+    formData.append('document', file);
+    formData.append('document_type', docType);
+    await apiMultipart(`${endpoint('loanApplications')}/${currentDraftId}/documents`, formData);
+  }
+}
+
+async function submitApplication() {
+  try {
+    if (!validateStep(currentStep)) return;
+    await saveDraft(false);
+
+    const requiredDocs = documentsByLoanType[selectedLoanType] || [];
+    const missingDocs = requiredDocs.filter((doc) => !selectedDocuments.has(doc));
+    if (missingDocs.length) {
+      setInlineAlert(
+        applicationFormMessage,
+        `Please upload: ${missingDocs.map((d) => documentLabels[d] || d).join(', ')}`,
+        'error'
+      );
+      return;
+    }
+
+    await uploadDocumentsIfNeeded();
+    await api(`${endpoint('loanApplications')}/${currentDraftId}/submit`, { method: 'POST' });
+    setInlineAlert(applicationFormMessage, 'Application submitted.', 'success');
+    await loadApplications();
+    applicationFormCard.classList.add('hidden');
+  } catch (err) {
+    console.error(err);
+    setInlineAlert(applicationFormMessage, err.message || 'Unable to submit application', 'error');
+  }
+}
+
+function resetApplicationForm() {
+  currentStep = 0;
+  currentDraftId = null;
+  selectedLoanType = loanTypes[0];
+  selectedDocuments.clear();
+  loanApplicationForm.reset();
+  selectLoanType(selectedLoanType);
+  updateStepperUI();
+  setInlineAlert(applicationFormMessage, '');
+  updateReviewSummary();
+}
+
+function goToNextStep() {
+  if (!validateStep(currentStep)) return;
+  if (currentStep < formSteps.length - 1) {
+    currentStep += 1;
+    updateReviewSummary();
+    updateStepperUI();
+  }
+}
+
+function goToPrevStep() {
+  if (currentStep > 0) {
+    currentStep -= 1;
+    updateStepperUI();
+  }
+}
+
 async function bootstrap() {
   await loadApiConfig();
-  populateLoanTypes();
+  renderLoanTypeOptions();
+  selectLoanType(selectedLoanType);
+  updateTypeSpecificVisibility();
+  renderDocumentUploads();
+  updateStepperUI();
   await hydrateFromSession();
 }
 
@@ -374,47 +725,16 @@ logoutBtn?.addEventListener('click', () => {
   setMessage('You have been signed out.', 'success');
 });
 
-function buildApplicationPayload(formData) {
-  const values = Object.fromEntries(formData.entries());
-  const hasExistingLoans = formData.get('has_existing_loans') === 'on';
-
-  const applicantDetails = {
-    full_name: cachedProfile?.name || values.full_name || '',
-    email: cachedProfile?.email || values.email || '',
-    mobile: values.mobile || cachedProfile?.mobile || cachedProfile?.phone || '',
-    has_existing_loans: hasExistingLoans,
-    existing_loans_description: values.existing_loans_description || '',
-  };
-
-  if (values.monthly_income) {
-    applicantDetails.monthly_income = Number(values.monthly_income) || 0;
-  }
-  if (values.monthly_expenses) {
-    applicantDetails.monthly_expenses = Number(values.monthly_expenses) || 0;
-  }
-
-  return {
-    loan_type: values.loan_type,
-    loan_purpose: values.loan_purpose,
-    loan_details: {
-      applied_amount: Number(values.applied_amount) || 0,
-      tenure_months: Number(values.tenure_months) || 0,
-      loan_purpose: values.loan_purpose,
-    },
-    applicant_details: applicantDetails,
-    type_specific: {
-      employment_status: values.employment_status || '',
-    },
-  };
-}
+loanApplicationForm?.addEventListener('submit', (event) => event.preventDefault());
 
 newApplicationBtn?.addEventListener('click', () => {
-  showApplicationForm(true);
-  loanApplicationForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  resetApplicationForm();
+  applicationFormCard.classList.remove('hidden');
+  loanApplicationForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 closeApplicationForm?.addEventListener('click', () => {
-  showApplicationForm(false);
+  applicationFormCard.classList.add('hidden');
 });
 
 refreshApplicationsBtn?.addEventListener('click', async () => {
@@ -427,23 +747,9 @@ refreshApplicationsBtn?.addEventListener('click', async () => {
   }
 });
 
-loanApplicationForm?.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  setInlineAlert(applicationFormMessage, '');
-  const payload = buildApplicationPayload(new FormData(loanApplicationForm));
-
-  try {
-    setInlineAlert(applicationFormMessage, 'Saving draft...', 'success');
-    const app = await api(endpoint('loanApplications'), { method: 'POST', body: payload });
-    cachedApplications = [...cachedApplications.filter((existing) => existing.id !== app.id), app];
-    setInlineAlert(applicationFormMessage, 'Draft saved successfully.', 'success');
-    loanApplicationForm.reset();
-    populateLoanTypes();
-    await loadApplications();
-  } catch (err) {
-    console.error(err);
-    setInlineAlert(applicationFormMessage, err.message || 'Unable to save application', 'error');
-  }
-});
+prevStepBtn?.addEventListener('click', goToPrevStep);
+nextStepBtn?.addEventListener('click', goToNextStep);
+saveDraftBtn?.addEventListener('click', () => saveDraft(true));
+submitApplicationBtn?.addEventListener('click', submitApplication);
 
 bootstrap();

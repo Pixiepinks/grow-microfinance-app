@@ -143,93 +143,207 @@
                     </button>
                   </div>
 
-                  <form id="loan-application-form" class="form-grid two-col">
-                    <label class="form-field">
-                      <span>Loan type</span>
-                      <select name="loan_type" id="loan-type-select" required></select>
-                    </label>
-                    <label class="form-field">
-                      <span>Applied amount (USD)</span>
-                      <input
-                        type="number"
-                        name="applied_amount"
-                        inputmode="decimal"
-                        min="0"
-                        step="0.01"
-                        placeholder="5000"
-                        required
-                      />
-                    </label>
-                    <label class="form-field">
-                      <span>Tenure (months)</span>
-                      <input
-                        type="number"
-                        name="tenure_months"
-                        inputmode="numeric"
-                        min="1"
-                        placeholder="12"
-                        required
-                      />
-                    </label>
-                    <label class="form-field">
-                      <span>Loan purpose</span>
-                      <textarea
-                        name="loan_purpose"
-                        rows="3"
-                        placeholder="Tell us how you plan to use these funds"
-                        required
-                      ></textarea>
-                    </label>
-                    <label class="form-field">
-                      <span>Monthly income (optional)</span>
-                      <input
-                        type="number"
-                        name="monthly_income"
-                        inputmode="decimal"
-                        min="0"
-                        step="0.01"
-                        placeholder="1500"
-                      />
-                    </label>
-                    <label class="form-field">
-                      <span>Monthly expenses (optional)</span>
-                      <input
-                        type="number"
-                        name="monthly_expenses"
-                        inputmode="decimal"
-                        min="0"
-                        step="0.01"
-                        placeholder="800"
-                      />
-                    </label>
-                    <label class="form-field">
-                      <span>Employer / business name</span>
-                      <input
-                        type="text"
-                        name="employment_status"
-                        placeholder="e.g. Self-employed or Acme Corp"
-                      />
-                    </label>
-                    <label class="form-field">
-                      <span>Contact number</span>
-                      <input type="tel" name="mobile" placeholder="0712345678" />
-                    </label>
-                    <label class="form-field checkbox-row">
-                      <input type="checkbox" name="has_existing_loans" />
-                      <span>You currently have other loans</span>
-                    </label>
-                    <label class="form-field full-width">
-                      <span>Existing loans (if any)</span>
-                      <textarea
-                        name="existing_loans_description"
-                        rows="2"
-                        placeholder="Tell us about other commitments"
-                      ></textarea>
-                    </label>
-                    <div class="form-actions full-width">
-                      <button id="submit-application" class="primary" type="submit">
-                        Save draft
-                      </button>
+                  <div class="stepper" id="application-stepper">
+                    <ol class="stepper-indicator">
+                      <li class="step" data-step-index="0">Loan type</li>
+                      <li class="step" data-step-index="1">Applicant</li>
+                      <li class="step" data-step-index="2">Loan details</li>
+                      <li class="step" data-step-index="3">Type specific</li>
+                      <li class="step" data-step-index="4">Documents</li>
+                      <li class="step" data-step-index="5">Review</li>
+                    </ol>
+                  </div>
+
+                  <form id="loan-application-form" class="form-grid">
+                    <div class="form-step" data-step="0">
+                      <div class="form-grid two-col">
+                        <div class="form-field full-width">
+                          <span class="muted">Choose your product</span>
+                        </div>
+                        <div class="loan-type-options" id="loan-type-options"></div>
+                        <input type="hidden" name="loan_type" id="loan-type-input" required />
+                      </div>
+                    </div>
+
+                    <div class="form-step" data-step="1">
+                      <div class="form-grid two-col">
+                        <label class="form-field">
+                          <span>Full name</span>
+                          <input type="text" name="full_name" autocomplete="name" required />
+                        </label>
+                        <label class="form-field">
+                          <span>NIC</span>
+                          <input type="text" name="nic" required />
+                        </label>
+                        <label class="form-field">
+                          <span>Mobile</span>
+                          <input type="tel" name="mobile" placeholder="0712345678" required />
+                        </label>
+                        <label class="form-field">
+                          <span>Email</span>
+                          <input type="email" name="email" autocomplete="email" />
+                        </label>
+                        <label class="form-field">
+                          <span>Address line 1</span>
+                          <input type="text" name="address_line1" required />
+                        </label>
+                        <label class="form-field">
+                          <span>Address line 2</span>
+                          <input type="text" name="address_line2" />
+                        </label>
+                        <label class="form-field">
+                          <span>City</span>
+                          <input type="text" name="city" required />
+                        </label>
+                        <label class="form-field">
+                          <span>District</span>
+                          <input type="text" name="district" required />
+                        </label>
+                        <label class="form-field">
+                          <span>Province</span>
+                          <input type="text" name="province" required />
+                        </label>
+                        <label class="form-field">
+                          <span>Date of birth</span>
+                          <input type="date" name="date_of_birth" />
+                        </label>
+                        <label class="form-field">
+                          <span>Monthly income (LKR)</span>
+                          <input type="number" name="monthly_income" inputmode="decimal" min="0" step="0.01" required />
+                        </label>
+                        <label class="form-field">
+                          <span>Monthly expenses (LKR)</span>
+                          <input type="number" name="monthly_expenses" inputmode="decimal" min="0" step="0.01" required />
+                        </label>
+                        <label class="form-field checkbox-row full-width">
+                          <input type="checkbox" name="has_existing_loans" />
+                          <span>You currently have other loans</span>
+                        </label>
+                        <label class="form-field full-width">
+                          <span>Existing loans (if any)</span>
+                          <textarea
+                            name="existing_loans_description"
+                            rows="2"
+                            placeholder="Tell us about other commitments"
+                          ></textarea>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="form-step" data-step="2">
+                      <div class="form-grid two-col">
+                        <label class="form-field">
+                          <span>Applied amount (LKR)</span>
+                          <input
+                            type="number"
+                            name="applied_amount"
+                            inputmode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="500000"
+                            required
+                          />
+                        </label>
+                        <label class="form-field">
+                          <span>Tenure (months)</span>
+                          <input
+                            type="number"
+                            name="tenure_months"
+                            inputmode="numeric"
+                            min="1"
+                            placeholder="12"
+                            required
+                          />
+                        </label>
+                        <label class="form-field full-width">
+                          <span>Loan purpose</span>
+                          <select name="loan_purpose" id="loan-purpose-select" required></select>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="form-step" data-step="3">
+                      <div class="form-grid two-col">
+                        <div class="form-field type-specific" data-type="Grow Online Business Loan">
+                          <span>Store URL</span>
+                          <input type="url" name="store_url" placeholder="https://yourstore.com" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Online Business Loan">
+                          <span>Selling platform / app</span>
+                          <input type="text" name="store_platform" placeholder="Daraz, social, etc." />
+                        </div>
+
+                        <div class="form-field type-specific" data-type="Grow Business Loan">
+                          <span>Business name / location</span>
+                          <input type="text" name="business_name" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Business Loan">
+                          <span>Business registration</span>
+                          <input type="text" name="business_registration" />
+                        </div>
+
+                        <div class="form-field type-specific" data-type="Grow Personal Loan">
+                          <span>Employment status</span>
+                          <input type="text" name="employment_status" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Personal Loan">
+                          <span>Employer</span>
+                          <input type="text" name="employer_name" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Personal Loan">
+                          <span>Guarantor name</span>
+                          <input type="text" name="guarantor_name" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Personal Loan">
+                          <span>Guarantor contact number</span>
+                          <input type="text" name="guarantor_contact" />
+                        </div>
+
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Team / group name</span>
+                          <input type="text" name="team_name" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Number of members</span>
+                          <input type="number" name="member_count" min="1" step="1" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Meeting location / time</span>
+                          <input type="text" name="meeting_location" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="form-step" data-step="4">
+                      <div class="stack">
+                        <p class="muted">
+                          Upload the required documents for your chosen loan type. All files stay attached to your draft.
+                        </p>
+                        <div id="document-uploads" class="document-grid"></div>
+                      </div>
+                    </div>
+
+                    <div class="form-step" data-step="5">
+                      <div class="stack">
+                        <div class="eyebrow">Review</div>
+                        <h4>Confirm your details</h4>
+                        <p class="muted">
+                          Check the summary before saving or submitting your application.
+                        </p>
+                        <div id="review-summary" class="review-grid"></div>
+                        <div id="review-alert" class="alert hidden"></div>
+                      </div>
+                    </div>
+
+                    <div class="stepper-footer">
+                      <div class="footer-actions">
+                        <button type="button" id="prev-step" class="ghost">Back</button>
+                        <button type="button" id="next-step" class="primary">Next</button>
+                      </div>
+                      <div class="footer-actions">
+                        <button type="button" id="save-draft" class="ghost">Save draft</button>
+                        <button type="button" id="submit-application" class="primary">Submit application</button>
+                      </div>
                     </div>
                   </form>
                   <div id="application-form-message" class="alert hidden"></div>
