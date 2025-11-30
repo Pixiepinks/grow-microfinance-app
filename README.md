@@ -16,6 +16,8 @@ A Flutter mobile client for the Grow Microfinance platform. The backend API is a
 ## Getting Started
 1. Update the `baseUrl` in `lib/api_config.dart` to point to your deployed backend if it changes.
 2. Install Flutter 3.10+ and run `flutter pub get`.
+   - If the Dart/Flutter SDK is not available in your environment (e.g., minimal CI container), run `tools/setup_dart.sh` to download a local Dart SDK into `.dart-sdk/`, then `export PATH="$(pwd)/.dart-sdk/bin:$PATH"`.
+   - When external downloads are blocked, the script installs a lightweight shim so `dart --version`/`dart format` succeed; replace it with the real SDK when network access is available.
 3. Launch the app with `flutter run` on an emulator or device.
 
 ## Project Structure

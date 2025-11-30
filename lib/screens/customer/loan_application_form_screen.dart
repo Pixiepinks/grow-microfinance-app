@@ -78,12 +78,20 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     if (existing == null) return;
     _applicationId = existing.id;
     _selectedLoanType = existing.loanType.isNotEmpty
-        ? existing.loanType
+        ? _mapApiLoanTypeToUi(existing.loanType)
         : _selectedLoanType;
-    final applicant = existing.applicantDetails;
-    _fullNameController.text = applicant['full_name'] ?? '';
-    _nicController.text = applicant['nic'] ?? '';
-    _mobileController.text = applicant['mobile'] ?? '';
+    final applicant = {
+      ...existing.applicantDetails,
+      // Allow hydration from flattened API responses
+      'full_name': existing.applicantDetails['full_name'] ?? existing.applicantDetails['name'],
+      'nic_number': existing.applicantDetails['nic_number'] ?? existing.applicantDetails['nic'],
+      'mobile_number':
+          existing.applicantDetails['mobile_number'] ?? existing.applicantDetails['mobile'],
+    };
+    _fullNameController.text =
+        applicant['full_name'] ?? (existing.applicantDetails['name'] ?? '');
+    _nicController.text = applicant['nic_number'] ?? applicant['nic'] ?? '';
+    _mobileController.text = applicant['mobile_number'] ?? applicant['mobile'] ?? '';
     _emailController.text = applicant['email'] ?? '';
     _address1Controller.text = applicant['address_line1'] ?? '';
     _address2Controller.text = applicant['address_line2'] ?? '';
@@ -94,23 +102,35 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
         ? DateTime.tryParse(applicant['date_of_birth'])
         : null;
     _monthlyIncomeController.text =
-        applicant['monthly_income']?.toString() ?? '';
+        (applicant['monthly_income'] ?? existing.loanDetails['monthly_income'])
+                ?.toString() ??
+            '';
     _monthlyExpensesController.text =
-        applicant['monthly_expenses']?.toString() ?? '';
+        (applicant['monthly_expenses'] ?? existing.loanDetails['monthly_expenses'])
+                ?.toString() ??
+            '';
     _hasExistingLoans = applicant['has_existing_loans'] ?? false;
     _existingLoansController.text =
         applicant['existing_loans_description'] ?? '';
 
-    final loanDetails = existing.loanDetails;
+    final loanDetails = {
+      ...existing.loanDetails,
+      'applied_amount': existing.appliedAmount,
+      'tenure_months': existing.tenureMonths,
+      'loan_purpose': existing.loanPurpose,
+    };
     _appliedAmountController.text =
-        loanDetails['applied_amount']?.toString() ??
-            existing.appliedAmount.toString();
+        loanDetails['applied_amount']?.toString() ?? '';
     _tenureController.text =
-        (loanDetails['tenure_months'] ?? existing.tenureMonths).toString();
+        loanDetails['tenure_months']?.toString() ?? '';
     _loanPurposeController.text =
-        loanDetails['loan_purpose'] ?? existing.loanPurpose;
+        loanDetails['loan_purpose']?.toString() ?? '';
 
-    final typeSpecific = existing.typeSpecific;
+    final typeSpecific = {
+      ...existing.typeSpecific,
+      // allow flattened responses
+      ...existing.loanDetails,
+    };
     _onlineStoreController.text = typeSpecific['store_url'] ?? '';
     _onlinePlatformController.text = typeSpecific['store_platform'] ?? '';
     _businessNameController.text = typeSpecific['business_name'] ?? '';
@@ -604,33 +624,85 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   }
 
   Map<String, dynamic> _buildPayload({bool draft = true}) {
-    return {
-      'loan_type': _selectedLoanType,
-      'status': draft ? 'DRAFT' : 'SUBMITTED',
-      'applicant_details': {
-        'full_name': _fullNameController.text,
-        'nic': _nicController.text,
-        'mobile': _mobileController.text,
-        'email': _emailController.text,
-        'address_line1': _address1Controller.text,
-        'address_line2': _address2Controller.text,
-        'city': _cityController.text,
-        'district': _districtController.text,
-        'province': _provinceController.text,
-        'date_of_birth': _dateOfBirth?.toIso8601String(),
-        'monthly_income': double.tryParse(_monthlyIncomeController.text) ?? 0,
-        'monthly_expenses':
-            double.tryParse(_monthlyExpensesController.text) ?? 0,
-        'has_existing_loans': _hasExistingLoans,
-        'existing_loans_description': _existingLoansController.text,
-      },
-      'loan_details': {
-        'applied_amount': double.tryParse(_appliedAmountController.text) ?? 0,
-        'tenure_months': int.tryParse(_tenureController.text) ?? 0,
-        'loan_purpose': _loanPurposeController.text,
-      },
-      'type_specific': _buildTypeSpecificMap(),
+    final appliedAmount = double.tryParse(_appliedAmountController.text) ?? 0;
+    final tenureMonths = int.tryParse(_tenureController.text) ?? 0;
+    final monthlyIncome = double.tryParse(_monthlyIncomeController.text) ?? 0;
+    final monthlyExpenses =
+        double.tryParse(_monthlyExpensesController.text) ?? 0;
+
+    final applicantDetails = {
+      'full_name': _fullNameController.text,
+      'nic_number': _nicController.text,
+      'mobile_number': _mobileController.text,
+      'email': _emailController.text,
+      'address_line1': _address1Controller.text,
+      'address_line2': _address2Controller.text,
+      'city': _cityController.text,
+      'district': _districtController.text,
+      'province': _provinceController.text,
+      'date_of_birth': _dateOfBirth?.toIso8601String(),
+      'monthly_income': monthlyIncome,
+      'monthly_expenses': monthlyExpenses,
+      'has_existing_loans': _hasExistingLoans,
+      'existing_loans_description': _existingLoansController.text,
     };
+
+    final loanDetails = {
+      'applied_amount': appliedAmount,
+      'tenure_months': tenureMonths,
+      'loan_purpose': _loanPurposeController.text,
+    };
+
+    final typeSpecific = _buildTypeSpecificMap();
+
+    return {
+      'loan_type': _mapLoanTypeToApi(_selectedLoanType),
+      'loan_purpose': _loanPurposeController.text,
+      'status': draft ? 'DRAFT' : 'SUBMITTED',
+      // Flattened fields expected by the API
+      ...applicantDetails,
+      ...loanDetails,
+      // Make type-specific data available in both flattened and nested forms
+      ...typeSpecific,
+      // Nested fields retained for compatibility with existing list/detail views
+      'applicant_details': applicantDetails,
+      'loan_details': loanDetails,
+      'type_specific': typeSpecific,
+    };
+  }
+
+  String _mapLoanTypeToApi(String uiValue) {
+    switch (uiValue) {
+      case 'Grow Online Business Loan':
+        return 'ONLINE_BUSINESS_LOAN';
+      case 'Grow Business Loan':
+        return 'BUSINESS_LOAN';
+      case 'Grow Personal Loan':
+        return 'PERSONAL_LOAN';
+      case 'Grow Team Loan':
+        return 'TEAM_LOAN';
+      default:
+        return uiValue;
+    }
+  }
+
+  String _mapApiLoanTypeToUi(String apiValue) {
+    switch (apiValue) {
+      case 'ONLINE_BUSINESS_LOAN':
+      case 'ONLINE_BUSINESS':
+        return 'Grow Online Business Loan';
+      case 'BUSINESS_LOAN':
+      case 'BUSINESS':
+        return 'Grow Business Loan';
+      case 'PERSONAL_LOAN':
+      case 'PERSONAL':
+        return 'Grow Personal Loan';
+      case 'TEAM_LOAN':
+      case 'TEAM':
+        return 'Grow Team Loan';
+      default:
+        return apiValue;
+    }
   }
 
   Map<String, dynamic> _buildTypeSpecificMap() {
