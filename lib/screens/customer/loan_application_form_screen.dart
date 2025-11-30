@@ -624,27 +624,39 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   }
 
   Map<String, dynamic> _buildPayload({bool draft = true}) {
-    final appliedAmount = double.tryParse(_appliedAmountController.text) ?? 0;
-    final tenureMonths = int.tryParse(_tenureController.text) ?? 0;
-    final monthlyIncome = double.tryParse(_monthlyIncomeController.text) ?? 0;
+    final appliedAmount =
+        double.tryParse(_appliedAmountController.text.trim()) ?? 0;
+    final tenureMonths = int.tryParse(_tenureController.text.trim()) ?? 0;
+    final monthlyIncome =
+        double.tryParse(_monthlyIncomeController.text.trim()) ?? 0;
     final monthlyExpenses =
-        double.tryParse(_monthlyExpensesController.text) ?? 0;
+        double.tryParse(_monthlyExpensesController.text.trim()) ?? 0;
+
+    final loanType = _mapLoanTypeToApi(_selectedLoanType.trim());
+    // Use the default option if the UI loan type could not be mapped.
+    final normalizedLoanType =
+        loanType.isEmpty ? _mapLoanTypeToApi(loanTypes.first) : loanType;
 
     final applicantDetails = {
-      'full_name': _fullNameController.text,
-      'nic_number': _nicController.text,
-      'mobile_number': _mobileController.text,
-      'email': _emailController.text,
-      'address_line1': _address1Controller.text,
-      'address_line2': _address2Controller.text,
-      'city': _cityController.text,
-      'district': _districtController.text,
-      'province': _provinceController.text,
+      'full_name': _fullNameController.text.trim(),
+      'nic_number': _nicController.text.trim(),
+      'mobile_number': _mobileController.text.trim(),
+      'email': _emailController.text.trim(),
+      'address_line1': _address1Controller.text.trim(),
+      'address_line2': _address2Controller.text.trim(),
+      'city': _cityController.text.trim(),
+      'district': _districtController.text.trim(),
+      'province': _provinceController.text.trim(),
       'date_of_birth': _dateOfBirth?.toIso8601String(),
       'monthly_income': monthlyIncome,
       'monthly_expenses': monthlyExpenses,
       'has_existing_loans': _hasExistingLoans,
       'existing_loans_description': _existingLoansController.text,
+      // Backwards-compatible aliases for older payloads sometimes produced by
+      // the web build; these ensure the backend receives the expected values
+      // even if a stale form version is running.
+      'nic': _nicController.text.trim(),
+      'mobile': _mobileController.text.trim(),
     };
 
     final loanDetails = {
@@ -656,7 +668,7 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     final typeSpecific = _buildTypeSpecificMap();
 
     return {
-      'loan_type': _mapLoanTypeToApi(_selectedLoanType),
+      'loan_type': normalizedLoanType,
       'loan_purpose': _loanPurposeController.text,
       'status': draft ? 'DRAFT' : 'SUBMITTED',
       // Flattened fields expected by the API
