@@ -94,9 +94,18 @@ class ApiClient {
 
   void _throwIfNeeded(http.Response response) {
     if (response.statusCode >= 400) {
+      String message = response.body;
+      try {
+        final parsed = jsonDecode(response.body);
+        if (parsed is Map<String, dynamic>) {
+          message = (parsed['message'] ?? parsed['error'] ?? message).toString();
+        }
+      } catch (_) {
+        // fall back to raw body when not JSON
+      }
       throw ApiException(
         statusCode: response.statusCode,
-        message: response.body,
+        message: message.isEmpty ? 'Request failed' : message,
       );
     }
   }
