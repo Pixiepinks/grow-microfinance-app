@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/loan_application.dart';
+import '../../services/api_client.dart';
 import '../../services/loan_application_service.dart';
 
 class LoanApplicationFormScreen extends StatefulWidget {
@@ -711,6 +712,12 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
           ),
         );
         Navigator.of(context).pop(application);
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.message}')),
+        );
       }
     } catch (e) {
       if (mounted) {

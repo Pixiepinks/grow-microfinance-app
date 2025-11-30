@@ -23,8 +23,12 @@ class AuthRepository {
         'password': password,
       },
     );
-    // Flask API returns "access_token" and "role"
-    final token = response['access_token'] as String?;
+    // Handle multiple possible token keys from the API for compatibility
+    final token = (response['access_token'] ??
+            response['token'] ??
+            response['accessToken'] ??
+            response['jwt'])
+        as String?;
     final role = response['role'] as String?;
     if (token != null && role != null) {
       await persistAuth(token: token, role: role);

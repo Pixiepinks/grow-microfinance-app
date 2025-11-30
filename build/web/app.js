@@ -8,7 +8,7 @@ const defaultApiConfig = {
     customerProfile: '/customer/me',
     customerLoans: '/customer/loans',
     customerLoanPayments: '/customer/loans/{id}/payments',
-    loanApplications: '/api/loan-applications',
+    loanApplications: '/loan-applications',
     customers: '/customers',
   },
 };
@@ -176,7 +176,8 @@ async function api(path, { method = 'GET', body } = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = data.message || data.error || 'Request failed';
+    const message =
+      data.message || data.error || data.detail || 'Request failed';
     throw new Error(message);
   }
   return data;
@@ -194,7 +195,8 @@ async function apiMultipart(path, formData) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = data.message || data.error || 'Upload failed';
+    const message =
+      data.message || data.error || data.detail || 'Upload failed';
     throw new Error(message);
   }
   return data;
@@ -699,10 +701,12 @@ loginForm?.addEventListener('submit', async (event) => {
 
   try {
     const data = await api(endpoint('login'), { method: 'POST', body: payload });
-    if (!data.access_token || !data.role) {
+    const token =
+      data.access_token || data.token || data.accessToken || data.jwt;
+    if (!token || !data.role) {
       throw new Error('Invalid response from server.');
     }
-    saveSession(data.access_token, data.role);
+    saveSession(token, data.role);
     togglePanels(data.role);
     setMessage('Signed in successfully.', 'success');
 

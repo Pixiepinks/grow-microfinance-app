@@ -15,7 +15,7 @@ class ApiConfig {
     'customerProfile': '/customer/me',
     'customerLoans': '/customer/loans',
     'customerLoanPayments': '/customer/loans/{id}/payments',
-    'loanApplications': '/api/loan-applications',
+    'loanApplications': '/loan-applications',
     'customers': '/customers',
   };
 
