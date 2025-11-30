@@ -94,18 +94,36 @@ class ApiClient {
 
   void _throwIfNeeded(http.Response response) {
     if (response.statusCode >= 400) {
-      String message = response.body;
+      dynamic parsedBody;
+      String? messageFromBody;
       try {
-        final parsed = jsonDecode(response.body);
-        if (parsed is Map<String, dynamic>) {
-          message = (parsed['message'] ?? parsed['error'] ?? message).toString();
+        parsedBody = jsonDecode(response.body);
+        if (parsedBody is Map<String, dynamic>) {
+          messageFromBody =
+              parsedBody['error']?.toString() ?? parsedBody['detail']?.toString();
+          messageFromBody ??= parsedBody['message']?.toString();
+        } else if (parsedBody is String && parsedBody.isNotEmpty) {
+          messageFromBody = parsedBody;
         }
       } catch (_) {
         // fall back to raw body when not JSON
       }
+
+      final requestUrl = response.request?.url.toString() ?? 'unknown url';
+      final logBody = parsedBody ??
+          (response.body.isEmpty ? '<empty body>' : response.body);
+      final logBodyString = logBody is String ? logBody : jsonEncode(logBody);
+      stderr.writeln(
+        'API request failed (${response.statusCode}) $requestUrl: $logBodyString',
+      );
+
+      final message = messageFromBody ??
+          'Request failed with status ${response.statusCode}';
       throw ApiException(
         statusCode: response.statusCode,
-        message: message.isEmpty ? 'Request failed' : message,
+        message: message.isEmpty
+            ? 'Request failed with status ${response.statusCode}'
+            : message,
       );
     }
   }

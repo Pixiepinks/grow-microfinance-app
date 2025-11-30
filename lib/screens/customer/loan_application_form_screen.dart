@@ -716,7 +716,10 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.message}')),
+          SnackBar(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            content: Text(e.message),
+          ),
         );
       }
     } catch (e) {
