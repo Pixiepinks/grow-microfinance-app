@@ -59,7 +59,10 @@ class LoanApplicationService {
     await _client.postMultipart(
       '${ApiConfig.endpoint('loanApplications')}/$id/documents',
       file: file,
-      fieldName: 'document',
+      // The backend expects the file to be uploaded under the "file" field.
+      // Using any other field name causes the document to be ignored, which
+      // prevents submissions due to missing required documents.
+      fieldName: 'file',
       fields: {'document_type': documentType},
     );
   }
