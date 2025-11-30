@@ -2,6 +2,8 @@
 .dart_tool/
 .packages
 .pub-cache/
+.dart-sdk/
+*.dartsdk-*.zip
 # build/
 node_modules/
 flutter_*.png
