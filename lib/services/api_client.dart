@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:grow_microfinance_app/api_config.dart';
 import 'package:http/http.dart' as http;
@@ -113,7 +114,7 @@ class ApiClient {
       final logBody = parsedBody ??
           (response.body.isEmpty ? '<empty body>' : response.body);
       final logBodyString = logBody is String ? logBody : jsonEncode(logBody);
-      stderr.writeln(
+      debugPrint(
         'API request failed (${response.statusCode}) $requestUrl: $logBodyString',
       );
 
