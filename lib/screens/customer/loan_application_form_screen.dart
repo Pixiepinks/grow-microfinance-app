@@ -624,27 +624,39 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   }
 
   Map<String, dynamic> _buildPayload({bool draft = true}) {
-    final appliedAmount = double.tryParse(_appliedAmountController.text) ?? 0;
-    final tenureMonths = int.tryParse(_tenureController.text) ?? 0;
-    final monthlyIncome = double.tryParse(_monthlyIncomeController.text) ?? 0;
+    final appliedAmount =
+        double.tryParse(_appliedAmountController.text.trim()) ?? 0;
+    final tenureMonths = int.tryParse(_tenureController.text.trim()) ?? 0;
+    final monthlyIncome =
+        double.tryParse(_monthlyIncomeController.text.trim()) ?? 0;
     final monthlyExpenses =
-        double.tryParse(_monthlyExpensesController.text) ?? 0;
+        double.tryParse(_monthlyExpensesController.text.trim()) ?? 0;
+
+    final loanType = _mapLoanTypeToApi(_selectedLoanType.trim());
+    // Use the default option if the UI loan type could not be mapped.
+    final normalizedLoanType =
+        loanType.isEmpty ? _mapLoanTypeToApi(loanTypes.first) : loanType;
 
     final applicantDetails = {
-      'full_name': _fullNameController.text,
-      'nic_number': _nicController.text,
-      'mobile_number': _mobileController.text,
-      'email': _emailController.text,
-      'address_line1': _address1Controller.text,
-      'address_line2': _address2Controller.text,
-      'city': _cityController.text,
-      'district': _districtController.text,
-      'province': _provinceController.text,
+      'full_name': _fullNameController.text.trim(),
+      'nic_number': _nicController.text.trim(),
+      'mobile_number': _mobileController.text.trim(),
+      'email': _emailController.text.trim(),
+      'address_line1': _address1Controller.text.trim(),
+      'address_line2': _address2Controller.text.trim(),
+      'city': _cityController.text.trim(),
+      'district': _districtController.text.trim(),
+      'province': _provinceController.text.trim(),
       'date_of_birth': _dateOfBirth?.toIso8601String(),
       'monthly_income': monthlyIncome,
       'monthly_expenses': monthlyExpenses,
       'has_existing_loans': _hasExistingLoans,
       'existing_loans_description': _existingLoansController.text,
+      // Backwards-compatible aliases for older payloads sometimes produced by
+      // the web build; these ensure the backend receives the expected values
+      // even if a stale form version is running.
+      'nic': _nicController.text.trim(),
+      'mobile': _mobileController.text.trim(),
     };
 
     final loanDetails = {
@@ -656,7 +668,7 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     final typeSpecific = _buildTypeSpecificMap();
 
     return {
-      'loan_type': _mapLoanTypeToApi(_selectedLoanType),
+      'loan_type': normalizedLoanType,
       'loan_purpose': _loanPurposeController.text,
       'status': draft ? 'DRAFT' : 'SUBMITTED',
       // Flattened fields expected by the API
@@ -674,13 +686,13 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   String _mapLoanTypeToApi(String uiValue) {
     switch (uiValue) {
       case 'Grow Online Business Loan':
-        return 'ONLINE_BUSINESS_LOAN';
+        return 'GROW_ONLINE_BUSINESS';
       case 'Grow Business Loan':
-        return 'BUSINESS_LOAN';
+        return 'GROW_BUSINESS';
       case 'Grow Personal Loan':
-        return 'PERSONAL_LOAN';
+        return 'GROW_PERSONAL';
       case 'Grow Team Loan':
-        return 'TEAM_LOAN';
+        return 'GROW_TEAM';
       default:
         return uiValue;
     }
@@ -688,15 +700,19 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
 
   String _mapApiLoanTypeToUi(String apiValue) {
     switch (apiValue) {
+      case 'GROW_ONLINE_BUSINESS':
       case 'ONLINE_BUSINESS_LOAN':
       case 'ONLINE_BUSINESS':
         return 'Grow Online Business Loan';
+      case 'GROW_BUSINESS':
       case 'BUSINESS_LOAN':
       case 'BUSINESS':
         return 'Grow Business Loan';
+      case 'GROW_PERSONAL':
       case 'PERSONAL_LOAN':
       case 'PERSONAL':
         return 'Grow Personal Loan';
+      case 'GROW_TEAM':
       case 'TEAM_LOAN':
       case 'TEAM':
         return 'Grow Team Loan';
@@ -709,26 +725,38 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     switch (_selectedLoanType) {
       case 'Grow Online Business Loan':
         return {
-          'store_url': _onlineStoreController.text,
-          'store_platform': _onlinePlatformController.text,
+          'online_store_name': _onlineStoreController.text,
+          'online_store_link': _onlineStoreController.text,
+          'platform': _onlinePlatformController.text,
         };
       case 'Grow Business Loan':
         return {
           'business_name': _businessNameController.text,
-          'business_registration': _businessRegController.text,
+          'business_address': _businessNameController.text,
+          'business_reg_number': _businessRegController.text,
+          'business_type': _businessRegController.text,
+          'monthly_sales':
+              double.tryParse(_monthlyIncomeController.text) ?? 0,
         };
       case 'Grow Personal Loan':
         return {
-          'employment_status': _employmentStatusController.text,
+          'employment_type': _employmentStatusController.text,
           'employer_name': _employerController.text,
+          'net_monthly_salary':
+              double.tryParse(_monthlyIncomeController.text) ?? 0,
           'guarantor_name': _guarantorNameController.text,
-          'guarantor_contact': _guarantorContactController.text,
+          'guarantor_nic': _nicController.text,
+          'guarantor_mobile': _guarantorContactController.text,
+          'guarantor_relationship': _guarantorNameController.text,
         };
       case 'Grow Team Loan':
         return {
-          'team_name': _teamNameController.text,
-          'member_count': int.tryParse(_teamSizeController.text) ?? 0,
-          'meeting_location': _meetingLocationController.text,
+          'group_name': _teamNameController.text,
+          'number_of_members': int.tryParse(_teamSizeController.text) ?? 0,
+          'team_leader_name': _fullNameController.text,
+          'team_leader_nic': _nicController.text,
+          'team_leader_mobile': _mobileController.text,
+          'group_business_activity': _meetingLocationController.text,
         };
       default:
         return {};
@@ -821,9 +849,30 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       if (file == null || file.path == null) continue;
       await widget.service.uploadDocument(
         _applicationId!,
-        entry.key,
+        _mapDocumentTypeToApi(entry.key),
         File(file.path!),
       );
+    }
+  }
+
+  String _mapDocumentTypeToApi(String uiValue) {
+    switch (uiValue) {
+      case 'nic_front':
+        return 'NIC_FRONT';
+      case 'nic_back':
+        return 'NIC_BACK';
+      case 'nic_selfie':
+        return 'SELFIE_NIC';
+      case 'online_proof':
+        return 'STORE_SCREENSHOT';
+      case 'salary_slip':
+        return 'SALARY_SLIP';
+      case 'member_list':
+        return 'MEMBER_LIST';
+      case 'group_photo':
+        return 'GROUP_PHOTO';
+      default:
+        return uiValue.toUpperCase();
     }
   }
 }
