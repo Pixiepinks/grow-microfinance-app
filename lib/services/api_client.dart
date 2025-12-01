@@ -64,18 +64,41 @@ class ApiClient {
 
   Future<Map<String, dynamic>> postMultipart(
     String path, {
-    required File file,
+    File? file,
+    List<int>? bytes,
+    required String fileName,
     String fieldName = 'file',
     Map<String, String>? fields,
   }) async {
+    if (file == null && bytes == null) {
+      throw ArgumentError('Either file or bytes must be provided for upload.');
+    }
+
     final uri = Uri.parse('$baseUrl$path');
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_headers(jsonContentType: false));
     if (fields != null) {
       request.fields.addAll(fields);
     }
-    request.files
-        .add(await http.MultipartFile.fromPath(fieldName, file.path));
+
+    if (file != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          fieldName,
+          file.path,
+          filename: fileName,
+        ),
+      );
+    } else if (bytes != null) {
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fieldName,
+          bytes,
+          filename: fileName,
+        ),
+      );
+    }
+
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
     _throwIfNeeded(response);
