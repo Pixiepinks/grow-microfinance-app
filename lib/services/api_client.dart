@@ -125,16 +125,18 @@ class ApiClient {
         message: message.isEmpty
             ? 'Request failed with status ${response.statusCode}'
             : message,
+        body: parsedBody ?? response.body,
       );
     }
   }
 }
 
 class ApiException implements Exception {
-  ApiException({required this.statusCode, required this.message});
+  ApiException({required this.statusCode, required this.message, this.body});
 
   final int statusCode;
   final String message;
+  final dynamic body;
 
   @override
   String toString() => 'ApiException($statusCode): $message';
