@@ -114,6 +114,18 @@ class LoanApplicationService {
       normalized['loan_type'] = _mapLoanTypeToApi(loanType);
     }
 
+    // Older web/mobile builds never collected these required fields for online
+    // business loans. Default them so submissions aren't blocked purely due to
+    // missing keys when the loan type matches.
+    if (normalized['loan_type'] == 'GROW_ONLINE_BUSINESS') {
+      if (!_hasValue(normalized['average_monthly_revenue_last_3_months'])) {
+        normalized['average_monthly_revenue_last_3_months'] = 0;
+      }
+      if (!_hasValue(normalized['main_product_category'])) {
+        normalized['main_product_category'] = 'General';
+      }
+    }
+
     // Keep nested applicant/type-specific sections in sync after alias resolution.
     for (final section in ['applicant_details', 'type_specific']) {
       final sectionData = normalized[section];
