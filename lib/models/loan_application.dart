@@ -27,7 +27,7 @@ class LoanApplication {
   final Map<String, dynamic> applicantDetails;
   final Map<String, dynamic> loanDetails;
   final Map<String, dynamic> typeSpecific;
-  final Map<String, dynamic> documents;
+  final List<Map<String, dynamic>> documents;
 
   factory LoanApplication.fromJson(Map<String, dynamic> json) {
     return LoanApplication(
@@ -45,7 +45,9 @@ class LoanApplication {
       applicantDetails: json['applicant_details'] as Map<String, dynamic>? ?? {},
       loanDetails: json['loan_details'] as Map<String, dynamic>? ?? {},
       typeSpecific: json['type_specific'] as Map<String, dynamic>? ?? {},
-      documents: json['documents'] as Map<String, dynamic>? ?? {},
+      documents: (json['documents'] as List<dynamic>? ?? const [])
+          .map((e) => e as Map<String, dynamic>)
+          .toList(),
     );
   }
 

@@ -851,6 +851,18 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
         );
         Navigator.of(context).pop(application);
       }
+    } on LoanApplicationValidationException catch (e) {
+      if (mounted) {
+        final summary = e.errors.isNotEmpty
+            ? 'Cannot submit: ${e.errors.join(', ')}'
+            : 'Cannot submit: ${e.message}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            content: Text(summary),
+          ),
+        );
+      }
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -31,9 +31,42 @@ class LoanApplicationService {
   }
 
   Future<void> submit(String id) async {
-    await _client.postJson(
-      '${ApiConfig.endpoint('loanApplications')}/$id/submit',
-    );
+    try {
+      await _client.postJson(
+        '${ApiConfig.endpoint('loanApplications')}/$id/submit',
+      );
+    } on ApiException catch (e) {
+      if (e.statusCode == 400) {
+        final messages = <String>[];
+        final body = e.body;
+        if (body is Map<String, dynamic>) {
+          final errors = body['errors'];
+          if (errors is List) {
+            messages.addAll(
+              errors
+                  .map((err) => err?.toString() ?? '')
+                  .where((msg) => msg.isNotEmpty),
+            );
+          }
+          final message = body['message']?.toString();
+          if (message != null && message.isNotEmpty) {
+            messages.add(message);
+          }
+        }
+
+        if (messages.isEmpty && e.message.isNotEmpty) {
+          messages.add(e.message);
+        }
+
+        throw LoanApplicationValidationException(
+          messages.isEmpty
+              ? 'Unable to submit application. Please check required fields.'
+              : messages.join('; '),
+          messages,
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<List<LoanApplication>> listMyApplications({String? customerId}) async {
@@ -184,4 +217,14 @@ class LoanApplicationService {
         return uiValue;
     }
   }
+}
+
+class LoanApplicationValidationException implements Exception {
+  LoanApplicationValidationException(this.message, this.errors);
+
+  final String message;
+  final List<String> errors;
+
+  @override
+  String toString() => 'LoanApplicationValidationException: $message';
 }
