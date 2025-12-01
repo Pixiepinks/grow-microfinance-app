@@ -92,8 +92,13 @@ class _LoanApplicationDetailScreenState
                               'Loan Details', _formatMap(app.loanDetails)),
                           _buildSection(
                               'Type Specific', _formatMap(app.typeSpecific)),
-                          _buildSection('Documents',
-                              _formatMap(app.documents, emptyValue: 'Not uploaded')),
+                          _buildSection(
+                            'Documents',
+                            _formatDocuments(
+                              app.documents,
+                              emptyValue: 'Not uploaded',
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -124,7 +129,11 @@ class _LoanApplicationDetailScreenState
     );
   }
 
-  Widget _buildSection(String title, List<Widget> children) {
+  Widget _buildSection(String title, dynamic content) {
+    final children = content is List<Widget>
+        ? content
+        : [Text(content.toString())];
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -140,6 +149,29 @@ class _LoanApplicationDetailScreenState
         ),
       ),
     );
+  }
+
+  String _formatDocuments(
+    List<Map<String, dynamic>> docs, {
+    String emptyValue = 'Not uploaded',
+  }) {
+    if (docs.isEmpty) return emptyValue;
+
+    final buffer = StringBuffer();
+    for (final doc in docs) {
+      final type =
+          (doc['document_type'] ?? doc['type'] ?? 'Document').toString();
+      final filename =
+          (doc['original_filename'] ?? doc['file_name'] ?? '').toString();
+
+      if (buffer.isNotEmpty) buffer.writeln();
+      if (filename.isNotEmpty) {
+        buffer.write('$type: $filename');
+      } else {
+        buffer.write(type);
+      }
+    }
+    return buffer.toString();
   }
 
   List<Widget> _formatMap(Map<String, dynamic> data, {String emptyValue = ''}) {
