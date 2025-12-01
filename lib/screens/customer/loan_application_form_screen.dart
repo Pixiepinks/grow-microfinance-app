@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -654,7 +652,8 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   }
 
   Future<void> _pickDocument(String type) async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any);
+    final result = await FilePicker.platform
+        .pickFiles(type: FileType.any, withData: true);
     if (result != null && result.files.isNotEmpty) {
       setState(() => _documents[type] = result.files.first);
     }
@@ -902,21 +901,13 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       if (file == null) continue;
 
       final documentType = _mapDocumentTypeToApi(entry.key);
-      if (file.path != null) {
-        await widget.service.uploadDocument(
-          _applicationId!,
-          documentType,
-          file: File(file.path!),
-          fileName: file.name,
-        );
-      } else if (file.bytes != null) {
-        await widget.service.uploadDocument(
-          _applicationId!,
-          documentType,
-          bytes: file.bytes!,
-          fileName: file.name,
-        );
-      }
+      await widget.service.uploadDocument(
+        _applicationId!,
+        documentType,
+        filePath: file.path,
+        bytes: file.bytes,
+        fileName: file.name,
+      );
     }
   }
 

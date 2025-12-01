@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import '../models/loan_application.dart';
 import '../api_config.dart';
 import 'api_client.dart';
@@ -89,13 +87,13 @@ class LoanApplicationService {
   Future<void> uploadDocument(
     String id,
     String documentType, {
-    File? file,
+    String? filePath,
     List<int>? bytes,
     required String fileName,
   }) async {
     await _client.postMultipart(
       '${ApiConfig.endpoint('loanApplications')}/$id/documents',
-      file: file,
+      filePath: filePath,
       bytes: bytes,
       fileName: fileName,
       // The backend expects the file to be uploaded under the "file" field.

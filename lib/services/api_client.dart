@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'package:grow_microfinance_app/api_config.dart';
@@ -64,14 +63,14 @@ class ApiClient {
 
   Future<Map<String, dynamic>> postMultipart(
     String path, {
-    File? file,
+    String? filePath,
     List<int>? bytes,
     required String fileName,
     String fieldName = 'file',
     Map<String, String>? fields,
   }) async {
-    if (file == null && bytes == null) {
-      throw ArgumentError('Either file or bytes must be provided for upload.');
+    if (filePath == null && bytes == null) {
+      throw ArgumentError('Either filePath or bytes must be provided for upload.');
     }
 
     final uri = Uri.parse('$baseUrl$path');
@@ -81,11 +80,11 @@ class ApiClient {
       request.fields.addAll(fields);
     }
 
-    if (file != null) {
+    if (filePath != null) {
       request.files.add(
         await http.MultipartFile.fromPath(
           fieldName,
-          file.path,
+          filePath,
           filename: fileName,
         ),
       );
