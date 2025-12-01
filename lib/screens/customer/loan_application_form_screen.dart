@@ -899,12 +899,24 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     if (_applicationId == null) return;
     for (final entry in _documents.entries) {
       final file = entry.value;
-      if (file == null || file.path == null) continue;
-      await widget.service.uploadDocument(
-        _applicationId!,
-        _mapDocumentTypeToApi(entry.key),
-        File(file.path!),
-      );
+      if (file == null) continue;
+
+      final documentType = _mapDocumentTypeToApi(entry.key);
+      if (file.path != null) {
+        await widget.service.uploadDocument(
+          _applicationId!,
+          documentType,
+          file: File(file.path!),
+          fileName: file.name,
+        );
+      } else if (file.bytes != null) {
+        await widget.service.uploadDocument(
+          _applicationId!,
+          documentType,
+          bytes: file.bytes!,
+          fileName: file.name,
+        );
+      }
     }
   }
 

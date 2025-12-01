@@ -88,12 +88,16 @@ class LoanApplicationService {
 
   Future<void> uploadDocument(
     String id,
-    String documentType,
-    File file,
-  ) async {
+    String documentType, {
+    File? file,
+    List<int>? bytes,
+    required String fileName,
+  }) async {
     await _client.postMultipart(
       '${ApiConfig.endpoint('loanApplications')}/$id/documents',
       file: file,
+      bytes: bytes,
+      fileName: fileName,
       // The backend expects the file to be uploaded under the "file" field.
       // Using any other field name causes the document to be ignored, which
       // prevents submissions due to missing required documents.
