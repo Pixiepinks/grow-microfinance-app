@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../models/loan_application.dart';
 import '../../services/api_client.dart';
@@ -30,6 +31,7 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   String _selectedLoanType = loanTypes.first;
   DateTime? _dateOfBirth;
   String? _applicationId;
+  final DateFormat _dobFormatter = DateFormat('yyyy-MM-dd');
 
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _nicController = TextEditingController();
@@ -682,7 +684,8 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       'city': _cityController.text.trim(),
       'district': _districtController.text.trim(),
       'province': _provinceController.text.trim(),
-      'date_of_birth': _dateOfBirth?.toIso8601String(),
+      'date_of_birth':
+          _dateOfBirth != null ? _dobFormatter.format(_dateOfBirth!) : null,
       'monthly_income': monthlyIncome,
       'monthly_expenses': monthlyExpenses,
       'has_existing_loans': _hasExistingLoans,
