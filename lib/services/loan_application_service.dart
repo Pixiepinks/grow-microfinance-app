@@ -100,6 +100,13 @@ class LoanApplicationService {
     // Online business aliases used in the web build.
     _ensureValue('platform', ['store_platform']);
     _ensureValue('online_store_link', ['store_url']);
+    _ensureValue('average_monthly_revenue_last_3_months', [
+      'average_monthly_revenue',
+      'avg_monthly_revenue',
+      'average_revenue',
+      'average_revenue_last_3_months',
+    ]);
+    _ensureValue('main_product_category', ['product_category']);
 
     // Align loan type values with backend constants in case the UI sends legacy labels.
     final loanType = normalized['loan_type']?.toString();
@@ -122,6 +129,14 @@ class LoanApplicationService {
         }
         if (_hasValue(normalized['online_store_link'])) {
           sectionData['online_store_link'] = normalized['online_store_link'];
+        }
+        if (_hasValue(normalized['average_monthly_revenue_last_3_months'])) {
+          sectionData['average_monthly_revenue_last_3_months'] =
+              normalized['average_monthly_revenue_last_3_months'];
+        }
+        if (_hasValue(normalized['main_product_category'])) {
+          sectionData['main_product_category'] =
+              normalized['main_product_category'];
         }
       }
     }

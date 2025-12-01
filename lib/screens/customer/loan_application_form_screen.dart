@@ -52,6 +52,10 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   final TextEditingController _onlineStoreController = TextEditingController();
   final TextEditingController _onlinePlatformController =
       TextEditingController();
+  final TextEditingController _averageRevenueController =
+      TextEditingController();
+  final TextEditingController _productCategoryController =
+      TextEditingController();
   final TextEditingController _businessNameController = TextEditingController();
   final TextEditingController _businessRegController = TextEditingController();
   final TextEditingController _employmentStatusController =
@@ -133,6 +137,14 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     };
     _onlineStoreController.text = typeSpecific['store_url'] ?? '';
     _onlinePlatformController.text = typeSpecific['store_platform'] ?? '';
+    _averageRevenueController.text =
+        (typeSpecific['average_monthly_revenue_last_3_months'] ??
+                typeSpecific['average_monthly_revenue'] ??
+                typeSpecific['avg_monthly_revenue'])
+            ?.toString() ??
+        '';
+    _productCategoryController.text =
+        typeSpecific['main_product_category'] ?? '';
     _businessNameController.text = typeSpecific['business_name'] ?? '';
     _businessRegController.text = typeSpecific['business_registration'] ?? '';
     _employmentStatusController.text = typeSpecific['employment_status'] ?? '';
@@ -164,6 +176,8 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     _loanPurposeController.dispose();
     _onlineStoreController.dispose();
     _onlinePlatformController.dispose();
+    _averageRevenueController.dispose();
+    _productCategoryController.dispose();
     _businessNameController.dispose();
     _businessRegController.dispose();
     _employmentStatusController.dispose();
@@ -433,6 +447,20 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
               decoration:
                   const InputDecoration(labelText: 'Selling platform / app'),
             ),
+            TextFormField(
+              controller: _averageRevenueController,
+              decoration: const InputDecoration(
+                labelText: 'Average monthly revenue (last 3 months)',
+              ),
+              keyboardType: TextInputType.number,
+              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+            ),
+            TextFormField(
+              controller: _productCategoryController,
+              decoration:
+                  const InputDecoration(labelText: 'Main product category'),
+              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+            ),
           ],
         );
       case 'Grow Business Loan':
@@ -547,6 +575,13 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
         _buildSummaryRow('Applied Amount', _appliedAmountController.text),
         _buildSummaryRow('Tenure (months)', _tenureController.text),
         _buildSummaryRow('Loan Purpose', _loanPurposeController.text),
+        if (_selectedLoanType == 'Grow Online Business Loan') ...[
+          _buildSummaryRow('Store URL', _onlineStoreController.text),
+          _buildSummaryRow(
+              'Average monthly revenue', _averageRevenueController.text),
+          _buildSummaryRow(
+              'Main product category', _productCategoryController.text),
+        ],
         const SizedBox(height: 12),
         Row(
           children: [
@@ -728,6 +763,9 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
           'online_store_name': _onlineStoreController.text,
           'online_store_link': _onlineStoreController.text,
           'platform': _onlinePlatformController.text,
+          'average_monthly_revenue_last_3_months':
+              double.tryParse(_averageRevenueController.text.trim()) ?? 0,
+          'main_product_category': _productCategoryController.text,
         };
       case 'Grow Business Loan':
         return {
