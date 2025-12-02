@@ -556,6 +556,107 @@ function buildApplicationPayload() {
   };
 }
 
+function hasValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
+function mapLoanTypeToApi(uiValue) {
+  const normalized = (uiValue || '').trim().toUpperCase();
+  switch (normalized) {
+    case 'GROW ONLINE BUSINESS LOAN':
+    case 'GROW_ONLINE_BUSINESS':
+    case 'ONLINE_BUSINESS_LOAN':
+    case 'ONLINE_BUSINESS':
+      return 'GROW_ONLINE_BUSINESS';
+    case 'GROW BUSINESS LOAN':
+    case 'GROW_BUSINESS':
+    case 'BUSINESS_LOAN':
+    case 'BUSINESS':
+      return 'GROW_BUSINESS';
+    case 'GROW PERSONAL LOAN':
+    case 'GROW_PERSONAL':
+    case 'PERSONAL_LOAN':
+    case 'PERSONAL':
+      return 'GROW_PERSONAL';
+    case 'GROW TEAM LOAN':
+    case 'GROW_TEAM':
+    case 'TEAM_LOAN':
+    case 'TEAM':
+      return 'GROW_TEAM';
+    default:
+      if (normalized.includes('ONLINE')) return 'GROW_ONLINE_BUSINESS';
+      if (normalized.includes('PERSONAL')) return 'GROW_PERSONAL';
+      if (normalized.includes('TEAM')) return 'GROW_TEAM';
+      if (normalized.includes('BUSINESS')) return 'GROW_BUSINESS';
+      return uiValue || 'GROW_ONLINE_BUSINESS';
+  }
+}
+
+function normalizeApplicationPayload(payload) {
+  const applicant = { ...(payload.applicant_details || {}) };
+  const loanDetails = { ...(payload.loan_details || {}) };
+  const typeSpecific = { ...(payload.type_specific || {}) };
+
+  const normalized = {
+    ...payload,
+    applicant_details: applicant,
+    loan_details: loanDetails,
+    type_specific: typeSpecific,
+  };
+
+  const ensureValue = (canonicalKey, aliases, sources = []) => {
+    if (hasValue(normalized[canonicalKey])) return;
+    for (const source of [normalized, ...sources]) {
+      if (!source) continue;
+      for (const alias of aliases) {
+        const value = source[alias];
+        if (hasValue(value)) {
+          normalized[canonicalKey] = value;
+          return;
+        }
+      }
+    }
+  };
+
+  ensureValue('nic_number', ['nic', 'nicNumber'], [applicant]);
+  ensureValue('mobile_number', ['mobile', 'mobileNumber'], [applicant]);
+  ensureValue('store_platform', ['platform'], [typeSpecific]);
+  ensureValue('platform', ['store_platform'], [typeSpecific]);
+  ensureValue('online_store_link', ['store_url'], [typeSpecific]);
+
+  normalized.loan_type = mapLoanTypeToApi(normalized.loan_type || payload.loan_type);
+  if (!hasValue(normalized.store_platform)) {
+    normalized.store_platform = 'WEB';
+  }
+
+  if (normalized.loan_type === 'GROW_ONLINE_BUSINESS') {
+    if (!hasValue(normalized.average_monthly_revenue_last_3_months)) {
+      normalized.average_monthly_revenue_last_3_months = 0;
+    }
+    if (!hasValue(normalized.main_product_category)) {
+      normalized.main_product_category = 'General';
+    }
+  }
+
+  if (hasValue(normalized.nic_number)) {
+    applicant.nic_number = normalized.nic_number;
+  }
+  if (hasValue(normalized.mobile_number)) {
+    applicant.mobile_number = normalized.mobile_number;
+  }
+  if (hasValue(normalized.store_platform)) {
+    typeSpecific.store_platform = normalized.store_platform;
+  }
+  if (hasValue(normalized.online_store_link)) {
+    typeSpecific.online_store_link = normalized.online_store_link;
+  }
+
+  Object.assign(normalized, applicant, loanDetails, typeSpecific);
+  return normalized;
+}
+
 function updateReviewSummary() {
   if (!reviewSummary) return;
   const data = buildApplicationPayload();
@@ -594,7 +695,7 @@ function updateReviewSummary() {
 }
 
 async function saveDraft(showMessage = true) {
-  const payload = buildApplicationPayload();
+  const payload = normalizeApplicationPayload(buildApplicationPayload());
   try {
     setInlineAlert(applicationFormMessage, 'Saving draft...', 'success');
     const endpointPath = currentDraftId
@@ -620,7 +721,7 @@ async function uploadDocumentsIfNeeded() {
   if (!currentDraftId || selectedDocuments.size === 0) return;
   for (const [docType, file] of selectedDocuments.entries()) {
     const formData = new FormData();
-    formData.append('document', file);
+    formData.append('file', file);
     formData.append('document_type', docType);
     await apiMultipart(`${endpoint('loanApplications')}/${currentDraftId}/documents`, formData);
   }
