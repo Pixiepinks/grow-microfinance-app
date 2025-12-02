@@ -110,10 +110,16 @@ class LoanApplicationService {
     // Flatten nested sections often used by the web build so the backend receives
     // the fields it validates (e.g., nic_number/mobile_number) even if the UI
     // only fills the nested structures.
-    for (final section in ['applicant_details', 'loan_details', 'type_specific']) {
-      final sectionData = data[section];
-      if (sectionData is Map<String, dynamic>) {
-        normalized.addAll(sectionData);
+    final Map<String, dynamic> applicantDetails =
+        Map<String, dynamic>.from(data['applicant_details'] ?? {});
+    final Map<String, dynamic> typeSpecific =
+        Map<String, dynamic>.from(data['type_specific'] ?? {});
+    normalized['applicant_details'] = applicantDetails;
+    normalized['type_specific'] = typeSpecific;
+
+    for (final section in [applicantDetails, data['loan_details'], typeSpecific]) {
+      if (section is Map<String, dynamic>) {
+        normalized.addAll(section);
       }
     }
 
@@ -145,8 +151,17 @@ class LoanApplicationService {
 
     // Align loan type values with backend constants in case the UI sends legacy labels.
     final loanType = normalized['loan_type']?.toString();
-    if (loanType != null) {
-      normalized['loan_type'] = _mapLoanTypeToApi(loanType);
+    if (_hasValue(loanType)) {
+      final mapped = _mapLoanTypeToApi(loanType!);
+      normalized['loan_type'] = mapped.isEmpty ? 'GROW_ONLINE_BUSINESS' : mapped;
+    } else {
+      normalized['loan_type'] = 'GROW_ONLINE_BUSINESS';
+    }
+
+    // Ensure the platform is always set for web builds that sometimes omit it
+    // when reusing previously saved drafts.
+    if (!_hasValue(normalized['store_platform'])) {
+      normalized['store_platform'] = 'WEB';
     }
 
     // Older web/mobile builds never collected these required fields for online
@@ -162,29 +177,37 @@ class LoanApplicationService {
     }
 
     // Keep nested applicant/type-specific sections in sync after alias resolution.
-    for (final section in ['applicant_details', 'type_specific']) {
-      final sectionData = normalized[section];
-      if (sectionData is Map<String, dynamic>) {
-        if (_hasValue(normalized['nic_number'])) {
-          sectionData['nic_number'] = normalized['nic_number'];
-        }
-        if (_hasValue(normalized['mobile_number'])) {
-          sectionData['mobile_number'] = normalized['mobile_number'];
-        }
-        if (_hasValue(normalized['platform'])) {
-          sectionData['platform'] = normalized['platform'];
-        }
-        if (_hasValue(normalized['online_store_link'])) {
-          sectionData['online_store_link'] = normalized['online_store_link'];
-        }
-        if (_hasValue(normalized['average_monthly_revenue_last_3_months'])) {
-          sectionData['average_monthly_revenue_last_3_months'] =
-              normalized['average_monthly_revenue_last_3_months'];
-        }
-        if (_hasValue(normalized['main_product_category'])) {
-          sectionData['main_product_category'] =
-              normalized['main_product_category'];
-        }
+    for (final sectionData in [applicantDetails, typeSpecific]) {
+      if (_hasValue(normalized['nic_number'])) {
+        sectionData['nic_number'] = normalized['nic_number'];
+      }
+      if (_hasValue(normalized['mobile_number'])) {
+        sectionData['mobile_number'] = normalized['mobile_number'];
+      }
+      if (_hasValue(normalized['platform'])) {
+        sectionData['platform'] = normalized['platform'];
+      }
+      if (_hasValue(normalized['online_store_link'])) {
+        sectionData['online_store_link'] = normalized['online_store_link'];
+      }
+      if (_hasValue(normalized['average_monthly_revenue_last_3_months'])) {
+        sectionData['average_monthly_revenue_last_3_months'] =
+            normalized['average_monthly_revenue_last_3_months'];
+      }
+      if (_hasValue(normalized['main_product_category'])) {
+        sectionData['main_product_category'] =
+            normalized['main_product_category'];
+      }
+      // Keep older aliases populated so existing drafts saved by the web build
+      // still retain their original keys after normalization.
+      if (_hasValue(normalized['nic'])) {
+        sectionData['nic'] = normalized['nic'];
+      }
+      if (_hasValue(normalized['mobile'])) {
+        sectionData['mobile'] = normalized['mobile'];
+      }
+      if (_hasValue(normalized['store_url'])) {
+        sectionData['store_url'] = normalized['store_url'];
       }
     }
 
