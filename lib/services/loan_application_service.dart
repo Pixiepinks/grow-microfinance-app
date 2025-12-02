@@ -151,9 +151,17 @@ class LoanApplicationService {
 
     // Align loan type values with backend constants in case the UI sends legacy labels.
     final loanType = normalized['loan_type']?.toString();
-    if (loanType != null) {
-      final mapped = _mapLoanTypeToApi(loanType);
+    if (_hasValue(loanType)) {
+      final mapped = _mapLoanTypeToApi(loanType!);
       normalized['loan_type'] = mapped.isEmpty ? 'GROW_ONLINE_BUSINESS' : mapped;
+    } else {
+      normalized['loan_type'] = 'GROW_ONLINE_BUSINESS';
+    }
+
+    // Ensure the platform is always set for web builds that sometimes omit it
+    // when reusing previously saved drafts.
+    if (!_hasValue(normalized['store_platform'])) {
+      normalized['store_platform'] = 'WEB';
     }
 
     // Older web/mobile builds never collected these required fields for online
@@ -189,6 +197,17 @@ class LoanApplicationService {
       if (_hasValue(normalized['main_product_category'])) {
         sectionData['main_product_category'] =
             normalized['main_product_category'];
+      }
+      // Keep older aliases populated so existing drafts saved by the web build
+      // still retain their original keys after normalization.
+      if (_hasValue(normalized['nic'])) {
+        sectionData['nic'] = normalized['nic'];
+      }
+      if (_hasValue(normalized['mobile'])) {
+        sectionData['mobile'] = normalized['mobile'];
+      }
+      if (_hasValue(normalized['store_url'])) {
+        sectionData['store_url'] = normalized['store_url'];
       }
     }
 
