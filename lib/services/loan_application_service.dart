@@ -123,20 +123,33 @@ class LoanApplicationService {
       }
     }
 
-    void _ensureValue(String canonicalKey, List<String> aliases) {
+    void _ensureValue(String canonicalKey, List<String> aliases,
+        {List<Map<String, dynamic>>? additionalSources}) {
       if (_hasValue(normalized[canonicalKey])) return;
-      for (final alias in aliases) {
-        final value = normalized[alias];
-        if (_hasValue(value)) {
-          normalized[canonicalKey] = value;
-          break;
+
+      final sources = [normalized, ...?additionalSources];
+      for (final source in sources) {
+        for (final alias in aliases) {
+          final value = source[alias];
+          if (_hasValue(value)) {
+            normalized[canonicalKey] = value;
+            return;
+          }
         }
       }
     }
 
-    // Common applicant aliases from older builds.
-    _ensureValue('nic_number', ['nic', 'nicNumber']);
-    _ensureValue('mobile_number', ['mobile', 'mobileNumber']);
+    // Common applicant aliases from older builds and nested applicant details.
+    _ensureValue(
+      'nic_number',
+      ['nic', 'nicNumber'],
+      additionalSources: [applicantDetails],
+    );
+    _ensureValue(
+      'mobile_number',
+      ['mobile', 'mobileNumber'],
+      additionalSources: [applicantDetails],
+    );
 
     // Online business aliases used in the web build.
     _ensureValue('platform', ['store_platform']);
@@ -221,24 +234,35 @@ class LoanApplicationService {
   }
 
   String _mapLoanTypeToApi(String uiValue) {
-    switch (uiValue) {
-      case 'Grow Online Business Loan':
+    final normalized = uiValue.trim().toUpperCase();
+    switch (normalized) {
+      case 'GROW ONLINE BUSINESS LOAN':
+      case 'GROW_ONLINE_BUSINESS':
       case 'ONLINE_BUSINESS_LOAN':
       case 'ONLINE_BUSINESS':
         return 'GROW_ONLINE_BUSINESS';
-      case 'Grow Business Loan':
+      case 'GROW BUSINESS LOAN':
+      case 'GROW_BUSINESS':
       case 'BUSINESS_LOAN':
       case 'BUSINESS':
         return 'GROW_BUSINESS';
-      case 'Grow Personal Loan':
+      case 'GROW PERSONAL LOAN':
+      case 'GROW_PERSONAL':
       case 'PERSONAL_LOAN':
       case 'PERSONAL':
         return 'GROW_PERSONAL';
-      case 'Grow Team Loan':
+      case 'GROW TEAM LOAN':
+      case 'GROW_TEAM':
       case 'TEAM_LOAN':
       case 'TEAM':
         return 'GROW_TEAM';
       default:
+        // Handle loosely formatted strings (e.g., "grow online" or lowercase
+        // labels) by matching on keywords to avoid backend validation errors.
+        if (normalized.contains('ONLINE')) return 'GROW_ONLINE_BUSINESS';
+        if (normalized.contains('PERSONAL')) return 'GROW_PERSONAL';
+        if (normalized.contains('TEAM')) return 'GROW_TEAM';
+        if (normalized.contains('BUSINESS')) return 'GROW_BUSINESS';
         return uiValue;
     }
   }
