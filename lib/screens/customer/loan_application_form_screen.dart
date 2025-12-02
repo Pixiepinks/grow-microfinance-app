@@ -689,11 +689,6 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       'monthly_expenses': monthlyExpenses,
       'has_existing_loans': _hasExistingLoans,
       'existing_loans_description': _existingLoansController.text,
-      // Backwards-compatible aliases for older payloads sometimes produced by
-      // the web build; these ensure the backend receives the expected values
-      // even if a stale form version is running.
-      'nic': _nicController.text.trim(),
-      'mobile': _mobileController.text.trim(),
     };
 
     final loanDetails = {
@@ -702,7 +697,10 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       'loan_purpose': _loanPurposeController.text,
     };
 
-    final typeSpecific = _buildTypeSpecificMap();
+    final typeSpecific = {
+      'store_platform': 'WEB',
+      ..._buildTypeSpecificMap(),
+    };
 
     return {
       'loan_type': normalizedLoanType,
@@ -731,7 +729,7 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       case 'Grow Team Loan':
         return 'GROW_TEAM';
       default:
-        return uiValue;
+        return '';
     }
   }
 
