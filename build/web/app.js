@@ -176,6 +176,21 @@ async function parseResponse(response) {
   return { data: {}, raw: text };
 }
 
+function isLikelyHtml(text = '') {
+  const trimmed = text.trim().toLowerCase();
+  return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html');
+}
+
+function buildErrorMessage({ status, data, raw }) {
+  const messageFromPayload =
+    data?.message || data?.error || data?.detail || data?.title || '';
+  if (messageFromPayload) return messageFromPayload;
+
+  // Avoid surfacing raw HTML error pages to the user.
+  if (raw && !isLikelyHtml(raw)) return raw;
+  return `Request failed with status ${status}`;
+}
+
 function attachIdFromLocation(data, headers) {
   const location = headers?.get?.('location');
   if (!location) return data;
@@ -197,23 +212,25 @@ function attachIdFromLocation(data, headers) {
 
 async function api(path, { method = 'GET', body } = {}) {
   const { token } = getSession();
-  const headers = { 'Content-Type': 'application/json' };
+  const shouldSendJson = body !== undefined || !['GET', 'HEAD'].includes(method);
+  const headers = { Accept: 'application/json' };
+  if (shouldSendJson) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
+
+  // When the backend expects JSON but no body is provided (e.g., submit endpoint),
+  // send an empty object to avoid framework parsers returning HTML 400 pages.
+  const payload = body !== undefined ? JSON.stringify(body) : shouldSendJson ? '{}' : undefined;
 
   const response = await fetch(`${apiConfig.baseUrl}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: payload,
   });
 
   const { data, raw } = await parseResponse(response.clone());
   const enrichedData = response.ok ? attachIdFromLocation(data, response.headers) : data;
   if (!response.ok) {
-    const raw = await response.text();
-    const message =
-      (enrichedData?.message || enrichedData?.error || enrichedData?.detail) ||
-      raw ||
-      `Request failed with status ${response.status}`;
+    const message = buildErrorMessage({ status: response.status, data: enrichedData, raw });
     throw new Error(message);
   }
   return enrichedData;
@@ -221,7 +238,9 @@ async function api(path, { method = 'GET', body } = {}) {
 
 async function apiMultipart(path, formData) {
   const { token } = getSession();
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const headers = token
+    ? { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    : { Accept: 'application/json' };
 
   const response = await fetch(`${apiConfig.baseUrl}${path}`, {
     method: 'POST',
@@ -231,9 +250,7 @@ async function apiMultipart(path, formData) {
 
   const { data, raw } = await parseResponse(response.clone());
   if (!response.ok) {
-    const raw = await response.text();
-    const message =
-      data?.message || data?.error || data?.detail || raw || 'Upload failed';
+    const message = buildErrorMessage({ status: response.status, data, raw });
     throw new Error(message);
   }
   return data;
@@ -843,8 +860,18 @@ async function uploadDocumentsIfNeeded() {
   }
 }
 
+let isSubmitting = false;
+
 async function submitApplication() {
+  if (isSubmitting) return; // Guard against double-clicks sending duplicate requests.
+  const originalLabel = submitApplicationBtn?.textContent;
   try {
+    isSubmitting = true;
+    if (submitApplicationBtn) {
+      submitApplicationBtn.disabled = true;
+      submitApplicationBtn.textContent = 'Submitting...';
+    }
+
     if (!validateStep(currentStep)) return;
     await saveDraft(false);
 
@@ -867,6 +894,12 @@ async function submitApplication() {
   } catch (err) {
     console.error(err);
     setInlineAlert(applicationFormMessage, err.message || 'Unable to submit application', 'error');
+  } finally {
+    isSubmitting = false;
+    if (submitApplicationBtn) {
+      submitApplicationBtn.disabled = false;
+      submitApplicationBtn.textContent = originalLabel || 'Submit application';
+    }
   }
 }
 
