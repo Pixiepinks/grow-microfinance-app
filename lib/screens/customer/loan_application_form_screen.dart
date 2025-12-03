@@ -58,6 +58,10 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       TextEditingController();
   final TextEditingController _businessNameController = TextEditingController();
   final TextEditingController _businessRegController = TextEditingController();
+  final TextEditingController _businessAddressController =
+      TextEditingController();
+  final TextEditingController _businessTypeController = TextEditingController();
+  final TextEditingController _monthlySalesController = TextEditingController();
   final TextEditingController _employmentStatusController =
       TextEditingController();
   final TextEditingController _employerController = TextEditingController();
@@ -146,7 +150,13 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     _productCategoryController.text =
         typeSpecific['main_product_category'] ?? '';
     _businessNameController.text = typeSpecific['business_name'] ?? '';
-    _businessRegController.text = typeSpecific['business_registration'] ?? '';
+    _businessRegController.text = typeSpecific['business_registration'] ??
+        typeSpecific['business_reg_number'] ??
+        '';
+    _businessAddressController.text = typeSpecific['business_address'] ?? '';
+    _businessTypeController.text = typeSpecific['business_type'] ?? '';
+    _monthlySalesController.text =
+        typeSpecific['monthly_sales']?.toString() ?? '';
     _employmentStatusController.text = typeSpecific['employment_status'] ?? '';
     _employerController.text = typeSpecific['employer_name'] ?? '';
     _guarantorNameController.text = typeSpecific['guarantor_name'] ?? '';
@@ -180,6 +190,9 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     _productCategoryController.dispose();
     _businessNameController.dispose();
     _businessRegController.dispose();
+    _businessAddressController.dispose();
+    _businessTypeController.dispose();
+    _monthlySalesController.dispose();
     _employmentStatusController.dispose();
     _employerController.dispose();
     _guarantorNameController.dispose();
@@ -473,9 +486,26 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
               validator: (v) => v == null || v.isEmpty ? 'Required' : null,
             ),
             TextFormField(
+              controller: _businessAddressController,
+              decoration: const InputDecoration(labelText: 'Business address'),
+              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+            ),
+            TextFormField(
+              controller: _businessTypeController,
+              decoration: const InputDecoration(labelText: 'Business type'),
+              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+            ),
+            TextFormField(
               controller: _businessRegController,
               decoration:
                   const InputDecoration(labelText: 'Business registration'),
+            ),
+            TextFormField(
+              controller: _monthlySalesController,
+              decoration:
+                  const InputDecoration(labelText: 'Monthly sales amount'),
+              keyboardType: TextInputType.number,
+              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
             ),
           ],
         );
@@ -770,11 +800,12 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       case 'Grow Business Loan':
         return {
           'business_name': _businessNameController.text,
-          'business_address': _businessNameController.text,
+          'business_address': _businessAddressController.text,
+          'business_registration': _businessRegController.text,
           'business_reg_number': _businessRegController.text,
-          'business_type': _businessRegController.text,
+          'business_type': _businessTypeController.text,
           'monthly_sales':
-              double.tryParse(_monthlyIncomeController.text) ?? 0,
+              double.tryParse(_monthlySalesController.text.trim()) ?? 0,
         };
       case 'Grow Personal Loan':
         return {
