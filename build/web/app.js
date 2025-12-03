@@ -622,6 +622,9 @@ function buildApplicationPayload() {
     case 'Grow Business Loan':
       typeSpecific.business_name = values.business_name || '';
       typeSpecific.business_registration = values.business_registration || '';
+      typeSpecific.business_address = values.business_address || '';
+      typeSpecific.business_type = values.business_type || '';
+      typeSpecific.monthly_sales = Number(values.monthly_sales) || 0;
       break;
     case 'Grow Personal Loan':
       typeSpecific.employment_status = values.employment_status || '';
@@ -831,8 +834,19 @@ function updateReviewSummary() {
     ],
   ];
 
+  const typeSpecificRows = [];
+  if (selectedLoanType === 'Grow Business Loan') {
+    typeSpecificRows.push(
+      ['Business name', data.type_specific.business_name || '—'],
+      ['Business registration', data.type_specific.business_registration || '—'],
+      ['Business address', data.type_specific.business_address || '—'],
+      ['Business type', data.type_specific.business_type || '—'],
+      ['Average monthly sales', formatCurrency(data.type_specific.monthly_sales)]
+    );
+  }
+
   reviewSummary.innerHTML = '';
-  rows.forEach(([label, value]) => {
+  [...rows, ...typeSpecificRows].forEach(([label, value]) => {
     const row = document.createElement('div');
     row.className = 'review-row';
     row.innerHTML = `<span>${label}</span><span>${value || '—'}</span>`;
