@@ -209,6 +209,7 @@ async function api(path, { method = 'GET', body } = {}) {
   const { data, raw } = await parseResponse(response.clone());
   const enrichedData = response.ok ? attachIdFromLocation(data, response.headers) : data;
   if (!response.ok) {
+    const raw = await response.text();
     const message =
       (enrichedData?.message || enrichedData?.error || enrichedData?.detail) ||
       raw ||
@@ -230,6 +231,7 @@ async function apiMultipart(path, formData) {
 
   const { data, raw } = await parseResponse(response.clone());
   if (!response.ok) {
+    const raw = await response.text();
     const message =
       data?.message || data?.error || data?.detail || raw || 'Upload failed';
     throw new Error(message);
