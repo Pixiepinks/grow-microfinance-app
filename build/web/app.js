@@ -163,18 +163,36 @@ function getSession() {
   };
 }
 
-async function parseJsonSafe(response) {
+async function parseResponse(response) {
   const text = await response.text();
-  if (!text || !text.trim()) return {};
+  if (!text || !text.trim()) return { data: {}, raw: '' };
 
   try {
-    const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === 'object') return parsed;
+    return { data: JSON.parse(text), raw: text };
   } catch (err) {
     console.warn('Failed to parse JSON response', err);
   }
 
-  return {};
+  return { data: {}, raw: text };
+}
+
+function attachIdFromLocation(data, headers) {
+  const location = headers?.get?.('location');
+  if (!location) return data;
+
+  const lastSegment = location.split('/').filter(Boolean).pop();
+  if (!lastSegment) return data;
+
+  const numericId = Number(lastSegment);
+  const inferredId = Number.isNaN(numericId) ? lastSegment : numericId;
+
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    if (data.id === undefined) data.id = inferredId;
+    if (data.application_id === undefined) data.application_id = inferredId;
+    return data;
+  }
+
+  return { id: inferredId, application_id: inferredId, data };
 }
 
 async function api(path, { method = 'GET', body } = {}) {
@@ -188,14 +206,17 @@ async function api(path, { method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const data = await parseJsonSafe(response.clone());
+  const { data, raw } = await parseResponse(response.clone());
+  const enrichedData = response.ok ? attachIdFromLocation(data, response.headers) : data;
   if (!response.ok) {
     const raw = await response.text();
     const message =
-      data.message || data.error || data.detail || raw || 'Request failed';
+      (enrichedData?.message || enrichedData?.error || enrichedData?.detail) ||
+      raw ||
+      `Request failed with status ${response.status}`;
     throw new Error(message);
   }
-  return data;
+  return enrichedData;
 }
 
 async function apiMultipart(path, formData) {
@@ -208,11 +229,11 @@ async function apiMultipart(path, formData) {
     body: formData,
   });
 
-  const data = await parseJsonSafe(response.clone());
+  const { data, raw } = await parseResponse(response.clone());
   if (!response.ok) {
     const raw = await response.text();
     const message =
-      data.message || data.error || data.detail || raw || 'Upload failed';
+      data?.message || data?.error || data?.detail || raw || 'Upload failed';
     throw new Error(message);
   }
   return data;
@@ -578,6 +599,27 @@ function hasValue(value) {
   return true;
 }
 
+function resolveApplicationId(value) {
+  if (!hasValue(value)) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? null : numeric;
+  }
+  if (typeof value === 'object') {
+    return (
+      value.id ??
+      value.application_id ??
+      value.applicationId ??
+      value.data?.id ??
+      value.data?.application_id ??
+      value.data?.applicationId ??
+      null
+    );
+  }
+  return null;
+}
+
 function normalizeNic(value) {
   if (!hasValue(value)) return '';
   return String(value)
@@ -761,9 +803,25 @@ async function saveDraft(showMessage = true) {
       : endpoint('loanApplications');
     const method = currentDraftId ? 'PUT' : 'POST';
     const app = await api(endpointPath, { method, body: payload });
-    currentDraftId = app.id;
-    cachedApplications = [...cachedApplications.filter((a) => a.id !== app.id), app];
-    renderApplications(cachedApplications);
+    const appId = resolveApplicationId(app) ?? currentDraftId;
+    currentDraftId = appId;
+
+    if (app && typeof app === 'object' && !Array.isArray(app)) {
+      const normalizedApp = { ...app };
+      if (appId && !normalizedApp.id) normalizedApp.id = appId;
+      cachedApplications = [
+        ...cachedApplications.filter((a) => (a.id ?? a.application_id) !== appId),
+        normalizedApp,
+      ].filter(Boolean);
+    }
+
+    await loadApplications();
+    if (!currentDraftId) {
+      const latestDraft = cachedApplications.find(
+        (application) => (application.status || '').toLowerCase() === 'draft'
+      );
+      currentDraftId = resolveApplicationId(latestDraft) ?? currentDraftId;
+    }
     if (showMessage) {
       setInlineAlert(applicationFormMessage, 'Draft saved successfully.', 'success');
     }
