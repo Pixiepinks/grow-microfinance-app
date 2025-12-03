@@ -56,6 +56,27 @@ const documentsByLoanType = {
   'Grow Team Loan': ['nic_front', 'nic_back', 'nic_selfie', 'member_list', 'group_photo'],
 };
 
+function mapDocumentTypeToApi(docType) {
+  switch ((docType || '').toLowerCase()) {
+    case 'nic_front':
+      return 'NIC_FRONT';
+    case 'nic_back':
+      return 'NIC_BACK';
+    case 'nic_selfie':
+      return 'SELFIE_NIC';
+    case 'online_proof':
+      return 'STORE_SCREENSHOT';
+    case 'salary_slip':
+      return 'SALARY_SLIP';
+    case 'member_list':
+      return 'MEMBER_LIST';
+    case 'group_photo':
+      return 'GROUP_PHOTO';
+    default:
+      return (docType || '').toUpperCase();
+  }
+}
+
 let apiConfig = { ...defaultApiConfig };
 
 const storageKeys = { token: 'gm_jwt', role: 'gm_role' };
@@ -182,9 +203,25 @@ function isLikelyHtml(text = '') {
 }
 
 function buildErrorMessage({ status, data, raw }) {
+  const messages = [];
+  if (Array.isArray(data?.errors)) {
+    messages.push(
+      ...data.errors
+        .map((err) => {
+          if (!err) return '';
+          if (typeof err === 'string') return err;
+          if (typeof err === 'object') return err.message || err.detail || '';
+          return String(err);
+        })
+        .filter(Boolean)
+    );
+  }
+
   const messageFromPayload =
     data?.message || data?.error || data?.detail || data?.title || '';
-  if (messageFromPayload) return messageFromPayload;
+  if (messageFromPayload) messages.push(messageFromPayload);
+
+  if (messages.length) return messages.join('; ');
 
   // Avoid surfacing raw HTML error pages to the user.
   if (raw && !isLikelyHtml(raw)) return raw;
@@ -855,7 +892,9 @@ async function uploadDocumentsIfNeeded() {
   for (const [docType, file] of selectedDocuments.entries()) {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('document_type', docType);
+    // Align document_type values with the backend's expected enums (same as mobile app)
+    // so submitted applications aren't rejected for "missing" files.
+    formData.append('document_type', mapDocumentTypeToApi(docType));
     await apiMultipart(`${endpoint('loanApplications')}/${currentDraftId}/documents`, formData);
   }
 }
