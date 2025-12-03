@@ -45,7 +45,7 @@ class ApiClient {
       body: jsonEncode(body ?? {}),
     );
     _throwIfNeeded(response);
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return _decodeJsonMap(response);
   }
 
   Future<Map<String, dynamic>> putJson(
@@ -58,7 +58,7 @@ class ApiClient {
       body: jsonEncode(body ?? {}),
     );
     _throwIfNeeded(response);
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return _decodeJsonMap(response);
   }
 
   Future<Map<String, dynamic>> postMultipart(
@@ -101,7 +101,7 @@ class ApiClient {
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
     _throwIfNeeded(response);
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return _decodeJsonMap(response);
   }
 
   Map<String, String> _headers({bool jsonContentType = true}) {
@@ -150,6 +150,22 @@ class ApiClient {
         body: parsedBody ?? response.body,
       );
     }
+  }
+
+  Map<String, dynamic> _decodeJsonMap(http.Response response) {
+    final body = response.body;
+    if (body.trim().isEmpty) return {};
+
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (e) {
+      debugPrint('Failed to decode response body: $e');
+    }
+
+    return {};
   }
 }
 
