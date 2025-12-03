@@ -562,6 +562,38 @@ function hasValue(value) {
   return true;
 }
 
+function normalizeNic(value) {
+  if (!hasValue(value)) return '';
+  return String(value)
+    .replace(/\s+/g, '')
+    .replace(/-/g, '')
+    .toUpperCase();
+}
+
+function deriveStoreName({ typeSpecific, applicant }) {
+  const existing = (typeSpecific?.online_store_name || '').trim();
+  if (existing) return existing;
+
+  const platformName = (typeSpecific?.store_platform || '').trim();
+  if (platformName) return platformName;
+
+  const url = (typeSpecific?.store_url || '').trim();
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname) return parsed.hostname;
+    } catch (_) {
+      // fall through if URL parsing fails
+    }
+  }
+
+  if (applicant?.full_name) {
+    return `${applicant.full_name} Online Store`;
+  }
+
+  return 'Online Store';
+}
+
 function mapLoanTypeToApi(uiValue) {
   const normalized = (uiValue || '').trim().toUpperCase();
   switch (normalized) {
@@ -625,6 +657,7 @@ function normalizeApplicationPayload(payload) {
   ensureValue('store_platform', ['platform'], [typeSpecific]);
   ensureValue('platform', ['store_platform'], [typeSpecific]);
   ensureValue('online_store_link', ['store_url'], [typeSpecific]);
+  ensureValue('online_store_name', ['store_platform', 'store_url'], [typeSpecific]);
 
   normalized.loan_type = mapLoanTypeToApi(normalized.loan_type || payload.loan_type);
   if (!hasValue(normalized.store_platform)) {
@@ -638,10 +671,16 @@ function normalizeApplicationPayload(payload) {
     if (!hasValue(normalized.main_product_category)) {
       normalized.main_product_category = 'General';
     }
+    if (!hasValue(normalized.online_store_name)) {
+      normalized.online_store_name = deriveStoreName({ typeSpecific, applicant });
+    }
   }
 
   if (hasValue(normalized.nic_number)) {
-    applicant.nic_number = normalized.nic_number;
+    const nic = normalizeNic(normalized.nic_number);
+    normalized.nic_number = nic;
+    applicant.nic_number = nic;
+    applicant.nic = nic;
   }
   if (hasValue(normalized.mobile_number)) {
     applicant.mobile_number = normalized.mobile_number;
@@ -651,6 +690,9 @@ function normalizeApplicationPayload(payload) {
   }
   if (hasValue(normalized.online_store_link)) {
     typeSpecific.online_store_link = normalized.online_store_link;
+  }
+  if (hasValue(normalized.online_store_name)) {
+    typeSpecific.online_store_name = normalized.online_store_name;
   }
 
   Object.assign(normalized, applicant, loanDetails, typeSpecific);
