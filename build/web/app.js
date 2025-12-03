@@ -163,6 +163,20 @@ function getSession() {
   };
 }
 
+async function parseJsonSafe(response) {
+  const text = await response.text();
+  if (!text || !text.trim()) return {};
+
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch (err) {
+    console.warn('Failed to parse JSON response', err);
+  }
+
+  return {};
+}
+
 async function api(path, { method = 'GET', body } = {}) {
   const { token } = getSession();
   const headers = { 'Content-Type': 'application/json' };
@@ -174,10 +188,11 @@ async function api(path, { method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await parseJsonSafe(response.clone());
   if (!response.ok) {
+    const raw = await response.text();
     const message =
-      data.message || data.error || data.detail || 'Request failed';
+      data.message || data.error || data.detail || raw || 'Request failed';
     throw new Error(message);
   }
   return data;
@@ -193,10 +208,11 @@ async function apiMultipart(path, formData) {
     body: formData,
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await parseJsonSafe(response.clone());
   if (!response.ok) {
+    const raw = await response.text();
     const message =
-      data.message || data.error || data.detail || 'Upload failed';
+      data.message || data.error || data.detail || raw || 'Upload failed';
     throw new Error(message);
   }
   return data;
