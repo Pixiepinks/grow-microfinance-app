@@ -3,8 +3,15 @@ const defaultApiConfig = {
   endpoints: {
     login: '/auth/login',
     adminDashboard: '/admin/dashboard',
+    adminLoanApplications: '/admin/loan-applications',
+    adminLoanApplicationApprove: '/loan-applications/{id}/approve',
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
+    staffActiveLoans: '/staff/active-loans',
+    staffLoanApplications: '/staff/loan-applications',
+    staffLoanApplicationApprove: '/loan-applications/{id}/staff-approve',
+    loanApplicationReject: '/loan-applications/{id}/reject',
+    loanRepayments: '/loans/{id}/repayments',
     customerProfile: '/customer/me',
     customerLoans: '/customer/loans',
     customerLoanPayments: '/customer/loans/{id}/payments',
@@ -92,9 +99,17 @@ const logoutBtn = document.querySelector('#logout-btn');
 
 const adminPanel = document.querySelector('#admin-panel');
 const adminMetrics = document.querySelector('#admin-metrics');
+const adminApplications = document.querySelector('#admin-applications');
+const adminApplicationsMessage = document.querySelector('#admin-applications-message');
+const adminRefreshApplicationsBtn = document.querySelector('#admin-refresh-applications');
 
 const staffPanel = document.querySelector('#staff-panel');
 const staffCollections = document.querySelector('#staff-collections');
+const staffActiveLoans = document.querySelector('#staff-active-loans');
+const staffApplications = document.querySelector('#staff-applications');
+const staffApplicationsMessage = document.querySelector('#staff-applications-message');
+const recordPaymentBtn = document.querySelector('#record-payment-btn');
+const staffRefreshApplicationsBtn = document.querySelector('#staff-refresh-applications');
 
 const customerPanel = document.querySelector('#customer-panel');
 const customerSummary = document.querySelector('#customer-summary');
@@ -123,13 +138,34 @@ const documentUploads = document.querySelector('#document-uploads');
 const reviewSummary = document.querySelector('#review-summary');
 const reviewAlert = document.querySelector('#review-alert');
 const typeSpecificFields = document.querySelectorAll('.type-specific');
+const applicationModal = document.querySelector('#application-modal');
+const applicationModalTitle = document.querySelector('#application-modal-title');
+const applicationModalStatus = document.querySelector('#application-modal-status');
+const applicationModalContent = document.querySelector('#application-modal-content');
+const applicationModalActions = document.querySelector('#application-modal-actions');
+const applicationModalMessage = document.querySelector('#application-modal-message');
+const applicationModalRoleLabel = document.querySelector('#application-modal-role');
+const closeApplicationModal = document.querySelector('#close-application-modal');
+const paymentSheet = document.querySelector('#payment-sheet');
+const paymentForm = document.querySelector('#payment-form');
+const paymentLoanId = document.querySelector('#payment-loan-id');
+const paymentAmount = document.querySelector('#payment-amount');
+const paymentDate = document.querySelector('#payment-date');
+const paymentMethod = document.querySelector('#payment-method');
+const paymentNote = document.querySelector('#payment-note');
+const paymentMessage = document.querySelector('#payment-message');
+const closePaymentSheet = document.querySelector('#close-payment-sheet');
 
 let cachedProfile = null;
 let cachedLoans = [];
 let cachedApplications = [];
+let cachedStaffApplications = [];
+let cachedAdminApplications = [];
+let cachedActiveLoans = [];
 let currentStep = 0;
 let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
+let currentLoanForPayment = null;
 const selectedDocuments = new Map();
 
 async function loadApiConfig() {
@@ -357,6 +393,58 @@ function renderCollections(items) {
   });
 }
 
+function renderActiveLoans(loans) {
+  staffActiveLoans.innerHTML = '';
+  const template = document.querySelector('#active-loan-template');
+  if (!loans.length) {
+    staffActiveLoans.innerHTML = '<p class="muted">No active loans for collections today.</p>';
+    return;
+  }
+
+  loans.forEach((loan) => {
+    const node = template.content.cloneNode(true);
+    node.querySelector('.item-title').textContent = loan.borrower_name || loan.customer || 'Loan';
+    node.querySelector('.item-subtitle').textContent =
+      `Balance: ${formatCurrency(loan.outstanding_balance ?? loan.balance ?? loan.amount)} · ` +
+      `ID: ${loan.id ?? loan.loan_id ?? loan.reference ?? '—'}`;
+    node.querySelector('.record-payment-action').addEventListener('click', () => {
+      openPaymentSheet(loan);
+    });
+    staffActiveLoans.appendChild(node);
+  });
+}
+
+function renderReviewQueue(container, messageEl, applications, emptyText, onSelect) {
+  container.innerHTML = '';
+  if (messageEl) messageEl.classList.add('hidden');
+
+  const template = document.querySelector('#review-template');
+  if (!applications.length) {
+    container.innerHTML = `<p class="muted">${emptyText}</p>`;
+    return;
+  }
+
+  applications.forEach((app) => {
+    const node = template.content.cloneNode(true);
+    const title = app.application_number
+      ? `Application #${app.application_number}`
+      : `Application ${app.id}`;
+    node.querySelector('.review-title').textContent = title;
+    const tenure = app.tenure_months ?? app.loan_details?.tenure_months;
+    const amount = app.applied_amount ?? app.loan_details?.applied_amount;
+    const loanType = app.loan_type ?? app.loan_details?.loan_type ?? 'Loan';
+    node.querySelector('.review-meta').textContent =
+      `${loanType} • ${amount ? formatCurrency(amount) : 'Amount pending'}${
+        tenure ? ` • ${tenure} mo` : ''
+      }`;
+    node.querySelector('.review-customer').textContent = app.customer_name || app.customer || '';
+    node.querySelector('.review-status').textContent = app.status || 'Unknown';
+    node.querySelector('.review-date').textContent = formatDate(app.created_at || app.createdAt);
+    node.querySelector('.list-item').addEventListener('click', () => onSelect(app));
+    container.appendChild(node);
+  });
+}
+
 function renderLoans(loans) {
   customerLoans.innerHTML = '';
   const template = document.querySelector('#loan-template');
@@ -417,18 +505,69 @@ function renderApplications(applications) {
 }
 
 async function loadAdmin() {
-  const data = await api(endpoint('adminDashboard'));
-  const metrics = [
-    { label: 'Total customers', value: data.total_customers ?? '—', hint: 'Across all segments' },
-    { label: 'Active loans', value: data.active_loans ?? '—', hint: 'Current portfolio' },
-    { label: 'Payments today', value: data.payments_today ?? '—', hint: 'Recorded settlements' },
-  ];
-  renderMetrics(adminMetrics, metrics);
+  setInlineAlert(adminApplicationsMessage, '');
+  try {
+    const [data, applicationsResponse] = await Promise.all([
+      api(endpoint('adminDashboard')),
+      api(`${endpoint('adminLoanApplications')}?status=STAFF_APPROVED`),
+    ]);
+
+    const metrics = [
+      { label: 'Total customers', value: data.total_customers ?? '—', hint: 'Across all segments' },
+      { label: 'Active loans', value: data.active_loans ?? '—', hint: 'Current portfolio' },
+      { label: 'Payments today', value: data.payments_today ?? '—', hint: 'Recorded settlements' },
+    ];
+    renderMetrics(adminMetrics, metrics);
+
+    const applications = Array.isArray(applicationsResponse)
+      ? applicationsResponse
+      : applicationsResponse.applications || applicationsResponse.data || [];
+    cachedAdminApplications = applications;
+    renderReviewQueue(
+      adminApplications,
+      adminApplicationsMessage,
+      applications,
+      'No applications awaiting final approval.',
+      (app) => openApplicationDetail(app, 'admin'),
+    );
+  } catch (error) {
+    console.error(error);
+    setInlineAlert(adminApplicationsMessage, error.message || 'Failed to load admin data', 'error');
+  }
 }
 
 async function loadStaff() {
-  const data = await api(endpoint('staffTodayCollections'));
-  renderCollections(data.collections || data || []);
+  setInlineAlert(staffApplicationsMessage, '');
+  try {
+    const [collectionsResponse, activeLoansResponse, applicationsResponse] = await Promise.all([
+      api(endpoint('staffTodayCollections')),
+      api(endpoint('staffActiveLoans')),
+      api(`${endpoint('staffLoanApplications')}?status=SUBMITTED`),
+    ]);
+
+    renderCollections(collectionsResponse.collections || collectionsResponse || []);
+
+    const activeLoans = Array.isArray(activeLoansResponse)
+      ? activeLoansResponse
+      : activeLoansResponse.loans || activeLoansResponse.data || [];
+    cachedActiveLoans = activeLoans;
+    renderActiveLoans(activeLoans);
+
+    const applications = Array.isArray(applicationsResponse)
+      ? applicationsResponse
+      : applicationsResponse.applications || applicationsResponse.data || [];
+    cachedStaffApplications = applications;
+    renderReviewQueue(
+      staffApplications,
+      staffApplicationsMessage,
+      applications,
+      'No applications waiting for review.',
+      (app) => openApplicationDetail(app, 'staff'),
+    );
+  } catch (error) {
+    console.error(error);
+    setInlineAlert(staffApplicationsMessage, error.message || 'Failed to load staff data', 'error');
+  }
 }
 
 async function loadCustomer() {
@@ -455,6 +594,130 @@ async function loadApplications() {
   const applications = Array.isArray(data) ? data : data.applications || [];
   cachedApplications = applications;
   renderApplications(applications);
+}
+
+function closeApplicationDetail() {
+  applicationModal.classList.add('hidden');
+  applicationModalContent.innerHTML = '';
+  applicationModalActions.innerHTML = '';
+}
+
+function renderApplicationDetails(app) {
+  applicationModalContent.innerHTML = '';
+  const tenure = app.tenure_months ?? app.loan_details?.tenure_months;
+  const fields = [
+    ['Customer', app.customer_name || app.customer || '—'],
+    ['Loan type', app.loan_type || app.loan_details?.loan_type || '—'],
+    [
+      'Requested amount',
+      formatCurrency(app.applied_amount ?? app.loan_details?.applied_amount ?? app.amount ?? app.approved_amount),
+    ],
+    ['Tenure', tenure ? `${tenure} months` : '—'],
+    ['Purpose', app.loan_purpose || app.loan_details?.loan_purpose || '—'],
+    ['Status', app.status || '—'],
+    ['Created', formatDate(app.created_at || app.createdAt) || '—'],
+  ];
+
+  fields.forEach(([label, value]) => {
+    const row = document.createElement('div');
+    row.className = 'review-row';
+    row.innerHTML = `<span>${label}</span><span>${value || '—'}</span>`;
+    applicationModalContent.appendChild(row);
+  });
+}
+
+async function openApplicationDetail(appSummary, role) {
+  const appId = resolveApplicationId(appSummary);
+  applicationModal.classList.remove('hidden');
+  applicationModalActions.innerHTML = '';
+  applicationModalContent.innerHTML = '<p class="muted">Loading application...</p>';
+  applicationModalTitle.textContent = appSummary.application_number
+    ? `Application #${appSummary.application_number}`
+    : `Application ${appId ?? ''}`;
+  applicationModalStatus.textContent = appSummary.status || '';
+  applicationModalRoleLabel.textContent = role === 'admin' ? 'Admin' : 'Staff';
+  setInlineAlert(applicationModalMessage, '');
+
+  try {
+    const app = appId ? await api(`${endpoint('loanApplications')}/${appId}`) : appSummary;
+    renderApplicationDetails(app);
+    const status = (app.status || '').toUpperCase();
+    applicationModalActions.innerHTML = '';
+
+    const addAction = (label, handler, variant = 'primary') => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = variant === 'primary' ? 'primary' : 'ghost';
+      btn.textContent = label;
+      btn.addEventListener('click', handler);
+      applicationModalActions.appendChild(btn);
+    };
+
+    const handleApprove = async () => {
+      try {
+        setInlineAlert(applicationModalMessage, 'Submitting approval...', 'success');
+        const endpointKey = role === 'staff' ? 'staffLoanApplicationApprove' : 'adminLoanApplicationApprove';
+        await api(endpoint(endpointKey, { id: appId }), { method: 'POST' });
+        setInlineAlert(applicationModalMessage, 'Application approved.', 'success');
+        if (role === 'staff') await loadStaff();
+        if (role === 'admin') await loadAdmin();
+      } catch (err) {
+        console.error(err);
+        setInlineAlert(applicationModalMessage, err.message || 'Failed to approve', 'error');
+      }
+    };
+
+    const handleReject = async () => {
+      const reason = prompt('Reason for rejection (optional)') || '';
+      try {
+        setInlineAlert(applicationModalMessage, 'Submitting rejection...', 'success');
+        await api(endpoint('loanApplicationReject', { id: appId }), {
+          method: 'POST',
+          body: reason ? { reason } : {},
+        });
+        setInlineAlert(applicationModalMessage, 'Application rejected.', 'success');
+        if (role === 'staff') await loadStaff();
+        if (role === 'admin') await loadAdmin();
+      } catch (err) {
+        console.error(err);
+        setInlineAlert(applicationModalMessage, err.message || 'Failed to reject', 'error');
+      }
+    };
+
+    if (role === 'staff' && status === 'SUBMITTED') {
+      addAction('Reject', handleReject, 'ghost');
+      addAction('Approve', handleApprove, 'primary');
+    } else if (role === 'admin' && status === 'STAFF_APPROVED') {
+      addAction('Reject', handleReject, 'ghost');
+      addAction('Approve', handleApprove, 'primary');
+    } else {
+      const note = document.createElement('p');
+      note.className = 'muted';
+      note.textContent = 'No actions available for this application.';
+      applicationModalActions.appendChild(note);
+    }
+  } catch (error) {
+    console.error(error);
+    setInlineAlert(applicationModalMessage, error.message || 'Failed to load application', 'error');
+    applicationModalContent.innerHTML = '<p class="muted">Unable to load application details.</p>';
+  }
+}
+
+function openPaymentSheet(loan) {
+  currentLoanForPayment = loan || null;
+  setInlineAlert(paymentMessage, '');
+  paymentLoanId.value = loan?.id || loan?.loan_id || loan?.reference || '';
+  paymentAmount.value = '';
+  paymentMethod.value = '';
+  paymentNote.value = '';
+  paymentDate.value = new Date().toISOString().slice(0, 10);
+  paymentSheet.classList.remove('hidden');
+}
+
+function closePaymentSheetUI() {
+  paymentSheet.classList.add('hidden');
+  paymentForm.reset();
+  currentLoanForPayment = null;
 }
 
 async function hydrateFromSession() {
@@ -1115,6 +1378,43 @@ refreshApplicationsBtn?.addEventListener('click', async () => {
     setInlineAlert(applicationFormMessage, err.message, 'error');
   }
 });
+
+staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
+adminRefreshApplicationsBtn?.addEventListener('click', () => loadAdmin());
+
+recordPaymentBtn?.addEventListener('click', () => openPaymentSheet());
+closePaymentSheet?.addEventListener('click', closePaymentSheetUI);
+paymentForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const loanId = paymentLoanId.value.trim();
+  const amount = Number(paymentAmount.value);
+  const paymentDateValue = paymentDate.value || new Date().toISOString().slice(0, 10);
+  if (!loanId || Number.isNaN(amount)) {
+    setInlineAlert(paymentMessage, 'Loan ID and amount are required.', 'error');
+    return;
+  }
+
+  try {
+    setInlineAlert(paymentMessage, 'Submitting payment...', 'success');
+    await api(endpoint('loanRepayments', { id: loanId }), {
+      method: 'POST',
+      body: {
+        amount,
+        payment_date: paymentDateValue,
+        ...(paymentMethod.value ? { payment_method: paymentMethod.value } : {}),
+        ...(paymentNote.value ? { note: paymentNote.value } : {}),
+      },
+    });
+    setInlineAlert(paymentMessage, 'Payment recorded.', 'success');
+    await loadStaff();
+    closePaymentSheetUI();
+  } catch (err) {
+    console.error(err);
+    setInlineAlert(paymentMessage, err.message || 'Failed to record payment', 'error');
+  }
+});
+
+closeApplicationModal?.addEventListener('click', closeApplicationDetail);
 
 prevStepBtn?.addEventListener('click', goToPrevStep);
 nextStepBtn?.addEventListener('click', goToNextStep);

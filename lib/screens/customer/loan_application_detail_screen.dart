@@ -9,10 +9,12 @@ class LoanApplicationDetailScreen extends StatefulWidget {
     super.key,
     required this.applicationId,
     required this.service,
+    this.actionButtonsBuilder,
   });
 
   final String applicationId;
   final LoanApplicationService service;
+  final List<Widget> Function(LoanApplication app)? actionButtonsBuilder;
 
   @override
   State<LoanApplicationDetailScreen> createState() =>
@@ -90,18 +92,39 @@ class _LoanApplicationDetailScreenState
                               _formatMap(app.applicantDetails)),
                           _buildSection(
                               'Loan Details', _formatMap(app.loanDetails)),
-                          _buildSection(
-                              'Type Specific', _formatMap(app.typeSpecific)),
-                          _buildSection(
-                            'Documents',
-                            _formatDocuments(
-                              app.documents,
-                              emptyValue: 'Not uploaded',
+                        _buildSection(
+                            'Type Specific', _formatMap(app.typeSpecific)),
+                        _buildSection(
+                          'Documents',
+                          _formatDocuments(
+                            app.documents,
+                            emptyValue: 'Not uploaded',
+                          ),
+                        ),
+                        if (widget.actionButtonsBuilder != null) ...[
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Actions',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...widget.actionButtonsBuilder!(app),
+                                ],
+                              ),
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
+                  ),
     );
   }
 
