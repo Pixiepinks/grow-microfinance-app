@@ -102,6 +102,8 @@ const adminMetrics = document.querySelector('#admin-metrics');
 const adminApplications = document.querySelector('#admin-applications');
 const adminApplicationsMessage = document.querySelector('#admin-applications-message');
 const adminRefreshApplicationsBtn = document.querySelector('#admin-refresh-applications');
+const adminMenuItems = document.querySelectorAll('.admin-menu-item');
+const adminSections = document.querySelectorAll('.admin-section');
 
 const staffPanel = document.querySelector('#staff-panel');
 const staffCollections = document.querySelector('#staff-collections');
@@ -366,6 +368,22 @@ function setInlineAlert(target, text, type = 'success') {
   target.classList.toggle('hidden', !text);
 }
 
+function showAdminSection(section = 'dashboard') {
+  if (!adminSections.length) return;
+  const hasSection = Array.from(adminSections).some((el) => el.dataset.section === section);
+  const target = hasSection ? section : 'dashboard';
+
+  adminSections.forEach((el) => {
+    el.classList.toggle('hidden', el.dataset.section !== target);
+  });
+
+  adminMenuItems.forEach((item) => {
+    const isActive = item.dataset.section === target;
+    item.classList.toggle('active', isActive);
+    item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+}
+
 function togglePanels(role) {
   dashboards.classList.toggle('hidden', !role);
   userRoleChip.classList.toggle('hidden', !role);
@@ -373,6 +391,7 @@ function togglePanels(role) {
   document.querySelector('#login-card').classList.toggle('hidden', !!role);
 
   adminPanel.classList.toggle('hidden', role !== 'admin');
+  if (role === 'admin') showAdminSection('dashboard');
   staffPanel.classList.toggle('hidden', role !== 'staff');
   customerPanel.classList.toggle('hidden', role !== 'customer');
 
@@ -1428,6 +1447,13 @@ refreshApplicationsBtn?.addEventListener('click', async () => {
     console.error(err);
     setInlineAlert(applicationFormMessage, err.message, 'error');
   }
+});
+
+adminMenuItems.forEach((item) => {
+  item.addEventListener('click', () => {
+    const target = item.dataset.section || 'dashboard';
+    showAdminSection(target);
+  });
 });
 
 staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
