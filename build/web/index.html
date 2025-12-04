@@ -78,17 +78,72 @@
                 <h2>Platform overview</h2>
               </div>
             </div>
-            <div id="admin-metrics" class="metric-grid"></div>
+            <div class="stack">
+              <div class="subcard">
+                <div class="card-header">
+                  <div>
+                    <div class="eyebrow">Portfolio</div>
+                    <h3>Metrics</h3>
+                  </div>
+                </div>
+                <div id="admin-metrics" class="metric-grid"></div>
+              </div>
+
+              <div class="subcard">
+                <div class="card-header">
+                  <div>
+                    <div class="eyebrow">Applications</div>
+                    <h3>Awaiting final approval</h3>
+                  </div>
+                  <button id="admin-refresh-applications" class="ghost" type="button">Refresh</button>
+                </div>
+                <div id="admin-applications-message" class="alert hidden"></div>
+                <div id="admin-applications" class="list"></div>
+              </div>
+            </div>
           </div>
 
           <div id="staff-panel" class="card hidden">
             <div class="card-header">
               <div>
                 <div class="eyebrow">Staff</div>
-                <h2>Today&rsquo;s collections</h2>
+                <h2>Operations</h2>
               </div>
             </div>
-            <div id="staff-collections" class="list"></div>
+            <div class="stack">
+              <div class="subcard">
+                <div class="card-header">
+                  <div>
+                    <div class="eyebrow">Today&rsquo;s collections</div>
+                    <h3>Payments due</h3>
+                  </div>
+                </div>
+                <div id="staff-collections" class="list"></div>
+              </div>
+
+              <div class="subcard">
+                <div class="card-header">
+                  <div>
+                    <div class="eyebrow">Active loans</div>
+                    <h3>Record payment</h3>
+                  </div>
+                  <button id="record-payment-btn" class="ghost" type="button">New payment</button>
+                </div>
+                <div id="staff-active-loans" class="list"></div>
+              </div>
+
+              <div class="subcard">
+                <div class="card-header">
+                  <div>
+                    <div class="eyebrow">Applications</div>
+                    <h3>Awaiting review</h3>
+                  </div>
+                  <button id="staff-refresh-applications" class="ghost" type="button">Refresh</button>
+                </div>
+                <div id="staff-applications-message" class="alert hidden"></div>
+                <div id="staff-applications" class="list"></div>
+              </div>
+            </div>
           </div>
 
           <div id="customer-panel" class="card hidden">
@@ -466,6 +521,81 @@
       </div>
     </template>
 
+    <template id="active-loan-template">
+      <div class="list-item">
+        <div>
+          <div class="item-title"></div>
+          <div class="item-subtitle"></div>
+        </div>
+        <button class="secondary record-payment-action" type="button">Record payment</button>
+      </div>
+    </template>
+
+    <template id="review-template">
+      <div class="list-item">
+        <div>
+          <div class="item-title review-title"></div>
+          <div class="item-subtitle review-meta"></div>
+          <div class="item-subtitle review-customer muted"></div>
+        </div>
+        <div class="application-meta-column">
+          <div class="pill review-status"></div>
+          <div class="muted review-date"></div>
+        </div>
+      </div>
+    </template>
+
+    <div id="application-modal" class="sheet hidden">
+      <div class="sheet-header">
+        <div>
+          <div class="eyebrow" id="application-modal-role"></div>
+          <h4 id="application-modal-title"></h4>
+          <p class="muted" id="application-modal-status"></p>
+        </div>
+        <button id="close-application-modal" class="ghost" type="button">Close</button>
+      </div>
+      <div id="application-modal-content" class="stack"></div>
+      <div id="application-modal-actions" class="action-row"></div>
+      <div id="application-modal-message" class="alert hidden"></div>
+    </div>
+
+    <div id="payment-sheet" class="sheet hidden">
+      <div class="sheet-header">
+        <div>
+          <div class="eyebrow">Payment</div>
+          <h4>Record repayment</h4>
+        </div>
+        <button id="close-payment-sheet" class="ghost" type="button">Close</button>
+      </div>
+      <form id="payment-form" class="form-grid">
+        <label class="form-field">
+          <span>Loan ID</span>
+          <input id="payment-loan-id" name="loan_id" type="text" required />
+        </label>
+        <label class="form-field">
+          <span>Amount</span>
+          <input id="payment-amount" name="amount" type="number" min="0" step="0.01" required />
+        </label>
+        <label class="form-field">
+          <span>Date</span>
+          <input id="payment-date" name="payment_date" type="date" required />
+        </label>
+        <label class="form-field">
+          <span>Payment method</span>
+          <input id="payment-method" name="payment_method" type="text" placeholder="Cash, bank transfer, etc." />
+        </label>
+        <label class="form-field">
+          <span>Note</span>
+          <textarea id="payment-note" name="note" rows="2" placeholder="Optional notes"></textarea>
+        </label>
+        <button class="primary" type="submit">Submit payment</button>
+      </form>
+      <div id="payment-message" class="alert hidden"></div>
+    </div>
+
+    <script>
+      window.API_BASE_URL = window.API_BASE_URL || '/api';
+    </script>
     <script src="app.js"></script>
   </body>
 </html>

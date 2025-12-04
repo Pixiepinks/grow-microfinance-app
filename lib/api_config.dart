@@ -10,11 +10,18 @@ class ApiConfig {
   static const Map<String, String> _defaultEndpoints = {
     'login': '/auth/login',
     'adminDashboard': '/admin/dashboard',
+    'adminLoanApplications': '/admin/loan-applications',
+    'adminLoanApplicationApprove': '/loan-applications/{id}/approve',
     'staffTodayCollections': '/staff/today-collections',
     'staffPayments': '/staff/payments',
+    'staffActiveLoans': '/staff/active-loans',
+    'staffLoanApplications': '/staff/loan-applications',
+    'staffLoanApplicationApprove': '/loan-applications/{id}/staff-approve',
+    'loanApplicationReject': '/loan-applications/{id}/reject',
     'customerProfile': '/customer/me',
     'customerLoans': '/customer/loans',
     'customerLoanPayments': '/customer/loans/{id}/payments',
+    'loanRepayments': '/loans/{id}/repayments',
     'loanApplications': '/loan-applications',
     'customers': '/customers',
   };
@@ -33,9 +40,12 @@ class ApiConfig {
       _baseUrl = (data['baseUrl'] as String?)?.trim();
       final endpointsRaw = data['endpoints'] as Map<String, dynamic>?;
       if (endpointsRaw != null && endpointsRaw.isNotEmpty) {
-        _endpoints = endpointsRaw.map(
-          (key, value) => MapEntry(key, value.toString()),
-        );
+        _endpoints = {
+          ..._defaultEndpoints,
+          ...endpointsRaw.map(
+            (key, value) => MapEntry(key, value.toString()),
+          ),
+        };
       }
     } catch (_) {
       _baseUrl = null;
