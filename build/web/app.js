@@ -648,7 +648,7 @@ async function loadAdminLoanApplications(force = false) {
     });
 
     const { data, raw } = await parseResponse(response);
-    console.log('Loan applications raw data', data, raw);
+    console.log('Admin loan applications (all statuses)', data, raw);
 
     if (!response.ok) {
       throw new Error(buildErrorMessage({ status: response.status, data, raw }));
