@@ -40,12 +40,9 @@ class ApiConfig {
       _baseUrl = (data['baseUrl'] as String?)?.trim();
       final endpointsRaw = data['endpoints'] as Map<String, dynamic>?;
       if (endpointsRaw != null && endpointsRaw.isNotEmpty) {
-        _endpoints = {
-          ..._defaultEndpoints,
-          ...endpointsRaw.map(
-            (key, value) => MapEntry(key, value.toString()),
-          ),
-        };
+        _endpoints = endpointsRaw.map(
+          (key, value) => MapEntry(key, value.toString()),
+        );
       }
     } catch (_) {
       _baseUrl = null;

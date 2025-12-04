@@ -1,10 +1,6 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { URL } = require('url');
-
-const apiBaseUrl =
-  process.env.API_BASE_URL || 'https://grow-microfinance-api-production.up.railway.app';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,54 +9,6 @@ const port = process.env.PORT || 3000;
 const webBuildPath = path.join(__dirname, 'build', 'web');
 const indexHtmlPath = path.join(webBuildPath, 'index.html');
 const apiConfigPath = path.join(__dirname, 'assets', 'api_config.json');
-
-// Proxy API requests to avoid browser CORS failures when calling the backend
-app.options('/api/*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', req.get('Access-Control-Request-Headers') || '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.sendStatus(204);
-});
-
-app.use('/api', async (req, res) => {
-  try {
-    const targetUrl = new URL(req.originalUrl.replace(/^\/api/, ''), apiBaseUrl).toString();
-
-    const forbiddenHeaders = new Set([
-      'host',
-      'connection',
-      'content-length',
-      'accept-encoding',
-    ]);
-
-    const headers = Object.fromEntries(
-      Object.entries(req.headers).filter(([key]) => !forbiddenHeaders.has(key.toLowerCase()))
-    );
-
-    const chunks = [];
-    for await (const chunk of req) {
-      chunks.push(chunk);
-    }
-    const body = chunks.length ? Buffer.concat(chunks) : undefined;
-
-    const response = await fetch(targetUrl, {
-      method: req.method,
-      headers,
-      body: body && ['GET', 'HEAD'].includes(req.method) ? undefined : body,
-    });
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => {
-      if (key.toLowerCase() === 'content-encoding') return;
-      res.setHeader(key, value);
-    });
-
-    response.body?.pipe(res);
-  } catch (error) {
-    console.error('API proxy error', error);
-    res.status(502).json({ error: 'Failed to reach API', detail: error.message });
-  }
-});
 
 // Create a minimal placeholder build when the Flutter web output is missing
 if (!fs.existsSync(indexHtmlPath)) {
