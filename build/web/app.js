@@ -678,11 +678,26 @@ async function openApplicationDetail(appSummary, role) {
       applicationModalActions.appendChild(btn);
     };
 
+    const approvedAmount =
+      app?.approved_amount ??
+      app?.requested_amount ??
+      appSummary?.approved_amount ??
+      appSummary?.requested_amount;
+
+    const approvedTenure =
+      app?.approved_tenure ??
+      app?.tenure_months ??
+      appSummary?.approved_tenure ??
+      appSummary?.tenure_months;
+
     const handleApprove = async () => {
       try {
         setInlineAlert(applicationModalMessage, 'Submitting approval...', 'success');
         const endpointKey = role === 'staff' ? 'staffLoanApplicationApprove' : 'adminLoanApplicationApprove';
-        await api(endpoint(endpointKey, { id: appId }), { method: 'POST' });
+        await api(endpoint(endpointKey, { id: appId }), {
+          method: 'POST',
+          body: { approved_amount: approvedAmount, approved_tenure: approvedTenure },
+        });
         setInlineAlert(applicationModalMessage, 'Application approved.', 'success');
         closeApplicationDetail();
         if (role === 'staff') await loadStaff();
