@@ -614,6 +614,13 @@ function buildApplicationPayload() {
   };
 
   const typeSpecific = {};
+  const payload = {
+    loan_type: selectedLoanType,
+    loan_purpose: values.loan_purpose || '',
+    loan_details: loanDetails,
+    applicant_details: applicantDetails,
+    type_specific: typeSpecific,
+  };
   switch (selectedLoanType) {
     case 'Grow Online Business Loan':
       typeSpecific.store_url = values.store_url || '';
@@ -644,18 +651,22 @@ function buildApplicationPayload() {
       typeSpecific.group_savings_amount = Number(values.group_savings_amount) || 0;
       typeSpecific.group_business_activity = values.group_business_activity || '';
       typeSpecific.meeting_location = values.meeting_location || '';
+      payload.group_name = typeSpecific.group_name;
+      payload.number_of_members = typeSpecific.number_of_members;
+      payload.team_leader_name = typeSpecific.team_leader_name;
+      payload.team_leader_nic = typeSpecific.team_leader_nic;
+      payload.team_leader_mobile = typeSpecific.team_leader_mobile;
+      payload.group_savings_amount = typeSpecific.group_savings_amount;
+      payload.group_business_activity = typeSpecific.group_business_activity;
+      payload.meeting_location = typeSpecific.meeting_location;
+      payload.team_name = values.team_name || typeSpecific.group_name;
+      payload.member_count = values.member_count || typeSpecific.number_of_members;
       break;
     default:
       break;
   }
 
-  return {
-    loan_type: selectedLoanType,
-    loan_purpose: values.loan_purpose || '',
-    loan_details: loanDetails,
-    applicant_details: applicantDetails,
-    type_specific: typeSpecific,
-  };
+  return payload;
 }
 
 function hasValue(value) {
