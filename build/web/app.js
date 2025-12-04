@@ -105,6 +105,7 @@ const adminRefreshApplicationsBtn = document.querySelector('#admin-refresh-appli
 const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoansSection = document.querySelector('[data-section="loans"]');
+const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
 
 let adminLoansMessage;
 let adminLoansTableBody;
@@ -113,6 +114,12 @@ let adminLoansEmptyState;
 let adminLoansTable;
 let adminRefreshLoansBtn;
 let adminLoansInitialized = false;
+
+let adminLoanApplicationsMessage;
+let adminLoanApplicationsTableBody;
+let adminLoanApplicationsTable;
+let adminRefreshLoanApplicationsBtn;
+let adminLoanApplicationsInitialized = false;
 
 const staffPanel = document.querySelector('#staff-panel');
 const staffCollections = document.querySelector('#staff-collections');
@@ -174,6 +181,12 @@ let cachedStaffApplications = [];
 let cachedAdminApplications = [];
 let cachedActiveLoans = [];
 const adminLoansState = { loansLoading: false, loansError: null, loans: [], hasLoaded: false };
+const adminLoanApplicationsState = {
+  loanApplications: [],
+  loanApplicationsLoading: false,
+  loanApplicationsError: null,
+  hasLoaded: false,
+};
 let currentStep = 0;
 let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
@@ -392,6 +405,17 @@ function resetAdminLoansState() {
   if (adminLoansTableBody) adminLoansTableBody.innerHTML = '';
 }
 
+function resetAdminLoanApplicationsState() {
+  adminLoanApplicationsState.loanApplications = [];
+  adminLoanApplicationsState.loanApplicationsError = null;
+  adminLoanApplicationsState.loanApplicationsLoading = false;
+  adminLoanApplicationsState.hasLoaded = false;
+
+  if (!adminLoanApplicationsInitialized) return;
+  setInlineAlert(adminLoanApplicationsMessage, '');
+  if (adminLoanApplicationsTableBody) adminLoanApplicationsTableBody.innerHTML = '';
+}
+
 function ensureAdminLoansUI() {
   if (!adminLoansSection || adminLoansInitialized) return;
   adminLoansInitialized = true;
@@ -434,6 +458,94 @@ function ensureAdminLoansUI() {
   adminRefreshLoansBtn = adminLoansSection.querySelector('#admin-refresh-loans');
 
   adminRefreshLoansBtn?.addEventListener('click', () => loadAdminLoans(true));
+}
+
+function ensureAdminLoanApplicationsUI() {
+  if (!adminLoanApplicationsSection || adminLoanApplicationsInitialized) return;
+  adminLoanApplicationsInitialized = true;
+
+  adminLoanApplicationsMessage = adminLoanApplicationsSection.querySelector(
+    '#admin-loan-applications-message',
+  );
+  adminLoanApplicationsTableBody = adminLoanApplicationsSection.querySelector(
+    '#admin-loan-applications-body',
+  );
+  adminLoanApplicationsTable = adminLoanApplicationsSection.querySelector(
+    '#admin-loan-applications-table',
+  );
+  adminRefreshLoanApplicationsBtn = adminLoanApplicationsSection.querySelector(
+    '#admin-refresh-loan-applications',
+  );
+
+  setInlineAlert(adminLoanApplicationsMessage, '');
+  if (adminLoanApplicationsTableBody) adminLoanApplicationsTableBody.innerHTML = '';
+
+  adminRefreshLoanApplicationsBtn?.addEventListener('click', () => loadAdminLoanApplications(true));
+}
+
+function renderAdminLoanApplications() {
+  if (!adminLoanApplicationsInitialized || !adminLoanApplicationsTableBody) return;
+
+  const { loanApplicationsLoading, loanApplicationsError, loanApplications } = adminLoanApplicationsState;
+
+  setInlineAlert(adminLoanApplicationsMessage, loanApplicationsError || '', 'error');
+
+  const addRow = (content) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td colspan="6">${content}</td>`;
+    adminLoanApplicationsTableBody.appendChild(row);
+  };
+
+  adminLoanApplicationsTableBody.innerHTML = '';
+
+  if (loanApplicationsLoading) {
+    addRow('<p class="muted">Loading loan applications...</p>');
+    return;
+  }
+
+  if (loanApplicationsError) {
+    addRow(`<div class="alert error">${loanApplicationsError}</div>`);
+    return;
+  }
+
+  if (!loanApplications.length) {
+    addRow('<p class="muted">No loan applications found yet.</p>');
+    return;
+  }
+
+  loanApplications.forEach((application) => {
+    const row = document.createElement('tr');
+    const applicationNumber =
+      application.application_number ||
+      application.applicationNumber ||
+      application.id ||
+      application.application_id;
+    const customer =
+      application.customer_name ||
+      application.customer ||
+      application.full_name ||
+      application.applicant_details?.full_name ||
+      '—';
+    const loanType = application.loan_type || application.loan_details?.loan_type || '—';
+    const status = application.status || '—';
+    const appliedAmount = formatCurrency(
+      application.applied_amount || application.loan_details?.applied_amount || application.amount,
+    );
+    const submittedOn = formatDate(
+      application.created_at || application.createdAt || application.submitted_at || application.applied_at,
+    );
+
+    row.innerHTML = `
+      <td>${applicationNumber ? `#${applicationNumber}` : '—'}</td>
+      <td>${customer}</td>
+      <td>${loanType}</td>
+      <td>${status}</td>
+      <td>${appliedAmount}</td>
+      <td>${submittedOn || '—'}</td>
+    `;
+
+    adminLoanApplicationsTableBody.appendChild(row);
+  });
 }
 
 function renderAdminLoans() {
@@ -523,6 +635,37 @@ async function loadAdminLoans(force = false) {
   }
 }
 
+async function loadAdminLoanApplications(force = false) {
+  ensureAdminLoanApplicationsUI();
+  if (!adminLoanApplicationsSection || adminLoanApplicationsState.loanApplicationsLoading) return;
+
+  if (adminLoanApplicationsState.hasLoaded && !force) {
+    renderAdminLoanApplications();
+    return;
+  }
+
+  adminLoanApplicationsState.loanApplicationsLoading = true;
+  adminLoanApplicationsState.loanApplicationsError = null;
+  renderAdminLoanApplications();
+
+  try {
+    const response = await api(endpoint('adminLoanApplications'));
+    const applications = Array.isArray(response)
+      ? response
+      : response.applications || response.data || [];
+    adminLoanApplicationsState.loanApplications = applications;
+    adminLoanApplicationsState.hasLoaded = true;
+  } catch (error) {
+    console.error('Failed to load admin loan applications', error);
+    adminLoanApplicationsState.loanApplicationsError =
+      "Couldn't load loan applications. Please try again.";
+    adminLoanApplicationsState.hasLoaded = false;
+  } finally {
+    adminLoanApplicationsState.loanApplicationsLoading = false;
+    renderAdminLoanApplications();
+  }
+}
+
 function showAdminSection(section = 'dashboard') {
   if (!adminSections.length) return;
   const hasSection = Array.from(adminSections).some((el) => el.dataset.section === section);
@@ -542,6 +685,10 @@ function showAdminSection(section = 'dashboard') {
     ensureAdminLoansUI();
     renderAdminLoans();
     loadAdminLoans();
+  } else if (target === 'loan-applications') {
+    ensureAdminLoanApplicationsUI();
+    renderAdminLoanApplications();
+    loadAdminLoanApplications();
   }
 }
 
@@ -553,7 +700,10 @@ function togglePanels(role) {
 
   adminPanel.classList.toggle('hidden', role !== 'admin');
   if (role === 'admin') showAdminSection('dashboard');
-  else resetAdminLoansState();
+  else {
+    resetAdminLoansState();
+    resetAdminLoanApplicationsState();
+  }
   staffPanel.classList.toggle('hidden', role !== 'staff');
   customerPanel.classList.toggle('hidden', role !== 'customer');
 
