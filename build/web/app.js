@@ -635,8 +635,14 @@ function buildApplicationPayload() {
       typeSpecific.guarantor_contact = values.guarantor_contact || '';
       break;
     case 'Grow Team Loan':
-      typeSpecific.team_name = values.team_name || '';
-      typeSpecific.member_count = Number(values.member_count) || 0;
+      typeSpecific.group_name = values.group_name || values.team_name || '';
+      typeSpecific.number_of_members =
+        Number(values.number_of_members ?? values.member_count) || 0;
+      typeSpecific.team_leader_name = values.team_leader_name || '';
+      typeSpecific.team_leader_nic = values.team_leader_nic || '';
+      typeSpecific.team_leader_mobile = values.team_leader_mobile || '';
+      typeSpecific.group_savings_amount = Number(values.group_savings_amount) || 0;
+      typeSpecific.group_business_activity = values.group_business_activity || '';
       typeSpecific.meeting_location = values.meeting_location || '';
       break;
     default:
@@ -775,6 +781,13 @@ function normalizeApplicationPayload(payload) {
   ensureValue('platform', ['store_platform'], [typeSpecific]);
   ensureValue('online_store_link', ['store_url'], [typeSpecific]);
   ensureValue('online_store_name', ['store_platform', 'store_url'], [typeSpecific]);
+  ensureValue('group_name', ['team_name'], [typeSpecific]);
+  ensureValue('number_of_members', ['member_count', 'memberCount'], [typeSpecific]);
+  ensureValue('team_leader_name', ['leader_name'], [typeSpecific]);
+  ensureValue('team_leader_nic', ['leader_nic'], [typeSpecific]);
+  ensureValue('team_leader_mobile', ['leader_mobile', 'mobile_number', 'mobile'], [typeSpecific, applicant]);
+  ensureValue('group_savings_amount', ['savings_amount'], [typeSpecific]);
+  ensureValue('group_business_activity', ['business_activity'], [typeSpecific]);
 
   normalized.loan_type = mapLoanTypeToApi(normalized.loan_type || payload.loan_type);
   if (!hasValue(normalized.store_platform)) {
@@ -811,6 +824,30 @@ function normalizeApplicationPayload(payload) {
   if (hasValue(normalized.online_store_name)) {
     typeSpecific.online_store_name = normalized.online_store_name;
   }
+  if (hasValue(normalized.group_name)) {
+    typeSpecific.group_name = normalized.group_name;
+  }
+  if (hasValue(normalized.number_of_members)) {
+    typeSpecific.number_of_members = normalized.number_of_members;
+  }
+  if (hasValue(normalized.team_leader_name)) {
+    typeSpecific.team_leader_name = normalized.team_leader_name;
+  }
+  if (hasValue(normalized.team_leader_nic)) {
+    typeSpecific.team_leader_nic = normalizeNic(normalized.team_leader_nic);
+  }
+  if (hasValue(normalized.team_leader_mobile)) {
+    typeSpecific.team_leader_mobile = normalized.team_leader_mobile;
+  }
+  if (hasValue(normalized.group_savings_amount)) {
+    typeSpecific.group_savings_amount = Number(normalized.group_savings_amount) || 0;
+  }
+  if (hasValue(normalized.group_business_activity)) {
+    typeSpecific.group_business_activity = normalized.group_business_activity;
+  }
+  if (hasValue(normalized.meeting_location)) {
+    typeSpecific.meeting_location = normalized.meeting_location;
+  }
 
   Object.assign(normalized, applicant, loanDetails, typeSpecific);
   return normalized;
@@ -844,6 +881,18 @@ function updateReviewSummary() {
       ['Business address', data.type_specific.business_address || '—'],
       ['Business type', data.type_specific.business_type || '—'],
       ['Average monthly sales', formatCurrency(data.type_specific.monthly_sales)]
+    );
+  }
+  if (selectedLoanType === 'Grow Team Loan') {
+    typeSpecificRows.push(
+      ['Group name', data.type_specific.group_name || '—'],
+      ['Number of members', data.type_specific.number_of_members || '—'],
+      ['Team leader name', data.type_specific.team_leader_name || '—'],
+      ['Team leader NIC', data.type_specific.team_leader_nic || '—'],
+      ['Team leader mobile', data.type_specific.team_leader_mobile || '—'],
+      ['Group savings amount', formatCurrency(data.type_specific.group_savings_amount)],
+      ['Group business activity', data.type_specific.group_business_activity || '—'],
+      ['Meeting location', data.type_specific.meeting_location || '—']
     );
   }
 
