@@ -628,7 +628,9 @@ function buildApplicationPayload() {
       break;
     case 'Grow Personal Loan':
       typeSpecific.employment_status = values.employment_status || '';
+      typeSpecific.employment_type = values.employment_type || '';
       typeSpecific.employer_name = values.employer_name || '';
+      typeSpecific.net_monthly_salary = Number(values.net_monthly_salary) || 0;
       typeSpecific.guarantor_name = values.guarantor_name || '';
       typeSpecific.guarantor_contact = values.guarantor_contact || '';
       break;
