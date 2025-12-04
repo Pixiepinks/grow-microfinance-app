@@ -1,7 +1,5 @@
-const envBaseUrl = typeof window !== 'undefined' ? window.API_BASE_URL : undefined;
-
 const defaultApiConfig = {
-  baseUrl: envBaseUrl || 'https://grow-microfinance-api-production.up.railway.app',
+  baseUrl: 'https://grow-microfinance-api-production.up.railway.app',
   endpoints: {
     login: '/auth/login',
     adminDashboard: '/admin/dashboard',
@@ -175,9 +173,8 @@ async function loadApiConfig() {
     const response = await fetch('/api_config.json');
     if (!response.ok) throw new Error('Failed to load api_config.json');
     const data = await response.json();
-    const baseUrl = envBaseUrl || data.baseUrl || defaultApiConfig.baseUrl;
     apiConfig = {
-      baseUrl,
+      baseUrl: data.baseUrl || defaultApiConfig.baseUrl,
       endpoints: { ...defaultApiConfig.endpoints, ...(data.endpoints || {}) },
     };
   } catch (error) {
