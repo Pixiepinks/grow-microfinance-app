@@ -326,12 +326,45 @@
                         </div>
 
                         <div class="form-field type-specific" data-type="Grow Team Loan">
-                          <span>Team / group name</span>
-                          <input type="text" name="team_name" />
+                          <span>Group name</span>
+                          <input type="text" name="group_name" required />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Number of members</span>
-                          <input type="number" name="member_count" min="1" step="1" />
+                          <input
+                            type="number"
+                            name="number_of_members"
+                            min="1"
+                            step="1"
+                            required
+                          />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Team leader name</span>
+                          <input type="text" name="team_leader_name" required />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Team leader NIC</span>
+                          <input type="text" name="team_leader_nic" required />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Team leader mobile</span>
+                          <input type="tel" name="team_leader_mobile" required />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Group savings amount (LKR)</span>
+                          <input
+                            type="number"
+                            name="group_savings_amount"
+                            inputmode="decimal"
+                            min="0"
+                            step="0.01"
+                            required
+                          />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Team Loan">
+                          <span>Group business activity</span>
+                          <input type="text" name="group_business_activity" required />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Meeting location / time</span>
