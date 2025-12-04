@@ -294,15 +294,33 @@ async function api(path, { method = 'GET', body } = {}) {
   // send an empty object to avoid framework parsers returning HTML 400 pages.
   const payload = body !== undefined ? JSON.stringify(body) : shouldSendJson ? '{}' : undefined;
 
-  const response = await fetch(`${apiConfig.baseUrl}${path}`, {
-    method,
-    headers,
-    body: payload,
-  });
+  let response;
+  try {
+    response = await fetch(`${apiConfig.baseUrl}${path}`, {
+      method,
+      headers,
+      body: payload,
+    });
+  } catch (networkError) {
+    console.error('Network error during API request', {
+      path,
+      method,
+      error: networkError,
+    });
+    throw new Error("Couldn't reach the server. Please check your connection.");
+  }
 
   const { data, raw } = await parseResponse(response.clone());
   const enrichedData = response.ok ? attachIdFromLocation(data, response.headers) : data;
   if (!response.ok) {
+    console.error('API request failed', {
+      path,
+      method,
+      status: response.status,
+      headers: Object.fromEntries(response.headers?.entries?.() || []),
+      body: raw,
+      data: enrichedData,
+    });
     const message = buildErrorMessage({ status: response.status, data: enrichedData, raw });
     throw new Error(message);
   }
@@ -561,12 +579,14 @@ async function loadStaff() {
       staffApplications,
       staffApplicationsMessage,
       applications,
-      'No applications waiting for review.',
+      'No applications awaiting review.',
       (app) => openApplicationDetail(app, 'staff'),
     );
   } catch (error) {
-    console.error(error);
-    setInlineAlert(staffApplicationsMessage, error.message || 'Failed to load staff data', 'error');
+    console.error('Failed to load staff data', error);
+    const friendly = "Couldn't load applications – tap Refresh to try again.";
+    const details = error?.message ? ` (${error.message})` : '';
+    setInlineAlert(staffApplicationsMessage, `${friendly}${details}`, 'error');
   }
 }
 

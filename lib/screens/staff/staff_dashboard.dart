@@ -1,7 +1,11 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/loan_application.dart';
 import '../../services/loan_application_service.dart';
+import '../../services/api_client.dart';
 import '../../services/staff_repository.dart';
 import '../../widgets/dashboard_card.dart';
 import '../customer_registration_screen.dart';
@@ -65,13 +69,33 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     });
     try {
       final apps = await widget.loanApplicationService
-          .listApplications(status: 'SUBMITTED');
+          .listStaffSubmittedApplications();
       setState(() => _submittedApplications = apps);
-    } catch (e) {
-      setState(() => _applicationsError = e.toString());
+    } catch (e, stackTrace) {
+      _logApplicationError(e, stackTrace);
+      setState(() => _applicationsError = _formatError(e));
     } finally {
       setState(() => _loadingApplications = false);
     }
+  }
+
+  void _logApplicationError(Object error, StackTrace stackTrace) {
+    debugPrint('Failed to load submitted applications: $error');
+    debugPrint(stackTrace.toString());
+    if (error is ApiException) {
+      try {
+        debugPrint('Response body: ${jsonEncode(error.body)}');
+      } catch (_) {
+        debugPrint('Response body (raw): ${error.body}');
+      }
+    }
+  }
+
+  String _formatError(Object error) {
+    if (error is ApiException && error.message.isNotEmpty) {
+      return error.message;
+    }
+    return error.toString();
   }
 
   void _showPaymentSheet({String? loanId}) {
@@ -340,7 +364,22 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                     DashboardCard(
                       title: 'Error',
                       icon: Icons.error_outline,
-                      child: Text(_applicationsError!),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Couldn't load applications – pull to refresh to try again.",
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _applicationsError!,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: Theme.of(context).colorScheme.error),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 )
@@ -349,8 +388,9 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                       children: const [
                         Padding(
                           padding: EdgeInsets.all(24),
-                          child:
-                              Center(child: Text('No applications waiting for review.')),
+                          child: Center(
+                            child: Text('No applications awaiting review.'),
+                          ),
                         ),
                       ],
                     )
