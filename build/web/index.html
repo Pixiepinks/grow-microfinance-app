@@ -136,9 +136,13 @@
                       <h2>Loan Applications</h2>
                       <p class="muted">View and manage all loan applications.</p>
                     </div>
+                    <button id="admin-refresh-loan-applications" class="ghost" type="button">
+                      Refresh
+                    </button>
                   </div>
+                  <div id="admin-loan-applications-message" class="alert hidden"></div>
                   <div class="subcard">
-                    <table class="placeholder-table">
+                    <table id="admin-loan-applications-table" class="placeholder-table">
                       <thead>
                         <tr>
                           <th>Application No</th>
@@ -149,32 +153,7 @@
                           <th>Submitted On</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        <tr>
-                          <td>#1042</td>
-                          <td>Amina Yusuf</td>
-                          <td>Grow Business Loan</td>
-                          <td>Staff Approved</td>
-                          <td>$8,000.00</td>
-                          <td>Aug 12, 2024</td>
-                        </tr>
-                        <tr>
-                          <td>#1043</td>
-                          <td>Samuel Tetteh</td>
-                          <td>Grow Personal Loan</td>
-                          <td>Submitted</td>
-                          <td>$2,500.00</td>
-                          <td>Aug 14, 2024</td>
-                        </tr>
-                        <tr>
-                          <td>#1044</td>
-                          <td>Grace Dede</td>
-                          <td>Grow Team Loan</td>
-                          <td>Under Review</td>
-                          <td>$12,000.00</td>
-                          <td>Aug 15, 2024</td>
-                        </tr>
-                      </tbody>
+                      <tbody id="admin-loan-applications-body"></tbody>
                     </table>
                   </div>
                 </section>
