@@ -468,7 +468,7 @@ function ensureAdminLoanApplicationsUI() {
     '#admin-loan-applications-message',
   );
   adminLoanApplicationsTableBody = adminLoanApplicationsSection.querySelector(
-    '#admin-loan-applications-body',
+    '#loan-applications-body',
   );
   adminLoanApplicationsTable = adminLoanApplicationsSection.querySelector(
     '#admin-loan-applications-table',
@@ -483,69 +483,54 @@ function ensureAdminLoanApplicationsUI() {
   adminRefreshLoanApplicationsBtn?.addEventListener('click', () => loadAdminLoanApplications(true));
 }
 
-function renderAdminLoanApplications() {
-  if (!adminLoanApplicationsInitialized || !adminLoanApplicationsTableBody) return;
+function renderAdminLoanApplicationsTable(applications) {
+  const tbody = document.getElementById('loan-applications-body');
+  if (!tbody) return;
 
-  const { loanApplicationsLoading, loanApplicationsError, loanApplications } = adminLoanApplicationsState;
+  tbody.innerHTML = '';
 
-  setInlineAlert(adminLoanApplicationsMessage, loanApplicationsError || '', 'error');
-
-  const addRow = (content) => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td colspan="6">${content}</td>`;
-    adminLoanApplicationsTableBody.appendChild(row);
-  };
-
-  adminLoanApplicationsTableBody.innerHTML = '';
-
-  if (loanApplicationsLoading) {
-    addRow('<p class="muted">Loading loan applications...</p>');
+  if (!applications || !applications.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td colspan="6" class="text-center text-muted">
+        No loan applications found
+      </td>
+    `;
+    tbody.appendChild(tr);
     return;
   }
 
-  if (loanApplicationsError) {
-    addRow(`<div class="alert error">${loanApplicationsError}</div>`);
-    return;
-  }
+  applications.forEach((app) => {
+    const tr = document.createElement('tr');
 
-  if (!loanApplications.length) {
-    addRow('<p class="muted">No loan applications found yet.</p>');
-    return;
-  }
+    const applicationNumber = app.application_number || '-';
+    const customerName = app.customer_name || '-';
+    const loanType = app.loan_type || '-';
+    const status = app.status || '-';
+    const appliedAmount = app.applied_amount ?? 0;
+    const submittedAt = app.submitted_at || app.created_at || null;
 
-  loanApplications.forEach((application) => {
-    const row = document.createElement('tr');
-    const applicationNumber =
-      application.application_number ||
-      application.applicationNumber ||
-      application.id ||
-      application.application_id;
-    const customer =
-      application.customer_name ||
-      application.customer ||
-      application.full_name ||
-      application.applicant_details?.full_name ||
-      '—';
-    const loanType = application.loan_type || application.loan_details?.loan_type || '—';
-    const status = application.status || '—';
-    const appliedAmount = formatCurrency(
-      application.applied_amount || application.loan_details?.applied_amount || application.amount,
-    );
-    const submittedOn = formatDate(
-      application.created_at || application.createdAt || application.submitted_at || application.applied_at,
-    );
-
-    row.innerHTML = `
-      <td>${applicationNumber ? `#${applicationNumber}` : '—'}</td>
-      <td>${customer}</td>
+    tr.innerHTML = `
+      <td>${applicationNumber}</td>
+      <td>${customerName}</td>
       <td>${loanType}</td>
       <td>${status}</td>
-      <td>${appliedAmount}</td>
-      <td>${submittedOn || '—'}</td>
+      <td>${Number(appliedAmount).toLocaleString('en-LK', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      })}</td>
+      <td>${submittedAt ? new Date(submittedAt).toLocaleString() : '-'}</td>
     `;
 
-    adminLoanApplicationsTableBody.appendChild(row);
+    tbody.appendChild(tr);
   });
+}
+
+function renderAdminLoanApplications() {
+  if (!adminLoanApplicationsInitialized) return;
+
+  setInlineAlert(adminLoanApplicationsMessage, adminLoanApplicationsState.loanApplicationsError || '', 'error');
+  renderAdminLoanApplicationsTable(adminLoanApplicationsState.loanApplications);
 }
 
 function renderAdminLoans() {
@@ -639,6 +624,9 @@ async function loadAdminLoanApplications(force = false) {
   ensureAdminLoanApplicationsUI();
   if (!adminLoanApplicationsSection || adminLoanApplicationsState.loanApplicationsLoading) return;
 
+  const session = getSession();
+  if (!session || !session.token) return;
+
   if (adminLoanApplicationsState.hasLoaded && !force) {
     renderAdminLoanApplications();
     return;
@@ -649,16 +637,30 @@ async function loadAdminLoanApplications(force = false) {
   renderAdminLoanApplications();
 
   try {
-    const response = await api(endpoint('loanApplications'));
-    const applications = Array.isArray(response)
-      ? response
-      : response.applications || response.data || [];
+    const url = `${apiConfig.baseUrl}${endpoint('loanApplications')}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const { data, raw } = await parseResponse(response);
+    console.log('Loan applications raw data', data, raw);
+
+    if (!response.ok) {
+      throw new Error(buildErrorMessage({ status: response.status, data, raw }));
+    }
+
+    const applications = Array.isArray(data) ? data : [];
     adminLoanApplicationsState.loanApplications = applications;
     adminLoanApplicationsState.hasLoaded = true;
   } catch (error) {
     console.error('Failed to load admin loan applications', error);
     adminLoanApplicationsState.loanApplicationsError =
-      "Couldn't load loan applications. Please try again.";
+      error?.message || "Couldn't load loan applications. Please try again.";
     adminLoanApplicationsState.hasLoaded = false;
   } finally {
     adminLoanApplicationsState.loanApplicationsLoading = false;
