@@ -8,7 +8,7 @@ const defaultApiConfig = {
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
     staffActiveLoans: '/staff/active-loans',
-    staffLoanApplications: '/staff/loan-applications',
+    staffLoanApplications: '/loan-applications',
     staffLoanApplicationApprove: '/loan-applications/{id}/staff-approve',
     loanApplicationReject: '/loan-applications/{id}/reject',
     loanRepayments: '/loans/{id}/repayments',
@@ -295,16 +295,16 @@ async function api(path, { method = 'GET', body } = {}) {
   const payload = body !== undefined ? JSON.stringify(body) : shouldSendJson ? '{}' : undefined;
 
   let response;
+  const url = `${apiConfig.baseUrl}${path}`;
+  const requestOptions = { method, headers, body: payload };
   try {
-    response = await fetch(`${apiConfig.baseUrl}${path}`, {
-      method,
-      headers,
-      body: payload,
-    });
+    response = await fetch(url, requestOptions);
   } catch (networkError) {
     console.error('Network error during API request', {
+      url,
       path,
       method,
+      options: { ...requestOptions, headers: { ...requestOptions.headers, Authorization: requestOptions.headers?.Authorization ? '[REDACTED]' : undefined } },
       error: networkError,
     });
     throw new Error("Couldn't reach the server. Please check your connection.");
