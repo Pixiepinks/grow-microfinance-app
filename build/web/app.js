@@ -678,17 +678,27 @@ async function openApplicationDetail(appSummary, role) {
       applicationModalActions.appendChild(btn);
     };
 
-    const approvedAmount =
-      app?.approved_amount ??
-      app?.requested_amount ??
-      appSummary?.approved_amount ??
-      appSummary?.requested_amount;
+      const approvedAmount =
+        app?.approved_amount ??
+        app?.applied_amount ??
+        app?.loan_details?.applied_amount ??
+        app?.amount ??
+        app?.requested_amount ??
+        appSummary?.approved_amount ??
+        appSummary?.applied_amount ??
+        appSummary?.loan_details?.applied_amount ??
+        appSummary?.amount ??
+        appSummary?.requested_amount;
 
-    const approvedTenure =
-      app?.approved_tenure ??
-      app?.tenure_months ??
-      appSummary?.approved_tenure ??
-      appSummary?.tenure_months;
+      const approvedTenure =
+        app?.approved_tenure ??
+        app?.tenure_months ??
+        app?.loan_details?.loan_tenure ??
+        app?.tenure ??
+        appSummary?.approved_tenure ??
+        appSummary?.tenure_months ??
+        appSummary?.loan_details?.loan_tenure ??
+        appSummary?.tenure;
 
     const handleApprove = async () => {
       try {
