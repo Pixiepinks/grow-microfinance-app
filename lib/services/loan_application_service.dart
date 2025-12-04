@@ -68,7 +68,28 @@ class LoanApplicationService {
   }
 
   Future<List<LoanApplication>> listMyApplications({String? customerId}) async {
-    final query = customerId != null ? '?customer_id=$customerId' : '';
+    return listApplications(customerId: customerId);
+  }
+
+  Future<List<LoanApplication>> listApplications({
+    String? status,
+    String? customerId,
+  }) async {
+    final params = <String, String>{};
+    if (status != null && status.isNotEmpty) {
+      params['status'] = status;
+    }
+    if (customerId != null && customerId.isNotEmpty) {
+      params['customer_id'] = customerId;
+    }
+
+    final query = params.entries.isEmpty
+        ? ''
+        : '?' +
+            params.entries
+                .map((entry) => '${entry.key}=${Uri.encodeComponent(entry.value)}')
+                .join('&');
+
     final list = await _client.getJsonList(
       '${ApiConfig.endpoint('loanApplications')}$query',
     );
@@ -101,6 +122,27 @@ class LoanApplicationService {
       // prevents submissions due to missing required documents.
       fieldName: 'file',
       fields: {'document_type': documentType},
+    );
+  }
+
+  Future<void> staffApprove(String id) async {
+    await _client.postJson(
+      ApiConfig.endpoint('staffLoanApplicationApprove', params: {'id': id}),
+    );
+  }
+
+  Future<void> finalApprove(String id) async {
+    await _client.postJson(
+      ApiConfig.endpoint('adminLoanApplicationApprove', params: {'id': id}),
+    );
+  }
+
+  Future<void> reject(String id, {String? reason}) async {
+    await _client.postJson(
+      ApiConfig.endpoint('loanApplicationReject', params: {'id': id}),
+      body: {
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      },
     );
   }
 

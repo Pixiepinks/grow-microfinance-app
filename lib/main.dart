@@ -115,10 +115,16 @@ class _HomeShellState extends State<_HomeShell> {
     Widget body;
     switch (widget.role.toLowerCase()) {
       case 'admin':
-        body = AdminDashboardScreen(repository: widget.adminRepository);
+        body = AdminDashboardScreen(
+          repository: widget.adminRepository,
+          loanApplicationService: widget.loanApplicationService,
+        );
         break;
       case 'staff':
-        body = StaffDashboardScreen(repository: widget.staffRepository);
+        body = StaffDashboardScreen(
+          repository: widget.staffRepository,
+          loanApplicationService: widget.loanApplicationService,
+        );
         break;
       case 'customer':
       default:
