@@ -72,33 +72,383 @@
 
         <section id="dashboards" class="grid hidden">
           <div id="admin-panel" class="card hidden">
-            <div class="card-header">
-              <div>
-                <div class="eyebrow">Admin</div>
-                <h2>Platform overview</h2>
-              </div>
-            </div>
-            <div class="stack">
-              <div class="subcard">
-                <div class="card-header">
-                  <div>
-                    <div class="eyebrow">Portfolio</div>
-                    <h3>Metrics</h3>
-                  </div>
+            <div class="admin-layout">
+              <aside class="admin-sidebar">
+                <div class="sidebar-header">
+                  <div class="eyebrow">Admin</div>
+                  <h3>Navigation</h3>
+                  <p class="muted">Quick links to manage the platform.</p>
                 </div>
-                <div id="admin-metrics" class="metric-grid"></div>
-              </div>
+                <div class="admin-menu" role="tablist" aria-label="Admin navigation">
+                  <button class="admin-menu-item active" type="button" data-section="dashboard">Dashboard</button>
+                  <button class="admin-menu-item" type="button" data-section="loan-applications">Loan Applications</button>
+                  <button class="admin-menu-item" type="button" data-section="customers">Customers</button>
+                  <button class="admin-menu-item" type="button" data-section="loans">Loans</button>
+                  <button class="admin-menu-item" type="button" data-section="collections">Collections</button>
+                  <button class="admin-menu-item" type="button" data-section="payments">Payments</button>
+                  <button class="admin-menu-item" type="button" data-section="staff-roles">Staff &amp; Roles</button>
+                  <button class="admin-menu-item" type="button" data-section="documents">Documents</button>
+                  <button class="admin-menu-item" type="button" data-section="risk">Risk Management</button>
+                  <button class="admin-menu-item" type="button" data-section="reports">Reports</button>
+                  <button class="admin-menu-item" type="button" data-section="settings">Settings</button>
+                  <button class="admin-menu-item" type="button" data-section="audit">Audit Logs</button>
+                </div>
+              </aside>
 
-              <div class="subcard">
-                <div class="card-header">
-                  <div>
-                    <div class="eyebrow">Applications</div>
-                    <h3>Awaiting final approval</h3>
+              <div class="admin-content">
+                <section class="admin-section" data-section="dashboard">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Admin</div>
+                      <h2>Platform overview</h2>
+                      <p class="muted">Portfolio summary and approvals.</p>
+                    </div>
                   </div>
-                  <button id="admin-refresh-applications" class="ghost" type="button">Refresh</button>
-                </div>
-                <div id="admin-applications-message" class="alert hidden"></div>
-                <div id="admin-applications" class="list"></div>
+                  <div class="stack">
+                    <div class="subcard">
+                      <div class="card-header">
+                        <div>
+                          <div class="eyebrow">Portfolio</div>
+                          <h3>Metrics</h3>
+                        </div>
+                      </div>
+                      <div id="admin-metrics" class="metric-grid"></div>
+                    </div>
+
+                    <div class="subcard">
+                      <div class="card-header">
+                        <div>
+                          <div class="eyebrow">Applications</div>
+                          <h3>Awaiting final approval</h3>
+                        </div>
+                        <button id="admin-refresh-applications" class="ghost" type="button">Refresh</button>
+                      </div>
+                      <div id="admin-applications-message" class="alert hidden"></div>
+                      <div id="admin-applications" class="list"></div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="loan-applications">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Workflows</div>
+                      <h2>Loan Applications</h2>
+                      <p class="muted">View and manage all loan applications.</p>
+                    </div>
+                  </div>
+                  <div class="subcard">
+                    <table class="placeholder-table">
+                      <thead>
+                        <tr>
+                          <th>Application No</th>
+                          <th>Customer</th>
+                          <th>Loan Type</th>
+                          <th>Status</th>
+                          <th>Applied Amount</th>
+                          <th>Submitted On</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>#1042</td>
+                          <td>Amina Yusuf</td>
+                          <td>Grow Business Loan</td>
+                          <td>Staff Approved</td>
+                          <td>$8,000.00</td>
+                          <td>Aug 12, 2024</td>
+                        </tr>
+                        <tr>
+                          <td>#1043</td>
+                          <td>Samuel Tetteh</td>
+                          <td>Grow Personal Loan</td>
+                          <td>Submitted</td>
+                          <td>$2,500.00</td>
+                          <td>Aug 14, 2024</td>
+                        </tr>
+                        <tr>
+                          <td>#1044</td>
+                          <td>Grace Dede</td>
+                          <td>Grow Team Loan</td>
+                          <td>Under Review</td>
+                          <td>$12,000.00</td>
+                          <td>Aug 15, 2024</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="customers">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">People</div>
+                      <h2>Customers</h2>
+                      <p class="muted">Manage customer profiles and KYC status.</p>
+                    </div>
+                  </div>
+                  <div class="subcard">
+                    <ul class="bullet-list">
+                      <li>All Customers</li>
+                      <li>KYC Verification Queue</li>
+                      <li>Risk Profiles (COMING SOON)</li>
+                    </ul>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="loans">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Portfolio</div>
+                      <h2>Loans</h2>
+                      <p class="muted">Monitor active, overdue, and closed loans.</p>
+                    </div>
+                  </div>
+                  <div class="metric-grid">
+                    <div class="metric">
+                      <div class="metric-label">Active Loans</div>
+                      <div class="metric-value">218</div>
+                      <div class="metric-hint">Currently being repaid</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">Overdue Loans</div>
+                      <div class="metric-value">27</div>
+                      <div class="metric-hint">Past due &amp; flagged</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">Settled Loans</div>
+                      <div class="metric-value">540</div>
+                      <div class="metric-hint">Fully repaid to date</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="collections">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Field ops</div>
+                      <h2>Collections</h2>
+                      <p class="muted">Track payments and field collections.</p>
+                    </div>
+                  </div>
+                  <div class="subcard">
+                    <ul class="bullet-list">
+                      <li>Today&rsquo;s Collections</li>
+                      <li>Upcoming Payments</li>
+                      <li>Missed Payments (COMING SOON)</li>
+                    </ul>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="payments">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Finance</div>
+                      <h2>Payments</h2>
+                      <p class="muted">Review and reconcile payments.</p>
+                    </div>
+                  </div>
+                  <div class="subcard">
+                    <table class="placeholder-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Customer</th>
+                          <th>Loan</th>
+                          <th>Amount</th>
+                          <th>Method</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>Aug 16, 2024</td>
+                          <td>Kwesi Boateng</td>
+                          <td>#3021</td>
+                          <td>$250.00</td>
+                          <td>Mobile Money</td>
+                          <td>Posted</td>
+                        </tr>
+                        <tr>
+                          <td>Aug 15, 2024</td>
+                          <td>Efua Mensah</td>
+                          <td>#2978</td>
+                          <td>$410.00</td>
+                          <td>Bank Transfer</td>
+                          <td>Pending</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="staff-roles">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Team</div>
+                      <h2>Staff &amp; Roles</h2>
+                      <p class="muted">Manage staff accounts and permissions.</p>
+                    </div>
+                  </div>
+                  <div class="subcard">
+                    <ul class="bullet-list">
+                      <li>Staff list</li>
+                      <li>Role definitions</li>
+                      <li>Approval hierarchy (COMING SOON)</li>
+                    </ul>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="documents">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Compliance</div>
+                      <h2>Documents</h2>
+                      <p class="muted">KYC and application document management.</p>
+                    </div>
+                  </div>
+                  <div class="subcard-grid">
+                    <div class="subcard">
+                      <div class="card-header">
+                        <div>
+                          <div class="eyebrow">Status</div>
+                          <h3>Pending Verification</h3>
+                        </div>
+                      </div>
+                      <p class="muted">Documents awaiting review.</p>
+                    </div>
+                    <div class="subcard">
+                      <div class="card-header">
+                        <div>
+                          <div class="eyebrow">Quality</div>
+                          <h3>Rejected Documents</h3>
+                        </div>
+                      </div>
+                      <p class="muted">Items needing re-submission.</p>
+                    </div>
+                    <div class="subcard">
+                      <div class="card-header">
+                        <div>
+                          <div class="eyebrow">Archive</div>
+                          <h3>All Documents (COMING SOON)</h3>
+                        </div>
+                      </div>
+                      <p class="muted">Central document repository.</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="risk">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Risk</div>
+                      <h2>Risk Management</h2>
+                      <p class="muted">Monitor portfolio and credit risk.</p>
+                    </div>
+                  </div>
+                  <div class="metric-grid">
+                    <div class="metric">
+                      <div class="metric-label">Portfolio at Risk (PAR)</div>
+                      <div class="metric-value">4.8%</div>
+                      <div class="metric-hint">30+ days</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">High-risk customers</div>
+                      <div class="metric-value">19</div>
+                      <div class="metric-hint">Flagged for review</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">Fraud checks (COMING SOON)</div>
+                      <div class="metric-value">—</div>
+                      <div class="metric-hint">Automated signals</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="reports">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Insights</div>
+                      <h2>Reports</h2>
+                      <p class="muted">Portfolio, collections, and performance reports.</p>
+                    </div>
+                  </div>
+                  <div class="subcard">
+                    <ul class="bullet-list">
+                      <li>Loan Portfolio Report</li>
+                      <li>Collections Report</li>
+                      <li>Delinquency Report</li>
+                      <li>Staff Performance Report</li>
+                    </ul>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="settings">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Configuration</div>
+                      <h2>Settings</h2>
+                      <p class="muted">Configure loan products and system behavior.</p>
+                    </div>
+                  </div>
+                  <div class="subcard-grid">
+                    <div class="subcard">
+                      <h3>Loan Products</h3>
+                      <p class="muted">Define terms, fees, and amounts.</p>
+                    </div>
+                    <div class="subcard">
+                      <h3>Penalty Rules</h3>
+                      <p class="muted">Grace periods, penalties, and waivers.</p>
+                    </div>
+                    <div class="subcard">
+                      <h3>Notifications &amp; Templates</h3>
+                      <p class="muted">Emails, SMS, and in-app alerts.</p>
+                    </div>
+                    <div class="subcard">
+                      <h3>Branding</h3>
+                      <p class="muted">Logos, colors, and copy.</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="audit">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Governance</div>
+                      <h2>Audit Logs</h2>
+                      <p class="muted">Track system changes and approvals.</p>
+                    </div>
+                  </div>
+                  <div class="subcard">
+                    <table class="placeholder-table">
+                      <thead>
+                        <tr>
+                          <th>Timestamp</th>
+                          <th>User</th>
+                          <th>Action</th>
+                          <th>Target</th>
+                          <th>Details</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>Aug 16, 2024 09:22</td>
+                          <td>Admin</td>
+                          <td>Approved Application</td>
+                          <td>#1042</td>
+                          <td>Staff-reviewed item finalised.</td>
+                        </tr>
+                        <tr>
+                          <td>Aug 15, 2024 17:40</td>
+                          <td>Compliance</td>
+                          <td>Updated KYC</td>
+                          <td>Grace Dede</td>
+                          <td>ID document refreshed.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               </div>
             </div>
           </div>

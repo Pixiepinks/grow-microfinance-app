@@ -102,6 +102,17 @@ const adminMetrics = document.querySelector('#admin-metrics');
 const adminApplications = document.querySelector('#admin-applications');
 const adminApplicationsMessage = document.querySelector('#admin-applications-message');
 const adminRefreshApplicationsBtn = document.querySelector('#admin-refresh-applications');
+const adminMenuItems = document.querySelectorAll('.admin-menu-item');
+const adminSections = document.querySelectorAll('.admin-section');
+const adminLoansSection = document.querySelector('[data-section="loans"]');
+
+let adminLoansMessage;
+let adminLoansTableBody;
+let adminLoansLoadingText;
+let adminLoansEmptyState;
+let adminLoansTable;
+let adminRefreshLoansBtn;
+let adminLoansInitialized = false;
 
 const staffPanel = document.querySelector('#staff-panel');
 const staffCollections = document.querySelector('#staff-collections');
@@ -162,6 +173,7 @@ let cachedApplications = [];
 let cachedStaffApplications = [];
 let cachedAdminApplications = [];
 let cachedActiveLoans = [];
+const adminLoansState = { loansLoading: false, loansError: null, loans: [], hasLoaded: false };
 let currentStep = 0;
 let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
@@ -366,6 +378,173 @@ function setInlineAlert(target, text, type = 'success') {
   target.classList.toggle('hidden', !text);
 }
 
+function resetAdminLoansState() {
+  adminLoansState.loans = [];
+  adminLoansState.loansError = null;
+  adminLoansState.loansLoading = false;
+  adminLoansState.hasLoaded = false;
+
+  if (!adminLoansInitialized) return;
+  setInlineAlert(adminLoansMessage, '');
+  adminLoansLoadingText?.classList.add('hidden');
+  adminLoansEmptyState?.classList.add('hidden');
+  adminLoansTable?.classList.add('hidden');
+  if (adminLoansTableBody) adminLoansTableBody.innerHTML = '';
+}
+
+function ensureAdminLoansUI() {
+  if (!adminLoansSection || adminLoansInitialized) return;
+  adminLoansInitialized = true;
+
+  adminLoansSection.innerHTML = `
+    <div class="card-header">
+      <div>
+        <div class="eyebrow">Portfolio</div>
+        <h2>Loans</h2>
+        <p class="muted">Approved / active loans created from applications.</p>
+      </div>
+      <button id="admin-refresh-loans" class="ghost" type="button">Refresh</button>
+    </div>
+    <div id="admin-loans-message" class="alert hidden"></div>
+    <div class="subcard">
+      <p id="admin-loans-loading" class="muted">Loading loans...</p>
+      <p id="admin-loans-empty" class="muted hidden">No approved loans found yet.</p>
+      <table id="admin-loans-table" class="placeholder-table">
+        <thead>
+          <tr>
+            <th>Loan #</th>
+            <th>Customer</th>
+            <th>Loan Type</th>
+            <th>Approved Amount</th>
+            <th>Tenure (months)</th>
+            <th>Status</th>
+            <th>Approved At</th>
+          </tr>
+        </thead>
+        <tbody id="admin-loans-body"></tbody>
+      </table>
+    </div>
+  `;
+
+  adminLoansMessage = adminLoansSection.querySelector('#admin-loans-message');
+  adminLoansTableBody = adminLoansSection.querySelector('#admin-loans-body');
+  adminLoansLoadingText = adminLoansSection.querySelector('#admin-loans-loading');
+  adminLoansEmptyState = adminLoansSection.querySelector('#admin-loans-empty');
+  adminLoansTable = adminLoansSection.querySelector('#admin-loans-table');
+  adminRefreshLoansBtn = adminLoansSection.querySelector('#admin-refresh-loans');
+
+  adminRefreshLoansBtn?.addEventListener('click', () => loadAdminLoans(true));
+}
+
+function renderAdminLoans() {
+  if (!adminLoansInitialized) return;
+  const { loansLoading, loansError, loans } = adminLoansState;
+
+  setInlineAlert(adminLoansMessage, loansError || '', 'error');
+
+  adminLoansLoadingText?.classList.toggle('hidden', !loansLoading);
+
+  if (loansLoading) {
+    adminLoansEmptyState?.classList.add('hidden');
+    adminLoansTable?.classList.add('hidden');
+    adminLoansTableBody.innerHTML = '';
+    return;
+  }
+
+  if (loansError) {
+    adminLoansEmptyState?.classList.add('hidden');
+    adminLoansTable?.classList.add('hidden');
+    adminLoansTableBody.innerHTML = '';
+    return;
+  }
+
+  adminLoansEmptyState?.classList.toggle('hidden', loans.length !== 0);
+  adminLoansTable?.classList.toggle('hidden', loans.length === 0);
+  adminLoansTableBody.innerHTML = '';
+
+  loans.forEach((loan) => {
+    const row = document.createElement('tr');
+    const loanId = loan.application_number || loan.application_id || loan.id;
+    const customer = loan.customer_name || loan.customer || loan.applicant_name || '—';
+    const loanType = loan.loan_type || loan.loan_details?.loan_type || loan.loanDetails?.loan_type || '—';
+    const approvedAmount =
+      loan.approved_amount ??
+      loan.amount ??
+      loan.applied_amount ??
+      loan.loan_details?.approved_amount ??
+      loan.loan_details?.applied_amount;
+    const tenure =
+      loan.approved_tenure ??
+      loan.tenure_months ??
+      loan.loan_details?.tenure_months ??
+      loan.loan_details?.loan_tenure;
+    const approvedAt = formatDate(loan.approved_at || loan.updated_at || loan.created_at || loan.createdAt);
+
+    row.innerHTML = `
+      <td>${loanId ? `#${loanId}` : '—'}</td>
+      <td>${customer}</td>
+      <td>${loanType}</td>
+      <td>${formatCurrency(approvedAmount)}</td>
+      <td>${tenure ?? '—'}</td>
+      <td>${loan.status || 'APPROVED'}</td>
+      <td>${approvedAt || '—'}</td>
+    `;
+    adminLoansTableBody.appendChild(row);
+  });
+}
+
+async function loadAdminLoans(force = false) {
+  ensureAdminLoansUI();
+  if (!adminLoansSection || adminLoansState.loansLoading) return;
+  if (adminLoansState.hasLoaded && !force) {
+    renderAdminLoans();
+    return;
+  }
+
+  adminLoansState.loansLoading = true;
+  adminLoansState.loansError = null;
+  renderAdminLoans();
+
+  try {
+    const response = await api(endpoint('staffLoanApplications'));
+    const applications = Array.isArray(response)
+      ? response
+      : response.applications || response.data || [];
+    const approvedLoans = applications.filter((loan) => (loan.status || '').toUpperCase() === 'APPROVED');
+    adminLoansState.loans = approvedLoans;
+    adminLoansState.hasLoaded = true;
+  } catch (error) {
+    console.error('Failed to load approved loans', error);
+    adminLoansState.loansError = "Couldn't load loans. Please try again.";
+    adminLoansState.hasLoaded = false;
+  } finally {
+    adminLoansState.loansLoading = false;
+    renderAdminLoans();
+  }
+}
+
+function showAdminSection(section = 'dashboard') {
+  if (!adminSections.length) return;
+  const hasSection = Array.from(adminSections).some((el) => el.dataset.section === section);
+  const target = hasSection ? section : 'dashboard';
+
+  adminSections.forEach((el) => {
+    el.classList.toggle('hidden', el.dataset.section !== target);
+  });
+
+  adminMenuItems.forEach((item) => {
+    const isActive = item.dataset.section === target;
+    item.classList.toggle('active', isActive);
+    item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  if (target === 'loans') {
+    ensureAdminLoansUI();
+    renderAdminLoans();
+    loadAdminLoans();
+  }
+}
+
 function togglePanels(role) {
   dashboards.classList.toggle('hidden', !role);
   userRoleChip.classList.toggle('hidden', !role);
@@ -373,6 +552,8 @@ function togglePanels(role) {
   document.querySelector('#login-card').classList.toggle('hidden', !!role);
 
   adminPanel.classList.toggle('hidden', role !== 'admin');
+  if (role === 'admin') showAdminSection('dashboard');
+  else resetAdminLoansState();
   staffPanel.classList.toggle('hidden', role !== 'staff');
   customerPanel.classList.toggle('hidden', role !== 'customer');
 
@@ -1428,6 +1609,13 @@ refreshApplicationsBtn?.addEventListener('click', async () => {
     console.error(err);
     setInlineAlert(applicationFormMessage, err.message, 'error');
   }
+});
+
+adminMenuItems.forEach((item) => {
+  item.addEventListener('click', () => {
+    const target = item.dataset.section || 'dashboard';
+    showAdminSection(target);
+  });
 });
 
 staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
