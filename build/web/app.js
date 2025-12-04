@@ -649,7 +649,7 @@ async function loadAdminLoanApplications(force = false) {
   renderAdminLoanApplications();
 
   try {
-    const response = await api(endpoint('adminLoanApplications'));
+    const response = await api(endpoint('loanApplications'));
     const applications = Array.isArray(response)
       ? response
       : response.applications || response.data || [];
