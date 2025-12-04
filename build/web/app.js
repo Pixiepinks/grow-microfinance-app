@@ -527,7 +527,7 @@ async function loadAdmin() {
   try {
     const [data, applicationsResponse] = await Promise.all([
       api(endpoint('adminDashboard')),
-      api(`${endpoint('adminLoanApplications')}?status=STAFF_APPROVED`),
+      api(`${endpoint('staffLoanApplications')}?status=STAFF_APPROVED`),
     ]);
 
     const metrics = [
@@ -549,8 +549,13 @@ async function loadAdmin() {
       (app) => openApplicationDetail(app, 'admin'),
     );
   } catch (error) {
-    console.error(error);
-    setInlineAlert(adminApplicationsMessage, error.message || 'Failed to load admin data', 'error');
+    console.error('Failed to load admin data', error);
+    const fallbackMessage = "Couldn't reach the server. Please check your connection.";
+    setInlineAlert(
+      adminApplicationsMessage,
+      error?.message ? fallbackMessage : "Couldn't load applications – tap Refresh to try again.",
+      'error',
+    );
   }
 }
 
