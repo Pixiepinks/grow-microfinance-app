@@ -480,7 +480,7 @@ function ensureAdminLoanApplicationsUI() {
   setInlineAlert(adminLoanApplicationsMessage, '');
   if (adminLoanApplicationsTableBody) adminLoanApplicationsTableBody.innerHTML = '';
 
-  adminRefreshLoanApplicationsBtn?.addEventListener('click', () => loadAdminLoanApplications(true));
+  adminRefreshLoanApplicationsBtn?.addEventListener('click', () => loadAdminLoanApplicationsAll(true));
 }
 
 function renderAdminLoanApplicationsTable(applications) {
@@ -620,7 +620,7 @@ async function loadAdminLoans(force = false) {
   }
 }
 
-async function loadAdminLoanApplications(force = false) {
+async function loadAdminLoanApplicationsAll(force = false) {
   ensureAdminLoanApplicationsUI();
   if (!adminLoanApplicationsSection || adminLoanApplicationsState.loanApplicationsLoading) return;
 
@@ -690,7 +690,7 @@ function showAdminSection(section = 'dashboard') {
   } else if (target === 'loan-applications') {
     ensureAdminLoanApplicationsUI();
     renderAdminLoanApplications();
-    loadAdminLoanApplications();
+    loadAdminLoanApplicationsAll();
   }
 }
 
