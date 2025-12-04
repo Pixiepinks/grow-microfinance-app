@@ -637,7 +637,7 @@ async function loadAdminLoanApplications(force = false) {
   renderAdminLoanApplications();
 
   try {
-    const url = `${apiConfig.baseUrl}${endpoint('adminLoanApplications')}`;
+    const url = `${apiConfig.baseUrl}${endpoint('loanApplications')}`;
 
     const response = await fetch(url, {
       method: 'GET',
