@@ -3,11 +3,18 @@
   "endpoints": {
     "login": "/auth/login",
     "adminDashboard": "/admin/dashboard",
+    "adminLoanApplications": "/admin/loan-applications",
+    "adminLoanApplicationApprove": "/loan-applications/{id}/approve",
     "staffTodayCollections": "/staff/today-collections",
     "staffPayments": "/staff/payments",
+    "staffActiveLoans": "/staff/active-loans",
+    "staffLoanApplications": "/staff/loan-applications",
+    "staffLoanApplicationApprove": "/loan-applications/{id}/staff-approve",
+    "loanApplicationReject": "/loan-applications/{id}/reject",
     "customerProfile": "/customer/me",
     "customerLoans": "/customer/loans",
     "customerLoanPayments": "/customer/loans/{id}/payments",
+    "loanRepayments": "/loans/{id}/repayments",
     "loanApplications": "/loan-applications",
     "customers": "/customers"
   }
