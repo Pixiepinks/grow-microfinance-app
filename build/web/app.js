@@ -9,7 +9,7 @@ const defaultApiConfig = {
     staffPayments: '/staff/payments',
     staffActiveLoans: '/staff/active-loans',
     staffLoanApplications: '/loan-applications',
-    staffLoanApplicationApprove: '/loan-applications/{id}/staff-approve',
+    staffLoanApplicationApprove: '/staff/loan-applications/{id}/approve',
     loanApplicationReject: '/loan-applications/{id}/reject',
     loanRepayments: '/loans/{id}/repayments',
     customerProfile: '/customer/me',
