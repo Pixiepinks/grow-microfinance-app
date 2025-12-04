@@ -15,7 +15,7 @@ class ApiConfig {
     'staffTodayCollections': '/staff/today-collections',
     'staffPayments': '/staff/payments',
     'staffActiveLoans': '/staff/active-loans',
-    'staffLoanApplications': '/staff/loan-applications',
+    'staffLoanApplications': '/loan-applications',
     'staffLoanApplicationApprove': '/loan-applications/{id}/staff-approve',
     'loanApplicationReject': '/loan-applications/{id}/reject',
     'customerProfile': '/customer/me',
