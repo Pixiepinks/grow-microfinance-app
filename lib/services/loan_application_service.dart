@@ -98,6 +98,15 @@ class LoanApplicationService {
         .toList();
   }
 
+  Future<List<LoanApplication>> listStaffSubmittedApplications() async {
+    final list = await _client.getJsonList(
+      '${ApiConfig.endpoint('staffLoanApplications')}?status=SUBMITTED',
+    );
+    return list
+        .map((e) => LoanApplication.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<LoanApplication> getById(String id) async {
     final json = await _client.getJson(
       '${ApiConfig.endpoint('loanApplications')}/$id',
