@@ -679,6 +679,7 @@ async function openApplicationDetail(appSummary, role) {
         const endpointKey = role === 'staff' ? 'staffLoanApplicationApprove' : 'adminLoanApplicationApprove';
         await api(endpoint(endpointKey, { id: appId }), { method: 'POST' });
         setInlineAlert(applicationModalMessage, 'Application approved.', 'success');
+        closeApplicationDetail();
         if (role === 'staff') await loadStaff();
         if (role === 'admin') await loadAdmin();
       } catch (err) {
