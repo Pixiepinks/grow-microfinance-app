@@ -310,6 +310,34 @@ function attachIdFromLocation(data, headers) {
   return { id: inferredId, application_id: inferredId, data };
 }
 
+function normalizeApplicationsResponse(response) {
+  if (Array.isArray(response)) return response;
+
+  const candidates = [
+    response?.applications,
+    response?.data?.applications,
+    response?.data,
+    response?.items,
+    response?.data?.items,
+    response?.content,
+    response?.data?.content,
+    response?.results,
+    response?.data?.results,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === 'object') {
+      if (Array.isArray(candidate.items)) return candidate.items;
+      if (Array.isArray(candidate.content)) return candidate.content;
+      if (Array.isArray(candidate.data)) return candidate.data;
+      if (Array.isArray(candidate.results)) return candidate.results;
+    }
+  }
+
+  return [];
+}
+
 async function api(path, { method = 'GET', body } = {}) {
   const { token } = getSession();
   const shouldSendJson = body !== undefined || !['GET', 'HEAD'].includes(method);
@@ -684,10 +712,7 @@ async function loadAdminLoanApplicationsAll(force = false) {
     const response = await api(path);
     console.log('Admin loan applications (all statuses)', response);
 
-    const applications = Array.isArray(response)
-      ? response
-      : response?.applications || response?.data || [];
-    const normalizedApplications = Array.isArray(applications) ? applications : [];
+    const normalizedApplications = normalizeApplicationsResponse(response);
     const sortedApplications = [...normalizedApplications].sort((a, b) => {
       const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
       const bDate = new Date(b.submitted_at || b.created_at || 0).getTime();
@@ -909,9 +934,7 @@ async function loadAdmin() {
     ];
     renderMetrics(adminMetrics, metrics);
 
-    const applications = Array.isArray(applicationsResponse)
-      ? applicationsResponse
-      : applicationsResponse.applications || applicationsResponse.data || [];
+    const applications = normalizeApplicationsResponse(applicationsResponse);
     cachedAdminApplications = applications;
     renderReviewQueue(
       adminApplications,
@@ -948,9 +971,7 @@ async function loadStaff() {
     cachedActiveLoans = activeLoans;
     renderActiveLoans(activeLoans);
 
-    const applications = Array.isArray(applicationsResponse)
-      ? applicationsResponse
-      : applicationsResponse.applications || applicationsResponse.data || [];
+    const applications = normalizeApplicationsResponse(applicationsResponse);
     cachedStaffApplications = applications;
     renderReviewQueue(
       staffApplications,
