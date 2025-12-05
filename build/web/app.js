@@ -671,7 +671,11 @@ async function loadAdminLoanApplicationsAll(force = false) {
 
   try {
     const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
+    // Some deployments include a default status filter in the endpoint config; strip it so "All"
+    // truly fetches every application unless a user-selected filter is applied.
     let path = endpoint('adminLoanApplications') || endpoint('loanApplications');
+    path = path.replace(/([?&])status=[^&]*/gi, '').replace(/[?&]$/, '');
+
     if (statusFilter && statusFilter !== 'ALL') {
       const separator = path.includes('?') ? '&' : '?';
       path += `${separator}status=${encodeURIComponent(statusFilter)}`;
