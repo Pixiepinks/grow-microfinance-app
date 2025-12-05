@@ -400,6 +400,8 @@ async function api(path, { method = 'GET', body } = {}) {
   return enrichedData;
 }
 
+api.get = (path, options = {}) => api(path, { ...options, method: 'GET' });
+
 async function apiMultipart(path, formData) {
   const { token } = getSession();
   const headers = token
@@ -883,21 +885,16 @@ async function loadAdminCustomers(force = false) {
   renderAdminCustomers();
 
   try {
-    const path = endpoint('adminCustomers') || endpoint('customers') || '/api/admin/customers';
-    const response = await api(path);
+    const response = await api.get('/admin/customers');
     const customers = normalizeCustomersResponse(response);
     adminCustomersState.customers = customers;
     adminCustomersState.hasLoaded = true;
   } catch (error) {
-    console.error('Failed to load customers', {
-      error,
-      message: error?.message,
-      status: error?.status,
-    });
-    const friendlyMessage = /reach the server/i.test(error?.message || '')
-      ? "Couldn't reach the server. Please try again."
+    console.error('Failed to load admin customers', error);
+    const friendlyError = /404/.test(error?.message || '') || /reach the server/i.test(error?.message || '')
+      ? 'Unable to load customers. Please try again later.'
       : error?.message || "Couldn't load customers. Please try again.";
-    adminCustomersState.error = friendlyMessage;
+    adminCustomersState.error = friendlyError;
     adminCustomersState.hasLoaded = false;
   } finally {
     adminCustomersState.loading = false;
