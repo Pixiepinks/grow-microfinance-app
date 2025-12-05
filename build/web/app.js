@@ -3,7 +3,7 @@ const defaultApiConfig = {
   endpoints: {
     login: '/auth/login',
     adminDashboard: '/admin/dashboard',
-    adminLoanApplications: '/admin/loan-applications',
+    adminLoanApplications: '/api/loan-applications',
     adminLoanApplicationApprove: '/loan-applications/{id}/approve',
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
@@ -15,7 +15,7 @@ const defaultApiConfig = {
     customerProfile: '/customer/me',
     customerLoans: '/customer/loans',
     customerLoanPayments: '/customer/loans/{id}/payments',
-    loanApplications: '/loan-applications',
+    loanApplications: '/api/loan-applications',
     customers: '/customers',
   },
 };
@@ -564,12 +564,30 @@ function renderAdminLoanApplicationsTable(applications) {
     tr.classList.add('clickable-row');
     tr.addEventListener('click', () => openApplicationDetail(app, 'admin'));
 
-    const applicationNumber = app.application_number || '-';
-    const customerName = app.customer_name || '-';
-    const loanType = app.loan_type || '-';
-    const status = app.status || '-';
-    const appliedAmount = app.applied_amount ?? 0;
-    const submittedAt = app.submitted_at || app.created_at || null;
+    const applicationNumber =
+      app.application_number ||
+      app.applicationNumber ||
+      app.applicationNo ||
+      app.application_id ||
+      app.id ||
+      '-';
+    const customerName =
+      app.customer_name ||
+      app.customerName ||
+      app.customer ||
+      app.applicant_name ||
+      '-';
+    const loanType = app.loan_type || app.loanType || app.loan_details?.loan_type || '-';
+    const status = app.status || app.application_status || '-';
+    const appliedAmount =
+      app.applied_amount ??
+      app.appliedAmount ??
+      app.requested_amount ??
+      app.requestedAmount ??
+      app.amount ??
+      0;
+    const submittedAt =
+      app.submitted_at || app.submittedAt || app.created_at || app.createdAt || null;
 
     tr.innerHTML = `
       <td>${applicationNumber}</td>
@@ -590,8 +608,16 @@ function renderAdminLoanApplicationsTable(applications) {
 function renderAdminLoanApplications() {
   if (!adminLoanApplicationsInitialized) return;
 
-  setInlineAlert(adminLoanApplicationsMessage, adminLoanApplicationsState.loanApplicationsError || '', 'error');
-  renderAdminLoanApplicationsTable(adminLoanApplicationsState.loanApplications);
+  const { loanApplicationsError, loanApplications } = adminLoanApplicationsState;
+
+  setInlineAlert(adminLoanApplicationsMessage, loanApplicationsError || '', 'error');
+
+  if (loanApplicationsError) {
+    if (adminLoanApplicationsTableBody) adminLoanApplicationsTableBody.innerHTML = '';
+    return;
+  }
+
+  renderAdminLoanApplicationsTable(loanApplications);
 }
 
 function renderAdminLoans() {
@@ -701,13 +727,11 @@ async function loadAdminLoanApplicationsAll(force = false) {
     const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
     // Some deployments include a default status filter in the endpoint config; strip it so "All"
     // truly fetches every application unless a user-selected filter is applied.
-    let path = endpoint('adminLoanApplications') || endpoint('loanApplications');
+    let path = endpoint('adminLoanApplications') || endpoint('loanApplications') || '/api/loan-applications';
     path = path.replace(/([?&])status=[^&]*/gi, '').replace(/[?&]$/, '');
 
-    if (statusFilter && statusFilter !== 'ALL') {
-      const separator = path.includes('?') ? '&' : '?';
-      path += `${separator}status=${encodeURIComponent(statusFilter)}`;
-    }
+    const separator = path.includes('?') ? '&' : '?';
+    path += `${separator}status=${encodeURIComponent(statusFilter || 'ALL')}`;
 
     const response = await api(path);
     console.log('Admin loan applications (all statuses)', response);
@@ -723,8 +747,10 @@ async function loadAdminLoanApplicationsAll(force = false) {
     adminLoanApplicationsState.hasLoaded = true;
   } catch (error) {
     console.error('Failed to load admin loan applications', error);
-    adminLoanApplicationsState.loanApplicationsError =
-      error?.message || "Couldn't load loan applications. Please try again.";
+    const friendlyError = /404/.test(error?.message || '') || /reach the server/i.test(error?.message || '')
+      ? 'Unable to load loan applications. Please try again later.'
+      : error?.message || "Couldn't load loan applications. Please try again.";
+    adminLoanApplicationsState.loanApplicationsError = friendlyError;
     adminLoanApplicationsState.hasLoaded = false;
   } finally {
     adminLoanApplicationsState.loanApplicationsLoading = false;
