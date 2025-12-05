@@ -184,6 +184,16 @@ body {
   overflow-y: hidden;
 }
 
+.admin-section[data-section='customers'] .subcard {
+  overflow: hidden;
+}
+
+.admin-section[data-section='customers'] .loan-table-wrapper {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
 .loan-table {
   width: max-content;
   min-width: 100%;
