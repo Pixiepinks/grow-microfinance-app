@@ -106,6 +106,14 @@ const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoansSection = document.querySelector('[data-section="loans"]');
 const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
+const adminCustomersTabs = document.querySelectorAll('[data-customers-tab]');
+const adminCustomersPanels = document.querySelectorAll('[data-customers-content]');
+const adminCustomersMessage = document.querySelector('#admin-customers-message');
+const adminCustomersTableBody = document.querySelector('#admin-customers-table-body');
+const adminCustomersTableWrapper = document.querySelector('#admin-customers-table-wrapper');
+const adminCustomersLoading = document.querySelector('#admin-customers-loading');
+const adminCustomersEmptyState = document.querySelector('#admin-customers-empty');
+const refreshCustomersBtn = document.querySelector('#refresh-customers-btn');
 
 let adminLoansMessage;
 let adminLoansTableBody;
@@ -188,6 +196,13 @@ const adminLoanApplicationsState = {
   loanApplicationsError: null,
   hasLoaded: false,
   selectedStatus: 'ALL',
+};
+const adminCustomersState = {
+  customers: [],
+  loading: false,
+  error: null,
+  hasLoaded: false,
+  activeTab: 'all',
 };
 let currentStep = 0;
 let currentDraftId = null;
@@ -464,6 +479,19 @@ function resetAdminLoanApplicationsState() {
   if (adminLoanApplicationsStatusFilter) {
     adminLoanApplicationsStatusFilter.value = 'ALL';
   }
+}
+
+function resetAdminCustomersState() {
+  adminCustomersState.customers = [];
+  adminCustomersState.error = null;
+  adminCustomersState.loading = false;
+  adminCustomersState.hasLoaded = false;
+
+  if (adminCustomersMessage) setInlineAlert(adminCustomersMessage, '');
+  adminCustomersLoading?.classList.add('hidden');
+  adminCustomersEmptyState?.classList.add('hidden');
+  adminCustomersTableWrapper?.classList.add('hidden');
+  if (adminCustomersTableBody) adminCustomersTableBody.innerHTML = '';
 }
 
 function ensureAdminLoansUI() {
@@ -758,6 +786,135 @@ async function loadAdminLoanApplicationsAll(force = false) {
   }
 }
 
+function normalizeCustomersResponse(response) {
+  if (Array.isArray(response)) return response;
+
+  const candidates = [
+    response?.customers,
+    response?.data?.customers,
+    response?.results,
+    response?.data?.results,
+    resolveItemsList(response),
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function renderAdminCustomers() {
+  const { customers, loading, error, hasLoaded } = adminCustomersState;
+
+  setInlineAlert(adminCustomersMessage, error || '', 'error');
+
+  adminCustomersLoading?.classList.toggle('hidden', !loading);
+
+  if (loading) {
+    adminCustomersTableWrapper?.classList.add('hidden');
+    adminCustomersEmptyState?.classList.add('hidden');
+    if (adminCustomersTableBody) adminCustomersTableBody.innerHTML = '';
+    return;
+  }
+
+  if (error) {
+    adminCustomersTableWrapper?.classList.add('hidden');
+    adminCustomersEmptyState?.classList.add('hidden');
+    if (adminCustomersTableBody) adminCustomersTableBody.innerHTML = '';
+    return;
+  }
+
+  const hasCustomers = customers.length > 0;
+  adminCustomersTableWrapper?.classList.toggle('hidden', !hasCustomers);
+  adminCustomersEmptyState?.classList.toggle('hidden', hasCustomers || !hasLoaded);
+
+  if (!hasCustomers) {
+    if (adminCustomersTableBody) adminCustomersTableBody.innerHTML = '';
+    return;
+  }
+
+  if (!adminCustomersTableBody) return;
+  adminCustomersTableBody.innerHTML = '';
+
+  customers.forEach((customer) => {
+    const row = document.createElement('tr');
+    const name =
+      customer.full_name ||
+      customer.fullName ||
+      customer.name ||
+      [customer.first_name, customer.last_name].filter(Boolean).join(' ') ||
+      '—';
+    const mobile = customer.mobile || customer.mobile_number || customer.phone || customer.contact || '—';
+    const nic = customer.nic_number || customer.nic || customer.nicNumber || customer.nic_no || '—';
+    const address = customer.address || customer.address_line || customer.addressLine || customer.location || '—';
+    const businessType = customer.business_type || customer.businessType || customer.segment || '—';
+    const status = customer.status || customer.kyc_status || customer.kycStatus || '—';
+    const createdAt = formatDate(customer.created_at || customer.createdAt || customer.created_at_utc) || '—';
+    const code = customer.customer_code || customer.customerCode || customer.code || customer.id || '—';
+
+    row.innerHTML = `
+      <td>${code}</td>
+      <td>${name}</td>
+      <td>${nic}</td>
+      <td>${mobile}</td>
+      <td>${address}</td>
+      <td>${businessType}</td>
+      <td>${status ? renderStatusBadge(status) : '—'}</td>
+      <td>${createdAt}</td>
+    `;
+
+    adminCustomersTableBody.appendChild(row);
+  });
+}
+
+async function loadAdminCustomers(force = false) {
+  if (adminCustomersState.loading) return;
+  if (adminCustomersState.hasLoaded && !force) {
+    renderAdminCustomers();
+    return;
+  }
+
+  adminCustomersState.loading = true;
+  adminCustomersState.error = null;
+  renderAdminCustomers();
+
+  try {
+    const response = await api(endpoint('customers'));
+    const customers = normalizeCustomersResponse(response);
+    adminCustomersState.customers = customers;
+    adminCustomersState.hasLoaded = true;
+  } catch (error) {
+    console.error('Failed to load customers', error);
+    const friendlyMessage = /reach the server/i.test(error?.message || '')
+      ? "Couldn't reach the server. Please try again."
+      : error?.message || "Couldn't load customers. Please try again.";
+    adminCustomersState.error = friendlyMessage;
+    adminCustomersState.hasLoaded = false;
+  } finally {
+    adminCustomersState.loading = false;
+    renderAdminCustomers();
+  }
+}
+
+function selectAdminCustomersTab(tab = 'all') {
+  adminCustomersState.activeTab = tab;
+  adminCustomersTabs.forEach((button) => {
+    const isActive = button.dataset.customersTab === tab;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  adminCustomersPanels.forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.customersContent !== tab);
+  });
+
+  if (tab === 'all') {
+    renderAdminCustomers();
+    loadAdminCustomers();
+  }
+}
+
 function showAdminSection(section = 'dashboard') {
   if (!adminSections.length) return;
   const hasSection = Array.from(adminSections).some((el) => el.dataset.section === section);
@@ -781,6 +938,8 @@ function showAdminSection(section = 'dashboard') {
     ensureAdminLoanApplicationsUI();
     renderAdminLoanApplications();
     loadAdminLoanApplicationsAll();
+  } else if (target === 'customers') {
+    selectAdminCustomersTab(adminCustomersState.activeTab || 'all');
   }
 }
 
@@ -795,6 +954,7 @@ function togglePanels(role) {
   else {
     resetAdminLoansState();
     resetAdminLoanApplicationsState();
+    resetAdminCustomersState();
   }
   staffPanel.classList.toggle('hidden', role !== 'staff');
   customerPanel.classList.toggle('hidden', role !== 'customer');
@@ -1855,6 +2015,14 @@ adminMenuItems.forEach((item) => {
     showAdminSection(target);
   });
 });
+
+adminCustomersTabs.forEach((button) => {
+  button.addEventListener('click', () => {
+    selectAdminCustomersTab(button.dataset.customersTab || 'all');
+  });
+});
+
+refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
 
 staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
 adminRefreshApplicationsBtn?.addEventListener('click', () => loadAdmin());

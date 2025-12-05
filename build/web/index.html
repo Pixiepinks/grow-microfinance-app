@@ -185,12 +185,58 @@
                       <p class="muted">Manage customer profiles and KYC status.</p>
                     </div>
                   </div>
-                  <div class="subcard">
+                  <div class="subnav" role="tablist" aria-label="Customer options">
+                    <button class="subnav-item active" type="button" data-customers-tab="all" aria-selected="true">
+                      All Customers
+                    </button>
+                    <button class="subnav-item" type="button" data-customers-tab="kyc" aria-selected="false">
+                      KYC Verification Queue
+                    </button>
+                    <button class="subnav-item" type="button" data-customers-tab="risk" aria-selected="false">
+                      Risk Profiles (COMING SOON)
+                    </button>
+                  </div>
+
+                  <div class="subcard" data-customers-content="all">
+                    <div class="table-actions">
+                      <div class="filters"></div>
+                      <button id="refresh-customers-btn" class="ghost" type="button">Refresh</button>
+                    </div>
+                    <div id="admin-customers-message" class="alert hidden"></div>
+                    <div id="admin-customers-loading" class="loading-row hidden" aria-live="polite">
+                      <div class="spinner"></div>
+                      <span>Loading customers...</span>
+                    </div>
+                    <div id="admin-customers-empty" class="muted hidden">No customers found yet.</div>
+                    <div id="admin-customers-table-wrapper" class="loan-table-wrapper hidden">
+                      <table id="admin-customers-table" class="placeholder-table loan-table">
+                        <thead>
+                          <tr>
+                            <th>Customer Code</th>
+                            <th>Name</th>
+                            <th>NIC</th>
+                            <th>Mobile</th>
+                            <th>Address</th>
+                            <th>Business Type</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                          </tr>
+                        </thead>
+                        <tbody id="admin-customers-table-body"></tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="subcard hidden" data-customers-content="kyc">
                     <ul class="bullet-list">
                       <li>All Customers</li>
                       <li>KYC Verification Queue</li>
                       <li>Risk Profiles (COMING SOON)</li>
                     </ul>
+                  </div>
+
+                  <div class="subcard hidden" data-customers-content="risk">
+                    <p class="muted">Risk profiles module will be added soon.</p>
                   </div>
                 </section>
 
