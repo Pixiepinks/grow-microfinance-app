@@ -178,6 +178,8 @@ body {
 
 .loan-table-wrapper {
   max-width: 100%;
+  width: 100%;
+  display: block;
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -191,6 +193,10 @@ body {
 .loan-table th,
 .loan-table td {
   white-space: nowrap;
+}
+
+.admin-section[data-section='loan-applications'] .subcard {
+  overflow: hidden;
 }
 
 .placeholder-table th,
