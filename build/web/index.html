@@ -142,6 +142,20 @@
                   </div>
                   <div id="admin-loan-applications-message" class="alert hidden"></div>
                   <div class="subcard">
+                    <div class="table-actions">
+                      <div class="filters">
+                        <label for="admin-loan-status-filter" class="muted">Status</label>
+                        <select id="admin-loan-status-filter">
+                          <option value="ALL" selected>All</option>
+                          <option value="DRAFT">Draft</option>
+                          <option value="SUBMITTED">Submitted</option>
+                          <option value="UNDER_REVIEW">Under Review</option>
+                          <option value="STAFF_APPROVED">Staff Approved</option>
+                          <option value="APPROVED">Approved</option>
+                          <option value="REJECTED">Rejected</option>
+                        </select>
+                      </div>
+                    </div>
                     <table id="admin-loan-applications-table" class="placeholder-table">
                       <thead>
                         <tr>

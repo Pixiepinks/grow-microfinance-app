@@ -120,6 +120,7 @@ let adminLoanApplicationsTableBody;
 let adminLoanApplicationsTable;
 let adminRefreshLoanApplicationsBtn;
 let adminLoanApplicationsInitialized = false;
+let adminLoanApplicationsStatusFilter;
 
 const staffPanel = document.querySelector('#staff-panel');
 const staffCollections = document.querySelector('#staff-collections');
@@ -186,6 +187,7 @@ const adminLoanApplicationsState = {
   loanApplicationsLoading: false,
   loanApplicationsError: null,
   hasLoaded: false,
+  selectedStatus: 'ALL',
 };
 let currentStep = 0;
 let currentDraftId = null;
@@ -384,6 +386,21 @@ function formatDate(value) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function renderStatusBadge(status) {
+  const normalized = (status || 'UNKNOWN').toUpperCase();
+  const badgeClassMap = {
+    DRAFT: 'badge-neutral',
+    SUBMITTED: 'badge-info',
+    UNDER_REVIEW: 'badge-warning',
+    STAFF_APPROVED: 'badge-success',
+    APPROVED: 'badge-success',
+    REJECTED: 'badge-danger',
+  };
+
+  const badgeClass = badgeClassMap[normalized] || 'badge-neutral';
+  return `<span class="badge ${badgeClass}">${normalized}</span>`;
+}
+
 function setInlineAlert(target, text, type = 'success') {
   if (!target) return;
   target.textContent = text;
@@ -410,10 +427,15 @@ function resetAdminLoanApplicationsState() {
   adminLoanApplicationsState.loanApplicationsError = null;
   adminLoanApplicationsState.loanApplicationsLoading = false;
   adminLoanApplicationsState.hasLoaded = false;
+  adminLoanApplicationsState.selectedStatus = 'ALL';
 
   if (!adminLoanApplicationsInitialized) return;
   setInlineAlert(adminLoanApplicationsMessage, '');
   if (adminLoanApplicationsTableBody) adminLoanApplicationsTableBody.innerHTML = '';
+
+  if (adminLoanApplicationsStatusFilter) {
+    adminLoanApplicationsStatusFilter.value = 'ALL';
+  }
 }
 
 function ensureAdminLoansUI() {
@@ -476,11 +498,19 @@ function ensureAdminLoanApplicationsUI() {
   adminRefreshLoanApplicationsBtn = adminLoanApplicationsSection.querySelector(
     '#admin-refresh-loan-applications',
   );
+  adminLoanApplicationsStatusFilter = adminLoanApplicationsSection.querySelector(
+    '#admin-loan-status-filter',
+  );
 
   setInlineAlert(adminLoanApplicationsMessage, '');
   if (adminLoanApplicationsTableBody) adminLoanApplicationsTableBody.innerHTML = '';
 
   adminRefreshLoanApplicationsBtn?.addEventListener('click', () => loadAdminLoanApplicationsAll(true));
+
+  adminLoanApplicationsStatusFilter?.addEventListener('change', (event) => {
+    adminLoanApplicationsState.selectedStatus = event.target.value || 'ALL';
+    loadAdminLoanApplicationsAll(true);
+  });
 }
 
 function renderAdminLoanApplicationsTable(applications) {
@@ -503,6 +533,9 @@ function renderAdminLoanApplicationsTable(applications) {
   applications.forEach((app) => {
     const tr = document.createElement('tr');
 
+    tr.classList.add('clickable-row');
+    tr.addEventListener('click', () => openApplicationDetail(app, 'admin'));
+
     const applicationNumber = app.application_number || '-';
     const customerName = app.customer_name || '-';
     const loanType = app.loan_type || '-';
@@ -514,12 +547,12 @@ function renderAdminLoanApplicationsTable(applications) {
       <td>${applicationNumber}</td>
       <td>${customerName}</td>
       <td>${loanType}</td>
-      <td>${status}</td>
+      <td>${renderStatusBadge(status)}</td>
       <td>${Number(appliedAmount).toLocaleString('en-LK', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       })}</td>
-      <td>${submittedAt ? new Date(submittedAt).toLocaleString() : '-'}</td>
+      <td>${formatDate(submittedAt) || '-'}</td>
     `;
 
     tbody.appendChild(tr);
@@ -637,25 +670,27 @@ async function loadAdminLoanApplicationsAll(force = false) {
   renderAdminLoanApplications();
 
   try {
-    const url = `${apiConfig.baseUrl}${endpoint('loanApplications')}`;
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${session.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const { data, raw } = await parseResponse(response);
-    console.log('Admin loan applications (all statuses)', data, raw);
-
-    if (!response.ok) {
-      throw new Error(buildErrorMessage({ status: response.status, data, raw }));
+    const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
+    let path = endpoint('adminLoanApplications') || endpoint('loanApplications');
+    if (statusFilter && statusFilter !== 'ALL') {
+      const separator = path.includes('?') ? '&' : '?';
+      path += `${separator}status=${encodeURIComponent(statusFilter)}`;
     }
 
-    const applications = Array.isArray(data) ? data : [];
-    adminLoanApplicationsState.loanApplications = applications;
+    const response = await api(path);
+    console.log('Admin loan applications (all statuses)', response);
+
+    const applications = Array.isArray(response)
+      ? response
+      : response?.applications || response?.data || [];
+    const normalizedApplications = Array.isArray(applications) ? applications : [];
+    const sortedApplications = [...normalizedApplications].sort((a, b) => {
+      const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
+      const bDate = new Date(b.submitted_at || b.created_at || 0).getTime();
+      return bDate - aDate;
+    });
+
+    adminLoanApplicationsState.loanApplications = sortedApplications;
     adminLoanApplicationsState.hasLoaded = true;
   } catch (error) {
     console.error('Failed to load admin loan applications', error);
