@@ -9,6 +9,7 @@
     "customerLoans": "/customer/loans",
     "customerLoanPayments": "/customer/loans/{id}/payments",
     "loanApplications": "/loan-applications",
-    "customers": "/customers"
+    "adminCustomers": "/api/admin/customers",
+    "customers": "/api/admin/customers"
   }
 }

@@ -16,7 +16,8 @@ const defaultApiConfig = {
     customerLoans: '/customer/loans',
     customerLoanPayments: '/customer/loans/{id}/payments',
     loanApplications: '/api/loan-applications',
-    customers: '/customers',
+    adminCustomers: '/api/admin/customers',
+    customers: '/api/admin/customers',
   },
 };
 
@@ -392,7 +393,9 @@ async function api(path, { method = 'GET', body } = {}) {
       data: enrichedData,
     });
     const message = buildErrorMessage({ status: response.status, data: enrichedData, raw });
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return enrichedData;
 }
@@ -880,12 +883,17 @@ async function loadAdminCustomers(force = false) {
   renderAdminCustomers();
 
   try {
-    const response = await api(endpoint('customers'));
+    const path = endpoint('adminCustomers') || endpoint('customers') || '/api/admin/customers';
+    const response = await api(path);
     const customers = normalizeCustomersResponse(response);
     adminCustomersState.customers = customers;
     adminCustomersState.hasLoaded = true;
   } catch (error) {
-    console.error('Failed to load customers', error);
+    console.error('Failed to load customers', {
+      error,
+      message: error?.message,
+      status: error?.status,
+    });
     const friendlyMessage = /reach the server/i.test(error?.message || '')
       ? "Couldn't reach the server. Please try again."
       : error?.message || "Couldn't load customers. Please try again.";
