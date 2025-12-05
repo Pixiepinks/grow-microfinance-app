@@ -427,10 +427,15 @@ function resetAdminLoanApplicationsState() {
   adminLoanApplicationsState.loanApplicationsError = null;
   adminLoanApplicationsState.loanApplicationsLoading = false;
   adminLoanApplicationsState.hasLoaded = false;
+  adminLoanApplicationsState.selectedStatus = 'ALL';
 
   if (!adminLoanApplicationsInitialized) return;
   setInlineAlert(adminLoanApplicationsMessage, '');
   if (adminLoanApplicationsTableBody) adminLoanApplicationsTableBody.innerHTML = '';
+
+  if (adminLoanApplicationsStatusFilter) {
+    adminLoanApplicationsStatusFilter.value = 'ALL';
+  }
 }
 
 function ensureAdminLoansUI() {
@@ -666,30 +671,20 @@ async function loadAdminLoanApplicationsAll(force = false) {
 
   try {
     const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
-    let url = `${apiConfig.baseUrl}${endpoint('loanApplications')}`;
-
+    let path = endpoint('adminLoanApplications') || endpoint('loanApplications');
     if (statusFilter && statusFilter !== 'ALL') {
-      const separator = url.includes('?') ? '&' : '?';
-      url += `${separator}status=${encodeURIComponent(statusFilter)}`;
+      const separator = path.includes('?') ? '&' : '?';
+      path += `${separator}status=${encodeURIComponent(statusFilter)}`;
     }
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${session.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await api(path);
+    console.log('Admin loan applications (all statuses)', response);
 
-    const { data, raw } = await parseResponse(response);
-    console.log('Admin loan applications (all statuses)', data, raw);
-
-    if (!response.ok) {
-      throw new Error(buildErrorMessage({ status: response.status, data, raw }));
-    }
-
-    const applications = Array.isArray(data) ? data : [];
-    const sortedApplications = [...applications].sort((a, b) => {
+    const applications = Array.isArray(response)
+      ? response
+      : response?.applications || response?.data || [];
+    const normalizedApplications = Array.isArray(applications) ? applications : [];
+    const sortedApplications = [...normalizedApplications].sort((a, b) => {
       const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
       const bDate = new Date(b.submitted_at || b.created_at || 0).getTime();
       return bDate - aDate;
