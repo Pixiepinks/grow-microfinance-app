@@ -235,28 +235,7 @@ const adminCustomersState = {
   hasLoaded: false,
   activeTab: 'all',
 };
-const adminDocumentsState = {
-  documents: [],
-  loading: false,
-  error: null,
-  hasLoaded: false,
-  search: '',
-  documentType: 'ALL',
-};
 let adminDocumentsInitialized = false;
-const adminDocumentsElements = {
-  pendingCount: null,
-  rejectedCount: null,
-  totalCount: null,
-  pendingButton: null,
-  rejectedButton: null,
-  allButton: null,
-  message: null,
-  searchInput: null,
-  documentTypeSelect: null,
-  tableBody: null,
-  tableCard: null,
-};
 let currentStep = 0;
 let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
@@ -858,387 +837,104 @@ function selectAdminCustomersTab(tab = 'all') {
   }
 }
 
-function scrollToDocumentsTable() {
-  adminDocumentsElements.tableCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function createDocumentStatCard({ eyebrow, title, description, buttonLabel, onClick }) {
+function createDocumentTile({ title, description, buttonLabel }) {
   const card = document.createElement('div');
-  card.className = 'subcard document-stat-card';
+  card.className = 'subcard';
 
   const header = document.createElement('div');
   header.className = 'card-header';
-
-  const titleWrapper = document.createElement('div');
-  const eyebrowEl = document.createElement('div');
-  eyebrowEl.className = 'eyebrow';
-  eyebrowEl.textContent = eyebrow;
+  const wrapper = document.createElement('div');
   const titleEl = document.createElement('h3');
   titleEl.textContent = title;
-  titleWrapper.appendChild(eyebrowEl);
-  titleWrapper.appendChild(titleEl);
-  header.appendChild(titleWrapper);
-
-  card.appendChild(header);
-
-  const value = document.createElement('div');
-  value.className = 'metric-value';
-  value.textContent = '0';
-
   const descriptionEl = document.createElement('p');
   descriptionEl.className = 'muted';
   descriptionEl.textContent = description;
+  wrapper.appendChild(titleEl);
+  wrapper.appendChild(descriptionEl);
+  header.appendChild(wrapper);
+  card.appendChild(header);
 
   const actionRow = document.createElement('div');
   actionRow.className = 'action-row';
   const button = document.createElement('button');
-  button.className = 'ghost';
   button.type = 'button';
+  button.className = 'primary';
   button.textContent = buttonLabel;
-  if (typeof onClick === 'function') {
-    button.addEventListener('click', onClick);
-  }
   actionRow.appendChild(button);
-
-  card.appendChild(value);
-  card.appendChild(descriptionEl);
   card.appendChild(actionRow);
 
-  return { card, value, button };
+  return card;
 }
 
 function ensureAdminDocumentsUI() {
   if (!adminDocumentsSection || adminDocumentsInitialized) return;
 
-  const existingHeader = adminDocumentsSection.querySelector('.card-header');
-  const headerClone = existingHeader ? existingHeader.cloneNode(true) : (() => {
-    const header = document.createElement('div');
-    header.className = 'card-header';
-    const wrapper = document.createElement('div');
-    const eyebrow = document.createElement('div');
-    eyebrow.className = 'eyebrow';
-    eyebrow.textContent = 'Compliance';
-    const title = document.createElement('h2');
-    title.textContent = 'Documents';
-    const subtitle = document.createElement('p');
-    subtitle.className = 'muted';
-    subtitle.textContent = 'KYC and application document management.';
-    wrapper.appendChild(eyebrow);
-    wrapper.appendChild(title);
-    wrapper.appendChild(subtitle);
-    header.appendChild(wrapper);
-    return header;
-  })();
-
   adminDocumentsSection.innerHTML = '';
 
-  const contentCard = document.createElement('div');
-  contentCard.className = 'subcard documents-main';
+  const header = document.createElement('div');
+  header.className = 'card-header';
+  const headerWrapper = document.createElement('div');
+  const eyebrow = document.createElement('div');
+  eyebrow.className = 'eyebrow';
+  eyebrow.textContent = 'COMPLIANCE';
+  const title = document.createElement('h2');
+  title.textContent = 'Documents';
+  const subtitle = document.createElement('p');
+  subtitle.className = 'muted';
+  subtitle.textContent = 'KYC and application document management.';
+  headerWrapper.appendChild(eyebrow);
+  headerWrapper.appendChild(title);
+  headerWrapper.appendChild(subtitle);
+  header.appendChild(headerWrapper);
+  adminDocumentsSection.appendChild(header);
 
-  contentCard.appendChild(headerClone);
+  const grid = document.createElement('div');
+  grid.className = 'subcard-grid';
 
-  const summaryActions = document.createElement('div');
-  summaryActions.className = 'action-row';
-  const summaryButton = document.createElement('button');
-  summaryButton.type = 'button';
-  summaryButton.className = 'primary';
-  summaryButton.textContent = 'Open repository';
-  summaryButton.addEventListener('click', scrollToDocumentsTable);
-  summaryActions.appendChild(summaryButton);
-  contentCard.appendChild(summaryActions);
+  const tiles = [
+    {
+      title: 'Document inbox',
+      description: 'View all newly uploaded customer documents.',
+      buttonLabel: 'Open',
+    },
+    {
+      title: 'Pending verification',
+      description: 'Documents awaiting KYC review.',
+      buttonLabel: 'View queue',
+    },
+    {
+      title: 'Rejected documents',
+      description: 'Items needing re-submission by customers.',
+      buttonLabel: 'View list',
+    },
+    {
+      title: 'All documents (repository)',
+      description: 'Central repository of all uploaded files.',
+      buttonLabel: 'Open repository',
+    },
+    {
+      title: 'KYC queues',
+      description: 'Organized queues by loan officer or branch.',
+      buttonLabel: 'Manage queues',
+    },
+    {
+      title: 'Document audit trail',
+      description: 'Track who viewed and approved documents.',
+      buttonLabel: 'View logs',
+    },
+  ];
 
-  const statsGrid = document.createElement('div');
-  statsGrid.className = 'subcard-grid';
-
-  const pendingCard = createDocumentStatCard({
-    eyebrow: 'Status',
-    title: 'Pending Verification',
-    description: 'Documents awaiting review.',
-    buttonLabel: 'View List',
-    onClick: scrollToDocumentsTable,
+  tiles.forEach((tile) => {
+    grid.appendChild(createDocumentTile(tile));
   });
-  adminDocumentsElements.pendingCount = pendingCard.value;
-  adminDocumentsElements.pendingButton = pendingCard.button;
-  statsGrid.appendChild(pendingCard.card);
 
-  const rejectedCard = createDocumentStatCard({
-    eyebrow: 'Quality',
-    title: 'Rejected Documents',
-    description: 'Items needing re-submission.',
-    buttonLabel: 'View List',
-    onClick: scrollToDocumentsTable,
-  });
-  adminDocumentsElements.rejectedCount = rejectedCard.value;
-  adminDocumentsElements.rejectedButton = rejectedCard.button;
-  statsGrid.appendChild(rejectedCard.card);
-
-  const allCard = createDocumentStatCard({
-    eyebrow: 'Archive',
-    title: 'All Documents',
-    description: 'Central document repository.',
-    buttonLabel: 'Open Repository',
-    onClick: scrollToDocumentsTable,
-  });
-  adminDocumentsElements.totalCount = allCard.value;
-  adminDocumentsElements.allButton = allCard.button;
-  statsGrid.appendChild(allCard.card);
-
-  const tableCard = document.createElement('div');
-  tableCard.className = 'subcard';
-  adminDocumentsElements.tableCard = tableCard;
-
-  const tableHeader = document.createElement('div');
-  tableHeader.className = 'card-header';
-  const tableHeaderWrapper = document.createElement('div');
-  const tableEyebrow = document.createElement('div');
-  tableEyebrow.className = 'eyebrow';
-  tableEyebrow.textContent = 'Archive';
-  const tableTitle = document.createElement('h3');
-  tableTitle.textContent = 'All Documents';
-  tableHeaderWrapper.appendChild(tableEyebrow);
-  tableHeaderWrapper.appendChild(tableTitle);
-  tableHeader.appendChild(tableHeaderWrapper);
-  tableCard.appendChild(tableHeader);
-
-  const message = document.createElement('div');
-  message.id = 'admin-documents-message';
-  message.className = 'alert hidden';
-  adminDocumentsElements.message = message;
-  tableCard.appendChild(message);
-
-  const filters = document.createElement('div');
-  filters.className = 'table-actions documents-filters';
-
-  const searchInput = document.createElement('input');
-  searchInput.type = 'search';
-  searchInput.placeholder = 'Search by Loan App ID, type, or file path';
-  searchInput.value = adminDocumentsState.search;
-  searchInput.addEventListener('input', (event) => {
-    adminDocumentsState.search = event.target.value || '';
-    renderAdminDocuments();
-  });
-  adminDocumentsElements.searchInput = searchInput;
-  filters.appendChild(searchInput);
-
-  const filterGroup = document.createElement('div');
-  filterGroup.className = 'filters';
-  const typeLabel = document.createElement('label');
-  typeLabel.className = 'muted';
-  typeLabel.textContent = 'Document Type';
-  const typeSelect = document.createElement('select');
-  ['ALL', 'nic_front', 'nic_back', 'nic_selfie', 'online_proof'].forEach((type) => {
-    const option = document.createElement('option');
-    option.value = type;
-    option.textContent = type === 'ALL' ? 'All' : type;
-    typeSelect.appendChild(option);
-  });
-  typeSelect.value = adminDocumentsState.documentType;
-  typeSelect.addEventListener('change', (event) => {
-    adminDocumentsState.documentType = event.target.value || 'ALL';
-    renderAdminDocuments();
-  });
-  adminDocumentsElements.documentTypeSelect = typeSelect;
-  filterGroup.appendChild(typeLabel);
-  filterGroup.appendChild(typeSelect);
-  filters.appendChild(filterGroup);
-
-  tableCard.appendChild(filters);
-
-  const tableWrapper = document.createElement('div');
-  tableWrapper.className = 'loan-table-wrapper';
-  const table = document.createElement('table');
-  table.className = 'placeholder-table loan-table';
-
-  const thead = document.createElement('thead');
-  thead.innerHTML = `
-    <tr>
-      <th>ID</th>
-      <th>Loan App ID</th>
-      <th>Document Type</th>
-      <th>File</th>
-      <th>Uploaded At</th>
-    </tr>
-  `;
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  adminDocumentsElements.tableBody = tbody;
-  table.appendChild(tbody);
-  tableWrapper.appendChild(table);
-  tableCard.appendChild(tableWrapper);
-
-  contentCard.appendChild(statsGrid);
-  contentCard.appendChild(tableCard);
-
-  adminDocumentsSection.appendChild(contentCard);
+  adminDocumentsSection.appendChild(grid);
 
   adminDocumentsInitialized = true;
 }
 
-function getDocumentStatusCounts(documents = []) {
-  const hasStatus = documents.some((doc) => doc.status !== undefined && doc.status !== null);
-  if (!hasStatus) {
-    return { pending: 0, rejected: 0, total: documents.length };
-  }
-
-  let pending = 0;
-  let rejected = 0;
-  documents.forEach((doc) => {
-    const status = (doc.status || '').toString().toLowerCase();
-    if (status === 'pending') pending += 1;
-    if (status === 'rejected') rejected += 1;
-  });
-
-  return { pending, rejected, total: documents.length };
-}
-
-function filterDocuments(documents = []) {
-  const searchTerm = (adminDocumentsState.search || '').toLowerCase();
-  const typeFilter = (adminDocumentsState.documentType || 'ALL').toLowerCase();
-
-  return documents.filter((doc) => {
-    const documentType = (doc.document_type || doc.type || '').toString().toLowerCase();
-    const loanId = (doc.loan_application_id || doc.loanApplicationId || doc.loan_application || '')
-      .toString()
-      .toLowerCase();
-    const filePath = (doc.file_path || doc.filePath || doc.path || '')
-      .toString()
-      .toLowerCase();
-
-    const matchesType = typeFilter === 'all' || documentType === typeFilter;
-    if (!matchesType) return false;
-
-    if (!searchTerm) return true;
-    return (
-      documentType.includes(searchTerm) || loanId.includes(searchTerm) || filePath.includes(searchTerm)
-    );
-  });
-}
-
-function renderAdminDocumentsTable(documents = [], { loading = false } = {}) {
-  const tbody = adminDocumentsElements.tableBody;
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-
-  if (loading) {
-    const row = document.createElement('tr');
-    const cell = document.createElement('td');
-    cell.colSpan = 5;
-    cell.className = 'muted';
-    cell.textContent = 'Loading documents...';
-    row.appendChild(cell);
-    tbody.appendChild(row);
-    return;
-  }
-
-  if (!documents.length) {
-    const row = document.createElement('tr');
-    const cell = document.createElement('td');
-    cell.colSpan = 5;
-    cell.className = 'muted';
-    cell.textContent = 'No documents found.';
-    row.appendChild(cell);
-    tbody.appendChild(row);
-    return;
-  }
-
-  const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
-
-  documents.forEach((doc) => {
-    const row = document.createElement('tr');
-
-    const idCell = document.createElement('td');
-    idCell.textContent = doc.id ?? doc.document_id ?? '—';
-
-    const loanIdCell = document.createElement('td');
-    loanIdCell.textContent =
-      doc.loan_application_id || doc.loanApplicationId || doc.loan_application || doc.application_id || '—';
-
-    const typeCell = document.createElement('td');
-    typeCell.textContent = doc.document_type || doc.type || '—';
-
-    const fileCell = document.createElement('td');
-    const filePath = doc.file_path || doc.filePath || doc.path || '';
-    if (filePath) {
-      const fileUrl = `${baseUrl}/${String(filePath).replace(/^\/+/, '')}`;
-      const link = document.createElement('a');
-      link.href = fileUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.textContent = 'View';
-      fileCell.appendChild(link);
-    } else {
-      fileCell.textContent = '—';
-    }
-
-    const uploadedCell = document.createElement('td');
-    uploadedCell.textContent =
-      formatDate(doc.uploaded_at || doc.uploadedAt || doc.created_at || doc.createdAt) || '—';
-
-    row.appendChild(idCell);
-    row.appendChild(loanIdCell);
-    row.appendChild(typeCell);
-    row.appendChild(fileCell);
-    row.appendChild(uploadedCell);
-
-    tbody.appendChild(row);
-  });
-}
-
-function renderAdminDocuments() {
-  if (!adminDocumentsInitialized) return;
-
-  const { documents, loading, error } = adminDocumentsState;
-  const counts = getDocumentStatusCounts(documents);
-
-  if (adminDocumentsElements.pendingCount)
-    adminDocumentsElements.pendingCount.textContent = counts.pending ?? 0;
-  if (adminDocumentsElements.rejectedCount)
-    adminDocumentsElements.rejectedCount.textContent = counts.rejected ?? 0;
-  if (adminDocumentsElements.totalCount) adminDocumentsElements.totalCount.textContent = counts.total ?? 0;
-
-  if (adminDocumentsElements.message) {
-    setInlineAlert(adminDocumentsElements.message, error || '', 'error');
-    if (!error) adminDocumentsElements.message.classList.add('hidden');
-  }
-
-  const filtered = filterDocuments(documents);
-  renderAdminDocumentsTable(filtered, { loading });
-}
-
-async function loadAdminDocuments(force = false) {
+function loadAdminDocuments() {
   ensureAdminDocumentsUI();
-  if (!adminDocumentsSection || adminDocumentsState.loading) return;
-
-  const session = getSession();
-  if (!session || !session.token) return;
-
-  if (adminDocumentsState.hasLoaded && !force) {
-    renderAdminDocuments();
-    return;
-  }
-
-  adminDocumentsState.loading = true;
-  adminDocumentsState.error = null;
-  renderAdminDocuments();
-
-  try {
-    const documents = await fetchLoanApplicationDocuments();
-    adminDocumentsState.documents = Array.isArray(documents) ? documents : [];
-    adminDocumentsState.hasLoaded = true;
-  } catch (error) {
-    console.error('Failed to load documents', error);
-    const friendlyError =
-      /reach the server/i.test(error?.message || '') || /network/i.test(error?.message || '')
-        ? "Couldn't reach the server. Please try again."
-        : error?.message || "Couldn't load documents. Please try again.";
-    adminDocumentsState.error = friendlyError;
-    adminDocumentsState.hasLoaded = false;
-  } finally {
-    adminDocumentsState.loading = false;
-    renderAdminDocuments();
-  }
 }
 
 function showAdminSection(section = 'dashboard') {
