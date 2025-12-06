@@ -189,6 +189,9 @@ const documentRouteLookup = Object.fromEntries(
 const documentSectionHandlers = {};
 const documentSectionButtons = {};
 let activeDocumentSection = '';
+let adminDocumentsHeader;
+let documentTilesGrid;
+let documentRepositoryPage;
 let documentRepositoryCard;
 let documentRepositoryMessage;
 let documentRepositoryLoading;
@@ -910,22 +913,22 @@ function createDocumentTile({ title, description, buttonLabel, key, path }) {
 function createDocumentRepositoryView() {
   if (documentRepositoryCard || !adminDocumentsSection) return;
 
+  documentRepositoryPage = document.createElement('div');
+  documentRepositoryPage.className = 'documents-repository-page hidden';
+
+  const pageHeader = document.createElement('div');
+  pageHeader.className = 'documents-repository-header';
+  const pageTitle = document.createElement('h2');
+  pageTitle.textContent = 'All Documents Repository';
+  const pageSubtitle = document.createElement('p');
+  pageSubtitle.className = 'muted';
+  pageSubtitle.textContent = 'View every uploaded document in the system.';
+  pageHeader.appendChild(pageTitle);
+  pageHeader.appendChild(pageSubtitle);
+
   documentRepositoryCard = document.createElement('div');
   documentRepositoryCard.id = 'documents-repository-view';
-  documentRepositoryCard.className = 'subcard hidden';
-
-  const header = document.createElement('div');
-  header.className = 'card-header';
-  const wrapper = document.createElement('div');
-  const title = document.createElement('h3');
-  title.textContent = 'All documents repository';
-  const subtitle = document.createElement('p');
-  subtitle.className = 'muted';
-  subtitle.textContent = 'View every uploaded document in the repository.';
-  wrapper.appendChild(title);
-  wrapper.appendChild(subtitle);
-  header.appendChild(wrapper);
-  documentRepositoryCard.appendChild(header);
+  documentRepositoryCard.className = 'documents-repository-card card';
 
   documentRepositoryMessage = document.createElement('p');
   documentRepositoryMessage.className = 'alert hidden';
@@ -937,7 +940,7 @@ function createDocumentRepositoryView() {
   documentRepositoryCard.appendChild(documentRepositoryLoading);
 
   documentRepositoryTableWrapper = document.createElement('div');
-  documentRepositoryTableWrapper.className = 'loan-table-wrapper';
+  documentRepositoryTableWrapper.className = 'loan-table-wrapper documents-repository-table';
 
   const table = document.createElement('table');
   table.className = 'loan-table placeholder-table';
@@ -955,7 +958,9 @@ function createDocumentRepositoryView() {
   documentRepositoryTableWrapper.appendChild(table);
   documentRepositoryCard.appendChild(documentRepositoryTableWrapper);
 
-  adminDocumentsSection.appendChild(documentRepositoryCard);
+  documentRepositoryPage.appendChild(pageHeader);
+  documentRepositoryPage.appendChild(documentRepositoryCard);
+  adminDocumentsSection.appendChild(documentRepositoryPage);
 }
 
 function getDocumentRepositoryColumns(items = []) {
@@ -1202,9 +1207,11 @@ function ensureAdminDocumentsUI() {
   headerWrapper.appendChild(subtitle);
   header.appendChild(headerWrapper);
   adminDocumentsSection.appendChild(header);
+  adminDocumentsHeader = header;
 
   const grid = document.createElement('div');
-  grid.className = 'subcard-grid';
+  grid.className = 'subcard-grid documents-tiles-grid';
+  documentTilesGrid = grid;
 
   const tiles = [
     {
@@ -1264,11 +1271,22 @@ function ensureAdminDocumentsUI() {
 
 function setActiveDocumentSection(key = '') {
   activeDocumentSection = key || '';
+  const isRepository = activeDocumentSection === 'documents-repository';
   if (adminDocumentsSection) {
     adminDocumentsSection.dataset.activeDocument = activeDocumentSection;
   }
+  if (adminDocumentsHeader) adminDocumentsHeader.classList.toggle('hidden', isRepository);
+  if (documentTilesGrid) documentTilesGrid.classList.toggle('hidden', isRepository);
+  if (documentRepositoryPage) {
+    documentRepositoryPage.classList.toggle('hidden', !isRepository);
+    if (isRepository) {
+      documentRepositoryPage.classList.remove('fade-in');
+      void documentRepositoryPage.offsetWidth;
+      documentRepositoryPage.classList.add('fade-in');
+    }
+  }
   if (documentRepositoryCard) {
-    documentRepositoryCard.classList.toggle('hidden', activeDocumentSection !== 'documents-repository');
+    documentRepositoryCard.classList.toggle('hidden', !isRepository);
   }
   const handler = documentSectionHandlers[activeDocumentSection];
   if (typeof handler === 'function') handler();
