@@ -835,15 +835,106 @@ function clearStaffRouteView() {
   if (staffRouteTitle) staffRouteTitle.textContent = '';
   if (staffRouteDescription) staffRouteDescription.textContent = '';
   if (staffRoutePath) staffRoutePath.textContent = '';
+  const content = document.querySelector('#staff-route-content');
+  if (content) content.innerHTML = '';
 }
 
 function renderStaffRoute(path) {
   if (!staffRoutePlaceholder || !staffRoutes[path]) return;
   showAdminSection('staff-roles');
+
+  const content = document.querySelector('#staff-route-content') || (() => {
+    const node = document.createElement('div');
+    node.id = 'staff-route-content';
+    staffRoutePlaceholder.appendChild(node);
+    return node;
+  })();
+
   if (staffRouteTitle) staffRouteTitle.textContent = staffRoutes[path].title;
   if (staffRouteDescription) staffRouteDescription.textContent = staffRoutes[path].description;
-  if (staffRoutePath)
-    staffRoutePath.textContent = `Route: ${path} (placeholder view will be implemented soon).`;
+  if (staffRoutePath) staffRoutePath.textContent = '';
+  content.innerHTML = '';
+
+  if (path === '/admin/staff-list') {
+    const actions = document.createElement('div');
+    actions.className = 'table-actions';
+    const spacer = document.createElement('div');
+    actions.appendChild(spacer);
+
+    const addStaffBtn = document.createElement('button');
+    addStaffBtn.type = 'button';
+    addStaffBtn.className = 'primary';
+    addStaffBtn.textContent = 'Add staff';
+    addStaffBtn.addEventListener('click', () => alert('Add staff – TODO'));
+    actions.appendChild(addStaffBtn);
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'loan-table-wrapper';
+
+    const table = document.createElement('table');
+    table.className = 'placeholder-table loan-table';
+
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Last login</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector('tbody');
+    const staffRows = [
+      {
+        name: 'Alice Muthoni',
+        email: 'alice.muthoni@grow.com',
+        role: 'Admin',
+        status: 'Active',
+        lastLogin: 'Today, 9:18 AM',
+      },
+      {
+        name: 'Brian Otieno',
+        email: 'brian.otieno@grow.com',
+        role: 'Staff',
+        status: 'Active',
+        lastLogin: 'Yesterday, 5:42 PM',
+      },
+      {
+        name: 'Cynthia Adebayo',
+        email: 'cynthia.adebayo@grow.com',
+        role: 'Staff',
+        status: 'Inactive',
+        lastLogin: 'Aug 2, 2024',
+      },
+    ];
+
+    staffRows.forEach((row) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${row.name}</td>
+        <td>${row.email}</td>
+        <td>${row.role}</td>
+        <td>${row.status}</td>
+        <td>${row.lastLogin}</td>
+        <td><button type="button" class="ghost">Manage</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tableWrapper.appendChild(table);
+
+    content.appendChild(actions);
+    content.appendChild(tableWrapper);
+  } else {
+    if (staffRoutePath)
+      staffRoutePath.textContent = `Route: ${path} (placeholder view will be implemented soon).`;
+  }
+
   staffRoutePlaceholder.classList.remove('hidden');
 }
 
