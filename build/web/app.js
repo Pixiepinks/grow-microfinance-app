@@ -932,15 +932,10 @@ function ensureAdminDocumentsUI() {
 
   adminDocumentsSection.innerHTML = '';
 
-  const layout = document.createElement('div');
-  layout.className = 'documents-layout';
+  const contentCard = document.createElement('div');
+  contentCard.className = 'subcard documents-main';
 
-  const leftPane = document.createElement('div');
-  leftPane.className = 'documents-pane';
-
-  const summaryCard = document.createElement('div');
-  summaryCard.className = 'subcard documents-summary';
-  summaryCard.appendChild(headerClone);
+  contentCard.appendChild(headerClone);
 
   const summaryActions = document.createElement('div');
   summaryActions.className = 'action-row';
@@ -950,12 +945,7 @@ function ensureAdminDocumentsUI() {
   summaryButton.textContent = 'Open repository';
   summaryButton.addEventListener('click', scrollToDocumentsTable);
   summaryActions.appendChild(summaryButton);
-
-  summaryCard.appendChild(summaryActions);
-  leftPane.appendChild(summaryCard);
-
-  const rightPane = document.createElement('div');
-  rightPane.className = 'documents-main';
+  contentCard.appendChild(summaryActions);
 
   const statsGrid = document.createElement('div');
   statsGrid.className = 'subcard-grid';
@@ -1077,13 +1067,10 @@ function ensureAdminDocumentsUI() {
   tableWrapper.appendChild(table);
   tableCard.appendChild(tableWrapper);
 
-  rightPane.appendChild(statsGrid);
-  rightPane.appendChild(tableCard);
+  contentCard.appendChild(statsGrid);
+  contentCard.appendChild(tableCard);
 
-  layout.appendChild(leftPane);
-  layout.appendChild(rightPane);
-
-  adminDocumentsSection.appendChild(layout);
+  adminDocumentsSection.appendChild(contentCard);
 
   adminDocumentsInitialized = true;
 }
