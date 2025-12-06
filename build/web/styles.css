@@ -157,6 +157,47 @@ body {
   gap: 12px;
 }
 
+.documents-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.documents-main {
+  display: grid;
+  gap: 12px;
+}
+
+.documents-pane .documents-summary {
+  position: sticky;
+  top: 0;
+}
+
+.document-stat-card .metric-value {
+  font-size: 28px;
+}
+
+.documents-filters {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.documents-filters input[type='search'] {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  min-width: 240px;
+}
+
+@media (max-width: 960px) {
+  .documents-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .bullet-list {
   margin: 0;
   padding-left: 18px;
