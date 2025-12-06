@@ -941,6 +941,17 @@ function ensureAdminDocumentsUI() {
   const summaryCard = document.createElement('div');
   summaryCard.className = 'subcard documents-summary';
   summaryCard.appendChild(headerClone);
+
+  const summaryActions = document.createElement('div');
+  summaryActions.className = 'action-row';
+  const summaryButton = document.createElement('button');
+  summaryButton.type = 'button';
+  summaryButton.className = 'primary';
+  summaryButton.textContent = 'Open repository';
+  summaryButton.addEventListener('click', scrollToDocumentsTable);
+  summaryActions.appendChild(summaryButton);
+
+  summaryCard.appendChild(summaryActions);
   leftPane.appendChild(summaryCard);
 
   const rightPane = document.createElement('div');

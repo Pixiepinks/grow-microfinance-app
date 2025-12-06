@@ -169,11 +169,6 @@ body {
   gap: 12px;
 }
 
-.documents-pane .documents-summary {
-  position: sticky;
-  top: 0;
-}
-
 .document-stat-card .metric-value {
   font-size: 28px;
 }
