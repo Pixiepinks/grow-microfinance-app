@@ -102,7 +102,6 @@ const adminPanel = document.querySelector('#admin-panel');
 const adminMetrics = document.querySelector('#admin-metrics');
 const adminApplications = document.querySelector('#admin-applications');
 const adminApplicationsMessage = document.querySelector('#admin-applications-message');
-const adminRefreshApplicationsBtn = document.querySelector('#admin-refresh-applications');
 const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
@@ -129,6 +128,47 @@ const staffApplications = document.querySelector('#staff-applications');
 const staffApplicationsMessage = document.querySelector('#staff-applications-message');
 const recordPaymentBtn = document.querySelector('#record-payment-btn');
 const staffRefreshApplicationsBtn = document.querySelector('#staff-refresh-applications');
+const adminRefreshApplicationsBtn = document.querySelector('#admin-refresh-applications');
+
+const staffRouteButtons = document.querySelectorAll('[data-staff-route]');
+const staffRoutePlaceholder = document.querySelector('#staff-route-placeholder');
+const staffRouteTitle = document.querySelector('#staff-route-title');
+const staffRouteDescription = document.querySelector('#staff-route-description');
+const staffRoutePath = document.querySelector('#staff-route-path');
+const staffRouteBack = document.querySelector('#staff-route-back');
+
+const staffRoutes = {
+  '/admin/staff-list': {
+    title: 'Staff list',
+    description: 'View and manage internal staff accounts.',
+  },
+  '/admin/permission-templates': {
+    title: 'Permission templates',
+    description: 'Predefined permission sets for staff roles.',
+  },
+  '/admin/approval-hierarchy': {
+    title: 'Approval hierarchy',
+    description: 'Configure loan approval levels and workflows.',
+  },
+  '/admin/staff-activity-logs': {
+    title: 'Staff activity logs',
+    description: 'Track actions performed by staff across the platform.',
+  },
+  '/admin/staff-login-history': {
+    title: 'Staff login history',
+    description: 'Monitor login attempts and security events.',
+  },
+  '/admin/loan-portfolio-assign': {
+    title: 'Assign loan portfolios',
+    description: 'Assign customers and loans to staff members.',
+  },
+  '/admin/role-definition': {
+    title: 'Role definition',
+    description: 'Manage roles: Admin, Staff, and Customer.',
+  },
+};
+
+const staffRouteHomePath = staffRoutes[window.location.pathname] ? '/' : window.location.pathname || '/';
 
 const customerPanel = document.querySelector('#customer-panel');
 const customerSummary = document.querySelector('#customer-summary');
@@ -787,6 +827,30 @@ function showAdminSection(section = 'dashboard') {
   } else if (target === 'customers') {
     selectAdminCustomersTab(adminCustomersState.activeTab || 'all');
   }
+}
+
+function clearStaffRouteView() {
+  if (!staffRoutePlaceholder) return;
+  staffRoutePlaceholder.classList.add('hidden');
+  if (staffRouteTitle) staffRouteTitle.textContent = '';
+  if (staffRouteDescription) staffRouteDescription.textContent = '';
+  if (staffRoutePath) staffRoutePath.textContent = '';
+}
+
+function renderStaffRoute(path) {
+  if (!staffRoutePlaceholder || !staffRoutes[path]) return;
+  showAdminSection('staff-roles');
+  if (staffRouteTitle) staffRouteTitle.textContent = staffRoutes[path].title;
+  if (staffRouteDescription) staffRouteDescription.textContent = staffRoutes[path].description;
+  if (staffRoutePath)
+    staffRoutePath.textContent = `Route: ${path} (placeholder view will be implemented soon).`;
+  staffRoutePlaceholder.classList.remove('hidden');
+}
+
+function navigateStaffRoute(path) {
+  if (!staffRoutes[path]) return;
+  history.pushState({ staffRoute: path }, '', path);
+  renderStaffRoute(path);
 }
 
 function togglePanels(role) {
@@ -1861,6 +1925,14 @@ adminMenuItems.forEach((item) => {
   });
 });
 
+staffRouteButtons.forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    const target = button.dataset.staffRoute;
+    navigateStaffRoute(target);
+  });
+});
+
 adminCustomersTabs.forEach((button) => {
   button.addEventListener('click', () => {
     selectAdminCustomersTab(button.dataset.customersTab || 'all');
@@ -1868,6 +1940,21 @@ adminCustomersTabs.forEach((button) => {
 });
 
 refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
+
+staffRouteBack?.addEventListener('click', () => {
+  history.pushState({}, '', staffRouteHomePath);
+  clearStaffRouteView();
+});
+
+window.addEventListener('popstate', () => {
+  const path = window.location.pathname;
+  if (staffRoutes[path]) renderStaffRoute(path);
+  else clearStaffRouteView();
+});
+
+if (staffRoutes[window.location.pathname]) {
+  renderStaffRoute(window.location.pathname);
+}
 
 staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
 adminRefreshApplicationsBtn?.addEventListener('click', () => loadAdmin());
