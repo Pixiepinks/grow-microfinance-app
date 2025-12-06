@@ -189,6 +189,19 @@ const documentRouteLookup = Object.fromEntries(
 const documentSectionHandlers = {};
 const documentSectionButtons = {};
 let activeDocumentSection = '';
+let documentRepositoryCard;
+let documentRepositoryMessage;
+let documentRepositoryLoading;
+let documentRepositoryTableBody;
+let documentRepositoryHeaderRow;
+let documentRepositoryTableWrapper;
+const documentRepositoryState = {
+  items: [],
+  loading: false,
+  error: null,
+  hasLoaded: false,
+  baseUrl: '',
+};
 
 const customerPanel = document.querySelector('#customer-panel');
 const customerSummary = document.querySelector('#customer-summary');
@@ -894,6 +907,284 @@ function createDocumentTile({ title, description, buttonLabel, key, path }) {
   return card;
 }
 
+function createDocumentRepositoryView() {
+  if (documentRepositoryCard || !adminDocumentsSection) return;
+
+  documentRepositoryCard = document.createElement('div');
+  documentRepositoryCard.id = 'documents-repository-view';
+  documentRepositoryCard.className = 'subcard hidden';
+
+  const header = document.createElement('div');
+  header.className = 'card-header';
+  const wrapper = document.createElement('div');
+  const title = document.createElement('h3');
+  title.textContent = 'All documents repository';
+  const subtitle = document.createElement('p');
+  subtitle.className = 'muted';
+  subtitle.textContent = 'View every uploaded document in the repository.';
+  wrapper.appendChild(title);
+  wrapper.appendChild(subtitle);
+  header.appendChild(wrapper);
+  documentRepositoryCard.appendChild(header);
+
+  documentRepositoryMessage = document.createElement('p');
+  documentRepositoryMessage.className = 'alert hidden';
+  documentRepositoryCard.appendChild(documentRepositoryMessage);
+
+  documentRepositoryLoading = document.createElement('p');
+  documentRepositoryLoading.className = 'muted hidden';
+  documentRepositoryLoading.textContent = 'Loading documents...';
+  documentRepositoryCard.appendChild(documentRepositoryLoading);
+
+  documentRepositoryTableWrapper = document.createElement('div');
+  documentRepositoryTableWrapper.className = 'loan-table-wrapper';
+
+  const table = document.createElement('table');
+  table.className = 'loan-table placeholder-table';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  documentRepositoryHeaderRow = headerRow;
+  thead.appendChild(headerRow);
+
+  const tbody = document.createElement('tbody');
+  documentRepositoryTableBody = tbody;
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  documentRepositoryTableWrapper.appendChild(table);
+  documentRepositoryCard.appendChild(documentRepositoryTableWrapper);
+
+  adminDocumentsSection.appendChild(documentRepositoryCard);
+}
+
+function getDocumentRepositoryColumns(items = []) {
+  const hasApplicationNumber = items.some((item) => item?.application_number || item?.applicationNumber);
+  const hasCustomerName = items.some((item) => item?.customer_name || item?.customerName);
+  const hasLoanType = items.some((item) => item?.loan_type || item?.loanType);
+  const hasStatus = items.some((item) => item?.status || item?.application_status || item?.applicationStatus);
+
+  const columns = [
+    { key: 'id', label: 'ID', getter: (row) => row?.id ?? row?.document_id ?? row?.documentId },
+    {
+      key: 'loan_application_id',
+      label: 'Application ID',
+      getter: (row) =>
+        row?.loan_application_id || row?.loanApplicationId || row?.application_id || row?.applicationId,
+    },
+  ];
+
+  if (hasApplicationNumber) {
+    columns.push({
+      key: 'application_number',
+      label: 'Application number',
+      getter: (row) => row?.application_number || row?.applicationNumber,
+    });
+  }
+
+  if (hasCustomerName) {
+    columns.push({
+      key: 'customer_name',
+      label: 'Customer name',
+      getter: (row) => row?.customer_name || row?.customerName,
+    });
+  }
+
+  if (hasLoanType) {
+    columns.push({ key: 'loan_type', label: 'Loan type', getter: (row) => row?.loan_type || row?.loanType });
+  }
+
+  if (hasStatus) {
+    columns.push({
+      key: 'status',
+      label: 'Status',
+      getter: (row) => row?.status || row?.application_status || row?.applicationStatus,
+    });
+  }
+
+  columns.push({ key: 'document_type', label: 'Document type', getter: (row) => row?.document_type || row?.documentType });
+  columns.push({ key: 'file_path', label: 'File path', getter: (row) => row?.file_path || row?.filePath });
+  columns.push({
+    key: 'uploaded_at',
+    label: 'Uploaded at',
+    getter: (row) => row?.uploaded_at || row?.uploadedAt || row?.created_at || row?.createdAt,
+  });
+
+  return columns;
+}
+
+
+
+function renderDocumentRepositoryTable(items = []) {
+  if (!documentRepositoryHeaderRow || !documentRepositoryTableBody) return;
+
+  const columns = getDocumentRepositoryColumns(items);
+
+  documentRepositoryHeaderRow.innerHTML = '';
+  columns.forEach((col) => {
+    const th = document.createElement('th');
+    th.textContent = col.label;
+    documentRepositoryHeaderRow.appendChild(th);
+  });
+
+  documentRepositoryTableBody.innerHTML = '';
+
+  if (!items.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = columns.length || 1;
+    td.className = 'text-center text-muted';
+    td.textContent = 'No documents found.';
+    tr.appendChild(td);
+    documentRepositoryTableBody.appendChild(tr);
+    return;
+  }
+
+  const baseUrl = (documentRepositoryState.baseUrl || '').replace(/\/+$/, '');
+
+  items.forEach((row) => {
+    const tr = document.createElement('tr');
+
+    columns.forEach((col) => {
+      const td = document.createElement('td');
+      if (col.key === 'file_path') {
+        const filePath = (col.getter(row) || '').toString();
+        const normalizedPath = filePath.replace(/^\/+/, '');
+        const href = normalizedPath ? `${baseUrl}/${normalizedPath}` : baseUrl;
+        const link = document.createElement('a');
+        link.href = href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = filePath || 'View file';
+        link.className = 'link';
+        td.appendChild(link);
+      } else if (col.key === 'uploaded_at') {
+        const uploadedAt = col.getter(row);
+        const formatted = uploadedAt ? new Date(uploadedAt).toLocaleString() : '';
+        td.textContent = formatted || '—';
+      } else if (col.key === 'status') {
+        const status = col.getter(row);
+        td.innerHTML = status ? renderStatusBadge(status) : '—';
+      } else {
+        const value = col.getter(row);
+        td.textContent = value ?? '—';
+      }
+      tr.appendChild(td);
+    });
+
+    documentRepositoryTableBody.appendChild(tr);
+  });
+}
+
+function renderDocumentRepository() {
+  if (!documentRepositoryCard) return;
+
+  const { loading, error, items } = documentRepositoryState;
+  const columns = getDocumentRepositoryColumns(items);
+
+  if (documentRepositoryHeaderRow) {
+    documentRepositoryHeaderRow.innerHTML = '';
+    columns.forEach((col) => {
+      const th = document.createElement('th');
+      th.textContent = col.label;
+      documentRepositoryHeaderRow.appendChild(th);
+    });
+  }
+
+  documentRepositoryCard.classList.toggle('hidden', activeDocumentSection !== 'documents-repository');
+
+  if (documentRepositoryMessage) setInlineAlert(documentRepositoryMessage, error || '', 'error');
+
+  if (documentRepositoryLoading) {
+    documentRepositoryLoading.classList.toggle('hidden', !loading);
+    documentRepositoryLoading.textContent = loading ? 'Loading documents...' : '';
+  }
+
+  if (loading) {
+    if (documentRepositoryTableBody) {
+      documentRepositoryTableBody.innerHTML = '';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = columns.length || 1;
+      td.className = 'text-center text-muted';
+      td.textContent = 'Loading documents...';
+      tr.appendChild(td);
+      documentRepositoryTableBody.appendChild(tr);
+    }
+    return;
+  }
+
+  if (error) {
+    if (documentRepositoryTableBody) {
+      documentRepositoryTableBody.innerHTML = '';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = columns.length || 1;
+      td.className = 'text-center text-muted';
+      td.textContent = 'Unable to load documents.';
+      tr.appendChild(td);
+      documentRepositoryTableBody.appendChild(tr);
+    }
+    return;
+  }
+
+  renderDocumentRepositoryTable(items);
+}
+
+async function loadDocumentRepository(force = false) {
+  createDocumentRepositoryView();
+  if (!documentRepositoryCard || documentRepositoryState.loading) return;
+
+  if (documentRepositoryState.hasLoaded && !force) {
+    renderDocumentRepository();
+    return;
+  }
+
+  documentRepositoryState.loading = true;
+  documentRepositoryState.error = null;
+  renderDocumentRepository();
+
+  try {
+    const { token } = getSession();
+    const headers = { Accept: 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+    const response = await fetch(`${baseUrl}/admin/documents/repository`, { method: 'GET', headers });
+    const { data, raw } = await parseResponse(response.clone());
+
+    if (!response.ok) {
+      const message = buildErrorMessage({ status: response.status, data, raw });
+      throw new Error(message);
+    }
+
+    let items = [];
+    if (Array.isArray(data?.items)) items = data.items;
+    else if (Array.isArray(data?.data?.items)) items = data.data.items;
+    else if (Array.isArray(data)) items = data;
+
+    documentRepositoryState.items = items;
+    documentRepositoryState.hasLoaded = true;
+    documentRepositoryState.baseUrl = baseUrl;
+  } catch (error) {
+    console.error('Failed to load document repository', error);
+    const friendlyError = /404/.test(error?.message || '') || /reach the server/i.test(error?.message || '')
+      ? 'Failed to load document repository'
+      : error?.message || 'Failed to load document repository';
+    documentRepositoryState.error = friendlyError;
+    documentRepositoryState.hasLoaded = false;
+  } finally {
+    documentRepositoryState.loading = false;
+    renderDocumentRepository();
+  }
+}
+
+documentSectionHandlers['documents-repository'] = () => {
+  createDocumentRepositoryView();
+  renderDocumentRepository();
+  loadDocumentRepository();
+};
+
 function ensureAdminDocumentsUI() {
   if (!adminDocumentsSection || adminDocumentsInitialized) return;
 
@@ -970,6 +1261,8 @@ function ensureAdminDocumentsUI() {
 
   adminDocumentsSection.appendChild(grid);
 
+  createDocumentRepositoryView();
+
   adminDocumentsInitialized = true;
 }
 
@@ -977,6 +1270,9 @@ function setActiveDocumentSection(key = '') {
   activeDocumentSection = key || '';
   if (adminDocumentsSection) {
     adminDocumentsSection.dataset.activeDocument = activeDocumentSection;
+  }
+  if (documentRepositoryCard) {
+    documentRepositoryCard.classList.toggle('hidden', activeDocumentSection !== 'documents-repository');
   }
   const handler = documentSectionHandlers[activeDocumentSection];
   if (typeof handler === 'function') handler();
