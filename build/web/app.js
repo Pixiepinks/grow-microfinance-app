@@ -860,6 +860,13 @@ function renderStaffRoute(path) {
   content.innerHTML = '';
 
   if (path === '/admin/staff-list') {
+    const { role } = getSession();
+    if (role !== 'admin') {
+      content.innerHTML =
+        '<p class="alert error">Admins only. Please sign in with an admin account to view staff.</p>';
+      return;
+    }
+
     const actions = document.createElement('div');
     actions.className = 'table-actions';
     const spacer = document.createElement('div');
@@ -871,6 +878,9 @@ function renderStaffRoute(path) {
     addStaffBtn.textContent = 'Add staff';
     addStaffBtn.addEventListener('click', () => alert('Add staff – TODO'));
     actions.appendChild(addStaffBtn);
+
+    const statusMessage = document.createElement('p');
+    statusMessage.className = 'alert hidden';
 
     const tableWrapper = document.createElement('div');
     tableWrapper.className = 'loan-table-wrapper';
@@ -893,47 +903,61 @@ function renderStaffRoute(path) {
     `;
 
     const tbody = table.querySelector('tbody');
-    const staffRows = [
-      {
-        name: 'Alice Muthoni',
-        email: 'alice.muthoni@grow.com',
-        role: 'Admin',
-        status: 'Active',
-        lastLogin: 'Today, 9:18 AM',
-      },
-      {
-        name: 'Brian Otieno',
-        email: 'brian.otieno@grow.com',
-        role: 'Staff',
-        status: 'Active',
-        lastLogin: 'Yesterday, 5:42 PM',
-      },
-      {
-        name: 'Cynthia Adebayo',
-        email: 'cynthia.adebayo@grow.com',
-        role: 'Staff',
-        status: 'Inactive',
-        lastLogin: 'Aug 2, 2024',
-      },
-    ];
+    const showLoading = () => {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading staff...</td></tr>';
+    };
 
-    staffRows.forEach((row) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${row.name}</td>
-        <td>${row.email}</td>
-        <td>${row.role}</td>
-        <td>${row.status}</td>
-        <td>${row.lastLogin}</td>
-        <td><button type="button" class="ghost">Manage</button></td>
-      `;
-      tbody.appendChild(tr);
-    });
+    const renderRows = (staff = []) => {
+      statusMessage.classList.add('hidden');
+      tbody.innerHTML = '';
+      if (!staff.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">No staff members found.</td></tr>';
+        return;
+      }
+
+      staff.forEach((user) => {
+        const tr = document.createElement('tr');
+        const lastLogin = formatDate(user.last_login_at) || user.last_login_at || '-';
+        tr.innerHTML = `
+          <td>${user.name || ''}</td>
+          <td>${user.email || ''}</td>
+          <td>${user.role || ''}</td>
+          <td>${user.is_active ? 'Active' : 'Inactive'}</td>
+          <td>${lastLogin || '-'}</td>
+          <td><button type="button" class="ghost">Manage</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    };
+
+    const showError = () => {
+      statusMessage.textContent = 'Unable to load staff list. Please try again.';
+      statusMessage.className = 'alert error';
+      statusMessage.classList.remove('hidden');
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">No staff to display.</td></tr>';
+    };
+
+    const loadStaffList = async () => {
+      showLoading();
+      try {
+        const staffResponse = await api.get('/admin/staff');
+        const staff = Array.isArray(staffResponse)
+          ? staffResponse
+          : staffResponse?.staff || staffResponse?.data || [];
+        renderRows(staff);
+      } catch (error) {
+        console.error('Failed to load staff list', error);
+        showError();
+      }
+    };
 
     tableWrapper.appendChild(table);
 
     content.appendChild(actions);
+    content.appendChild(statusMessage);
     content.appendChild(tableWrapper);
+
+    loadStaffList();
   } else {
     if (staffRoutePath)
       staffRoutePath.textContent = `Route: ${path} (placeholder view will be implemented soon).`;
