@@ -930,12 +930,18 @@ function ensureAdminDocumentsUI() {
     return header;
   })();
 
+  adminDocumentsSection.innerHTML = '';
+
   const layout = document.createElement('div');
   layout.className = 'documents-layout';
 
   const leftPane = document.createElement('div');
   leftPane.className = 'documents-pane';
-  leftPane.appendChild(headerClone);
+
+  const summaryCard = document.createElement('div');
+  summaryCard.className = 'subcard documents-summary';
+  summaryCard.appendChild(headerClone);
+  leftPane.appendChild(summaryCard);
 
   const rightPane = document.createElement('div');
   rightPane.className = 'documents-main';
@@ -1066,7 +1072,6 @@ function ensureAdminDocumentsUI() {
   layout.appendChild(leftPane);
   layout.appendChild(rightPane);
 
-  adminDocumentsSection.innerHTML = '';
   adminDocumentsSection.appendChild(layout);
 
   adminDocumentsInitialized = true;
