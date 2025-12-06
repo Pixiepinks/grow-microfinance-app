@@ -130,7 +130,6 @@ const recordPaymentBtn = document.querySelector('#record-payment-btn');
 const staffRefreshApplicationsBtn = document.querySelector('#staff-refresh-applications');
 const adminRefreshApplicationsBtn = document.querySelector('#admin-refresh-applications');
 
-const staffRouteButtons = document.querySelectorAll('[data-staff-route]');
 const staffRoutePlaceholder = document.querySelector('#staff-route-placeholder');
 const staffRouteTitle = document.querySelector('#staff-route-title');
 const staffRouteDescription = document.querySelector('#staff-route-description');
@@ -832,6 +831,8 @@ function showAdminSection(section = 'dashboard') {
 function clearStaffRouteView() {
   if (!staffRoutePlaceholder) return;
   staffRoutePlaceholder.classList.add('hidden');
+  const grid = staffRoutePlaceholder.parentElement?.querySelector('.subcard-grid');
+  grid?.classList.remove('hidden');
   if (staffRouteTitle) staffRouteTitle.textContent = '';
   if (staffRouteDescription) staffRouteDescription.textContent = '';
   if (staffRoutePath) staffRoutePath.textContent = '';
@@ -842,6 +843,9 @@ function clearStaffRouteView() {
 function renderStaffRoute(path) {
   if (!staffRoutePlaceholder || !staffRoutes[path]) return;
   showAdminSection('staff-roles');
+
+  const grid = staffRoutePlaceholder.parentElement?.querySelector('.subcard-grid');
+  grid?.classList.add('hidden');
 
   const content = document.querySelector('#staff-route-content') || (() => {
     const node = document.createElement('div');
@@ -2016,12 +2020,12 @@ adminMenuItems.forEach((item) => {
   });
 });
 
-staffRouteButtons.forEach((button) => {
-  button.addEventListener('click', (event) => {
-    event.preventDefault();
-    const target = button.dataset.staffRoute;
-    navigateStaffRoute(target);
-  });
+document.addEventListener('click', (event) => {
+  const routeTarget = event.target.closest('[data-staff-route]');
+  if (!routeTarget) return;
+  event.preventDefault();
+  const target = routeTarget.dataset.staffRoute;
+  navigateStaffRoute(target);
 });
 
 adminCustomersTabs.forEach((button) => {
