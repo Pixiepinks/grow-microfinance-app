@@ -197,33 +197,50 @@
                     </button>
                   </div>
 
-                  <div class="subcard" data-customers-content="all">
-                    <div class="table-actions">
-                      <div class="filters"></div>
-                      <button id="refresh-customers-btn" class="ghost" type="button">Refresh</button>
+                  <div class="customers-layout" data-customers-content="all">
+                    <div class="subcard customers-action-card">
+                      <div class="card-header">
+                        <div>
+                          <h3>Create customer</h3>
+                          <p class="muted">Add a new customer profile and capture full KYC details.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button id="create-customer-btn" class="primary" type="button">
+                          <span class="button-icon" aria-hidden="true">+</span>
+                          <span>New customer</span>
+                        </button>
+                      </div>
                     </div>
-                    <div id="admin-customers-message" class="alert hidden"></div>
-                    <div id="admin-customers-loading" class="loading-row hidden" aria-live="polite">
-                      <div class="spinner"></div>
-                      <span>Loading customers...</span>
-                    </div>
-                    <div id="admin-customers-empty" class="muted hidden">No customers found yet.</div>
-                    <div id="admin-customers-table-wrapper" class="loan-table-wrapper hidden">
-                      <table id="admin-customers-table" class="placeholder-table loan-table">
-                        <thead>
-                          <tr>
-                            <th>Customer Code</th>
-                            <th>Name</th>
-                            <th>NIC</th>
-                            <th>Mobile</th>
-                            <th>Address</th>
-                            <th>Business Type</th>
-                            <th>Status</th>
-                            <th>Created</th>
-                          </tr>
-                        </thead>
-                        <tbody id="admin-customers-table-body"></tbody>
-                      </table>
+
+                    <div class="subcard customers-table-card">
+                      <div class="table-actions">
+                        <div class="filters"></div>
+                        <button id="refresh-customers-btn" class="ghost" type="button">Refresh</button>
+                      </div>
+                      <div id="admin-customers-message" class="alert hidden"></div>
+                      <div id="admin-customers-loading" class="loading-row hidden" aria-live="polite">
+                        <div class="spinner"></div>
+                        <span>Loading customers...</span>
+                      </div>
+                      <div id="admin-customers-empty" class="muted hidden">No customers found yet.</div>
+                      <div id="admin-customers-table-wrapper" class="loan-table-wrapper hidden">
+                        <table id="admin-customers-table" class="placeholder-table loan-table">
+                          <thead>
+                            <tr>
+                              <th>Customer Code</th>
+                              <th>Name</th>
+                              <th>NIC</th>
+                              <th>Mobile</th>
+                              <th>Address</th>
+                              <th>Business Type</th>
+                              <th>Status</th>
+                              <th>Created</th>
+                            </tr>
+                          </thead>
+                          <tbody id="admin-customers-table-body"></tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
 

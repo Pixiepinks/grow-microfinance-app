@@ -113,6 +113,7 @@ const adminCustomersTableWrapper = document.querySelector('#admin-customers-tabl
 const adminCustomersLoading = document.querySelector('#admin-customers-loading');
 const adminCustomersEmptyState = document.querySelector('#admin-customers-empty');
 const refreshCustomersBtn = document.querySelector('#refresh-customers-btn');
+const createCustomerBtn = document.querySelector('#create-customer-btn');
 const adminDocumentsSection = document.querySelector(
   '.admin-content .admin-section[data-section="documents"]'
 );
@@ -2574,6 +2575,10 @@ adminCustomersTabs.forEach((button) => {
 });
 
 refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
+
+createCustomerBtn?.addEventListener('click', () => {
+  alert('New customer creation form coming soon');
+});
 
 staffRouteBack?.addEventListener('click', () => {
   history.pushState({}, '', staffRouteHomePath);
