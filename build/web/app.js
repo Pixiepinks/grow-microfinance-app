@@ -113,7 +113,9 @@ const adminCustomersTableWrapper = document.querySelector('#admin-customers-tabl
 const adminCustomersLoading = document.querySelector('#admin-customers-loading');
 const adminCustomersEmptyState = document.querySelector('#admin-customers-empty');
 const refreshCustomersBtn = document.querySelector('#refresh-customers-btn');
-const adminDocumentsSection = document.querySelector('[data-section="documents"]');
+const adminDocumentsSection = document.querySelector(
+  '.admin-content .admin-section[data-section="documents"]'
+);
 
 let adminLoanApplicationsMessage;
 let adminLoanApplicationsTableBody;
