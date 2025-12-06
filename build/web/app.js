@@ -5,7 +5,6 @@ const defaultApiConfig = {
     adminDashboard: '/admin/dashboard',
     adminLoanApplications: '/api/loan-applications',
     adminLoanApplicationApprove: '/loan-applications/{id}/approve',
-    loanApplicationDocuments: '/loan-application-documents',
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
     staffActiveLoans: '/staff/active-loans',
@@ -106,7 +105,6 @@ const adminApplicationsMessage = document.querySelector('#admin-applications-mes
 const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
-const adminDocumentsSection = document.querySelector('[data-section="documents"]');
 const adminCustomersTabs = document.querySelectorAll('[data-customers-tab]');
 const adminCustomersPanels = document.querySelectorAll('[data-customers-content]');
 const adminCustomersMessage = document.querySelector('#admin-customers-message');
@@ -236,33 +234,11 @@ const adminCustomersState = {
   hasLoaded: false,
   activeTab: 'all',
 };
-const adminDocumentsState = {
-  documents: [],
-  loading: false,
-  error: null,
-  hasLoaded: false,
-  hasStatus: false,
-  filters: {
-    search: '',
-    type: 'ALL',
-    status: 'ALL',
-  },
-};
 let currentStep = 0;
 let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
 let currentLoanForPayment = null;
 const selectedDocuments = new Map();
-let adminDocumentsInitialized = false;
-let adminDocumentsTableBody;
-let adminDocumentsTableWrapper;
-let adminDocumentsMessage;
-let adminDocumentsLoadingText;
-let adminDocumentsSearchInput;
-let adminDocumentsTypeFilter;
-let adminDocumentsStatusFilter;
-let adminDocumentsSummaryCounts;
-let adminDocumentsTableCard;
 
 async function loadApiConfig() {
   try {
@@ -273,11 +249,9 @@ async function loadApiConfig() {
       baseUrl: data.baseUrl || defaultApiConfig.baseUrl,
       endpoints: { ...defaultApiConfig.endpoints, ...(data.endpoints || {}) },
     };
-    window.apiConfig = { ...apiConfig, apiBaseUrl: apiConfig.baseUrl };
   } catch (error) {
     console.warn('Using default API config:', error.message);
     apiConfig = defaultApiConfig;
-    window.apiConfig = { ...apiConfig, apiBaseUrl: apiConfig.baseUrl };
   }
 }
 
@@ -477,50 +451,6 @@ async function apiMultipart(path, formData) {
   return data;
 }
 
-function resolveDocumentsEndpoint() {
-  const endpoints = apiConfig.endpoints || {};
-  return (
-    endpoints.loanApplicationDocuments ||
-    endpoints.loanApplicationDocumentsEndpoint ||
-    '/loan-application-documents'
-  );
-}
-
-async function fetchLoanApplicationDocuments() {
-  const endpointPath = resolveDocumentsEndpoint();
-  const baseUrl = window.apiConfig?.apiBaseUrl || apiConfig.baseUrl || '';
-  const url = /^https?:/i.test(endpointPath)
-    ? endpointPath
-    : `${baseUrl.replace(/\/+$/, '')}${endpointPath.startsWith('/') ? '' : '/'}${endpointPath}`;
-
-  const { token } = getSession();
-  const headers = { Accept: 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  let response;
-  try {
-    response = await fetch(url, { method: 'GET', headers });
-  } catch (networkError) {
-    console.error('Network error while fetching documents', networkError);
-    throw new Error("Couldn't reach the server. Please check your connection.");
-  }
-
-  const { data, raw } = await parseResponse(response.clone());
-  if (!response.ok) {
-    const message = buildErrorMessage({ status: response.status, data, raw });
-    const error = new Error(message);
-    error.status = response.status;
-    throw error;
-  }
-
-  const candidates = [data, data?.items, data?.data, data?.results, data?.content];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
-  }
-
-  return [];
-}
-
 function formatCurrency(value) {
   const amount = Number(value ?? 0);
   return amount ? `$${amount.toFixed(2)}` : '—';
@@ -531,19 +461,6 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function formatDateTime(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function renderStatusBadge(status) {
@@ -595,26 +512,6 @@ function resetAdminCustomersState() {
   adminCustomersEmptyState?.classList.add('hidden');
   adminCustomersTableWrapper?.classList.add('hidden');
   if (adminCustomersTableBody) adminCustomersTableBody.innerHTML = '';
-}
-
-function resetAdminDocumentsState() {
-  adminDocumentsState.documents = [];
-  adminDocumentsState.error = null;
-  adminDocumentsState.loading = false;
-  adminDocumentsState.hasLoaded = false;
-  adminDocumentsState.hasStatus = false;
-  adminDocumentsState.filters = { search: '', type: 'ALL', status: 'ALL' };
-
-  setInlineAlert(adminDocumentsMessage, '');
-  adminDocumentsLoadingText?.classList.add('hidden');
-  adminDocumentsTableWrapper?.classList.add('hidden');
-  if (adminDocumentsTableBody) adminDocumentsTableBody.innerHTML = '';
-  if (adminDocumentsSearchInput) adminDocumentsSearchInput.value = '';
-  if (adminDocumentsTypeFilter) adminDocumentsTypeFilter.value = 'ALL';
-  if (adminDocumentsStatusFilter) {
-    adminDocumentsStatusFilter.value = 'ALL';
-    adminDocumentsStatusFilter.classList.add('hidden');
-  }
 }
 
 function ensureAdminLoanApplicationsUI() {
@@ -907,341 +804,6 @@ function selectAdminCustomersTab(tab = 'all') {
   }
 }
 
-function createDocumentSummaryCard({ eyebrow, title, description, actionLabel, onClick }) {
-  const card = document.createElement('div');
-  card.className = 'subcard';
-
-  const header = document.createElement('div');
-  header.className = 'card-header';
-  header.innerHTML = `
-    <div>
-      <div class="eyebrow">${eyebrow}</div>
-      <h3>${title}</h3>
-    </div>
-  `;
-
-  const count = document.createElement('div');
-  count.className = 'metric-value';
-  count.textContent = '0';
-
-  const descriptionEl = document.createElement('p');
-  descriptionEl.className = 'muted';
-  descriptionEl.textContent = description;
-
-  const actionRow = document.createElement('div');
-  actionRow.className = 'action-row';
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'ghost';
-  button.textContent = actionLabel;
-  if (typeof onClick === 'function') {
-    button.addEventListener('click', onClick);
-  }
-
-  actionRow.appendChild(button);
-
-  card.appendChild(header);
-  card.appendChild(count);
-  card.appendChild(descriptionEl);
-  card.appendChild(actionRow);
-
-  return { card, countEl: count };
-}
-
-function ensureAdminDocumentsUI() {
-  if (!adminDocumentsSection || adminDocumentsInitialized) return;
-  adminDocumentsInitialized = true;
-
-  adminDocumentsSection.innerHTML = '';
-
-  const header = document.createElement('div');
-  header.className = 'card-header';
-  header.innerHTML = `
-    <div>
-      <div class="eyebrow">Compliance</div>
-      <h2>Documents</h2>
-      <p class="muted">KYC and application document management.</p>
-    </div>
-  `;
-  adminDocumentsSection.appendChild(header);
-
-  const summaryGrid = document.createElement('div');
-  summaryGrid.className = 'subcard-grid';
-
-  const scrollToTable = () => {
-    if (adminDocumentsTableCard) {
-      adminDocumentsTableCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
-  const pendingCard = createDocumentSummaryCard({
-    eyebrow: 'Status',
-    title: 'Pending Verification',
-    description: 'Documents awaiting review.',
-    actionLabel: 'View List',
-    onClick: scrollToTable,
-  });
-
-  const rejectedCard = createDocumentSummaryCard({
-    eyebrow: 'Quality',
-    title: 'Rejected Documents',
-    description: 'Items needing re-submission.',
-    actionLabel: 'View List',
-    onClick: scrollToTable,
-  });
-
-  const allCard = createDocumentSummaryCard({
-    eyebrow: 'Archive',
-    title: 'All Documents',
-    description: 'Central document repository.',
-    actionLabel: 'Open Repository',
-    onClick: scrollToTable,
-  });
-
-  adminDocumentsSummaryCounts = {
-    pending: pendingCard.countEl,
-    rejected: rejectedCard.countEl,
-    total: allCard.countEl,
-  };
-
-  summaryGrid.appendChild(pendingCard.card);
-  summaryGrid.appendChild(rejectedCard.card);
-  summaryGrid.appendChild(allCard.card);
-
-  adminDocumentsSection.appendChild(summaryGrid);
-
-  adminDocumentsTableCard = document.createElement('div');
-  adminDocumentsTableCard.className = 'subcard';
-
-  const tableHeader = document.createElement('div');
-  tableHeader.className = 'card-header';
-  tableHeader.innerHTML = `
-    <div>
-      <div class="eyebrow">Repository</div>
-      <h3>All Documents</h3>
-    </div>
-  `;
-  adminDocumentsTableCard.appendChild(tableHeader);
-
-  adminDocumentsMessage = document.createElement('p');
-  adminDocumentsMessage.className = 'alert hidden';
-  adminDocumentsTableCard.appendChild(adminDocumentsMessage);
-
-  const actions = document.createElement('div');
-  actions.className = 'table-actions';
-
-  const filters = document.createElement('div');
-  filters.className = 'filters';
-
-  adminDocumentsSearchInput = document.createElement('input');
-  adminDocumentsSearchInput.type = 'search';
-  adminDocumentsSearchInput.placeholder = 'Search by Loan App ID, Document Type or File Path';
-  adminDocumentsSearchInput.addEventListener('keyup', (event) => {
-    adminDocumentsState.filters.search = event.target.value || '';
-    renderAdminDocuments();
-  });
-
-  adminDocumentsTypeFilter = document.createElement('select');
-  ['ALL', 'nic_front', 'nic_back', 'nic_selfie', 'online_proof'].forEach((value) => {
-    const option = document.createElement('option');
-    option.value = value === 'ALL' ? 'ALL' : value;
-    option.textContent = value === 'ALL' ? 'All Types' : value;
-    adminDocumentsTypeFilter.appendChild(option);
-  });
-  adminDocumentsTypeFilter.addEventListener('change', (event) => {
-    adminDocumentsState.filters.type = event.target.value || 'ALL';
-    renderAdminDocuments();
-  });
-
-  adminDocumentsStatusFilter = document.createElement('select');
-  ['ALL', 'pending', 'approved', 'rejected'].forEach((value) => {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value === 'ALL' ? 'All Statuses' : value;
-    adminDocumentsStatusFilter.appendChild(option);
-  });
-  adminDocumentsStatusFilter.classList.add('hidden');
-  adminDocumentsStatusFilter.addEventListener('change', (event) => {
-    adminDocumentsState.filters.status = event.target.value || 'ALL';
-    renderAdminDocuments();
-  });
-
-  filters.appendChild(adminDocumentsSearchInput);
-  filters.appendChild(adminDocumentsTypeFilter);
-  filters.appendChild(adminDocumentsStatusFilter);
-  actions.appendChild(filters);
-
-  adminDocumentsTableCard.appendChild(actions);
-
-  adminDocumentsLoadingText = document.createElement('p');
-  adminDocumentsLoadingText.className = 'muted text-center hidden';
-  adminDocumentsLoadingText.textContent = 'Loading documents...';
-  adminDocumentsTableCard.appendChild(adminDocumentsLoadingText);
-
-  adminDocumentsTableWrapper = document.createElement('div');
-  adminDocumentsTableWrapper.className = 'loan-table-wrapper hidden';
-
-  const table = document.createElement('table');
-  table.className = 'placeholder-table loan-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Loan App ID</th>
-        <th>Document Type</th>
-        <th>File</th>
-        <th>Uploaded At</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="admin-documents-body"></tbody>
-  `;
-
-  adminDocumentsTableBody = table.querySelector('#admin-documents-body');
-
-  adminDocumentsTableWrapper.appendChild(table);
-  adminDocumentsTableCard.appendChild(adminDocumentsTableWrapper);
-
-  adminDocumentsSection.appendChild(adminDocumentsTableCard);
-}
-
-function applyDocumentFilters(documents = []) {
-  const search = (adminDocumentsState.filters.search || '').toLowerCase();
-  const selectedType = (adminDocumentsState.filters.type || 'ALL').toLowerCase();
-  const selectedStatus = (adminDocumentsState.filters.status || 'ALL').toLowerCase();
-  const shouldFilterStatus = adminDocumentsState.hasStatus && selectedStatus !== 'all';
-
-  return documents.filter((doc) => {
-    const matchesSearch = !search
-      || [doc.id, doc.loan_application_id, doc.document_type, doc.file_path]
-        .filter(Boolean)
-        .map((value) => String(value).toLowerCase())
-        .some((value) => value.includes(search));
-
-    const matchesType =
-      selectedType === 'all' || (doc.document_type || '').toLowerCase() === selectedType;
-
-    const matchesStatus = !shouldFilterStatus
-      || (doc.status || '').toLowerCase() === selectedStatus;
-
-    return matchesSearch && matchesType && matchesStatus;
-  });
-}
-
-function renderDocumentsTable(documents = []) {
-  if (!adminDocumentsTableBody) return;
-
-  adminDocumentsTableBody.innerHTML = '';
-
-  if (!documents.length) {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td colspan="6" class="text-center text-muted">No documents found</td>
-    `;
-    adminDocumentsTableBody.appendChild(row);
-    return;
-  }
-
-  const baseUrl = (window.apiConfig?.apiBaseUrl || apiConfig.baseUrl || '').replace(/\/+$/, '');
-
-  documents.forEach((doc) => {
-    const tr = document.createElement('tr');
-    const docType = doc.document_type || doc.type || '—';
-    const filePath = doc.file_path || doc.path || '';
-    const fileUrl = `${baseUrl}/${String(filePath).replace(/^\/+/, '')}`;
-
-    tr.innerHTML = `
-      <td>${doc.id ?? '—'}</td>
-      <td>${doc.loan_application_id ?? '—'}</td>
-      <td>${docType}</td>
-      <td><a href="${fileUrl}" target="_blank" rel="noopener noreferrer">View</a></td>
-      <td>${formatDateTime(doc.uploaded_at || doc.created_at || doc.updated_at) || '—'}</td>
-      <td><a href="${fileUrl}" target="_blank" rel="noopener noreferrer">Open</a></td>
-    `;
-
-    adminDocumentsTableBody.appendChild(tr);
-  });
-}
-
-function renderAdminDocuments() {
-  if (!adminDocumentsInitialized) return;
-
-  const { documents, loading, error, hasStatus } = adminDocumentsState;
-
-  const pendingCount = hasStatus
-    ? documents.filter((doc) => (doc.status || '').toLowerCase() === 'pending').length
-    : 0;
-  const rejectedCount = hasStatus
-    ? documents.filter((doc) => (doc.status || '').toLowerCase() === 'rejected').length
-    : 0;
-  const totalCount = documents.length;
-
-  if (adminDocumentsSummaryCounts?.pending) adminDocumentsSummaryCounts.pending.textContent = pendingCount;
-  if (adminDocumentsSummaryCounts?.rejected) adminDocumentsSummaryCounts.rejected.textContent = rejectedCount;
-  if (adminDocumentsSummaryCounts?.total) adminDocumentsSummaryCounts.total.textContent = totalCount;
-
-  setInlineAlert(adminDocumentsMessage, error || '', 'error');
-  adminDocumentsLoadingText?.classList.toggle('hidden', !loading);
-
-  if (loading) {
-    adminDocumentsTableWrapper?.classList.add('hidden');
-    return;
-  }
-
-  if (error) {
-    adminDocumentsTableWrapper?.classList.add('hidden');
-    return;
-  }
-
-  if (adminDocumentsStatusFilter) {
-    adminDocumentsStatusFilter.classList.toggle('hidden', !hasStatus);
-    if (!hasStatus) {
-      adminDocumentsState.filters.status = 'ALL';
-      adminDocumentsStatusFilter.value = 'ALL';
-    }
-  }
-
-  const filteredDocuments = applyDocumentFilters(documents);
-  adminDocumentsTableWrapper?.classList.remove('hidden');
-  renderDocumentsTable(filteredDocuments);
-}
-
-async function loadAdminDocuments(force = false) {
-  ensureAdminDocumentsUI();
-
-  if (!adminDocumentsSection || adminDocumentsState.loading) return;
-
-  const session = getSession();
-  if (!session || !session.token) return;
-
-  if (adminDocumentsState.hasLoaded && !force) {
-    renderAdminDocuments();
-    return;
-  }
-
-  adminDocumentsState.loading = true;
-  adminDocumentsState.error = null;
-  renderAdminDocuments();
-
-  try {
-    const documents = await fetchLoanApplicationDocuments();
-    adminDocumentsState.documents = documents;
-    adminDocumentsState.hasStatus = documents.some((doc) => doc.status !== undefined && doc.status !== null);
-    adminDocumentsState.hasLoaded = true;
-  } catch (error) {
-    console.error('Failed to load admin documents', error);
-    const friendlyError = /reach the server/i.test(error?.message || '')
-      ? 'Unable to load documents. Please try again later.'
-      : error?.message || "Couldn't load documents. Please try again.";
-    adminDocumentsState.error = friendlyError;
-    adminDocumentsState.hasLoaded = false;
-  } finally {
-    adminDocumentsState.loading = false;
-    renderAdminDocuments();
-  }
-}
-
 function showAdminSection(section = 'dashboard') {
   if (!adminSections.length) return;
   const hasSection = Array.from(adminSections).some((el) => el.dataset.section === section);
@@ -1261,10 +823,6 @@ function showAdminSection(section = 'dashboard') {
     ensureAdminLoanApplicationsUI();
     renderAdminLoanApplications();
     loadAdminLoanApplicationsAll();
-  } else if (target === 'documents') {
-    ensureAdminDocumentsUI();
-    renderAdminDocuments();
-    loadAdminDocuments();
   } else if (target === 'customers') {
     selectAdminCustomersTab(adminCustomersState.activeTab || 'all');
   }
@@ -1425,7 +983,6 @@ function togglePanels(role) {
   else {
     resetAdminLoanApplicationsState();
     resetAdminCustomersState();
-    resetAdminDocumentsState();
   }
   staffPanel.classList.toggle('hidden', role !== 'staff');
   customerPanel.classList.toggle('hidden', role !== 'customer');
