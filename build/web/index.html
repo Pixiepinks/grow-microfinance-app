@@ -331,15 +331,107 @@
                     <div>
                       <div class="eyebrow">Team</div>
                       <h2>Staff &amp; Roles</h2>
-                      <p class="muted">Manage staff accounts and permissions.</p>
+                      <p class="muted">Manage staff accounts, permissions, and operational controls.</p>
                     </div>
                   </div>
-                  <div class="subcard">
-                    <ul class="bullet-list">
-                      <li>Staff list</li>
-                      <li>Role definitions</li>
-                      <li>Approval hierarchy (COMING SOON)</li>
-                    </ul>
+                  <div class="subcard-grid">
+                    <div class="subcard" data-staff-route="/admin/staff-list">
+                      <div class="card-header">
+                        <div>
+                          <h3>Staff list</h3>
+                          <p class="muted">View and manage internal staff accounts.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Open</button>
+                      </div>
+                    </div>
+
+                    <div class="subcard" data-staff-route="/admin/permission-templates">
+                      <div class="card-header">
+                        <div>
+                          <h3>Permission templates</h3>
+                          <p class="muted">Predefined permission sets for staff roles.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Open</button>
+                      </div>
+                    </div>
+
+                    <div class="subcard" data-staff-route="/admin/approval-hierarchy">
+                      <div class="card-header">
+                        <div>
+                          <h3>Approval hierarchy</h3>
+                          <p class="muted">Configure loan approval levels and workflows.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Configure</button>
+                      </div>
+                    </div>
+
+                    <div class="subcard" data-staff-route="/admin/staff-activity-logs">
+                      <div class="card-header">
+                        <div>
+                          <h3>Staff activity logs</h3>
+                          <p class="muted">Track actions performed by staff across the platform.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">View logs</button>
+                      </div>
+                    </div>
+
+                    <div class="subcard" data-staff-route="/admin/staff-login-history">
+                      <div class="card-header">
+                        <div>
+                          <h3>Staff login history</h3>
+                          <p class="muted">Monitor login attempts and security events.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">View history</button>
+                      </div>
+                    </div>
+
+                    <div class="subcard" data-staff-route="/admin/loan-portfolio-assign">
+                      <div class="card-header">
+                        <div>
+                          <h3>Assign loan portfolios</h3>
+                          <p class="muted">Assign customers and loans to staff members.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Manage assignments</button>
+                      </div>
+                    </div>
+
+                    <div class="subcard" data-staff-route="/admin/role-definition">
+                      <div class="card-header">
+                        <div>
+                          <h3>Role definition</h3>
+                          <p class="muted">Manage roles: Admin, Staff, and Customer.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Manage roles</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div id="staff-route-placeholder" class="subcard hidden">
+                    <div class="card-header">
+                      <div>
+                        <div class="eyebrow">Staff &amp; Roles</div>
+                        <h3 id="staff-route-title"></h3>
+                        <p class="muted" id="staff-route-description"></p>
+                      </div>
+                    </div>
+                    <p class="muted" id="staff-route-path"></p>
+                    <div class="action-row">
+                      <button id="staff-route-back" class="ghost" type="button">Back to Staff &amp; Roles</button>
+                    </div>
                   </div>
                 </section>
 
