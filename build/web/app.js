@@ -171,6 +171,24 @@ const staffRoutes = {
 };
 
 const staffRouteHomePath = staffRoutes[window.location.pathname] ? '/' : window.location.pathname || '/';
+const documentRouteBase = '/admin/documents';
+const documentRouteMap = {
+  'document-inbox': `${documentRouteBase}/document-inbox`,
+  'pending-verification': `${documentRouteBase}/pending-verification`,
+  'rejected-documents': `${documentRouteBase}/rejected-documents`,
+  'documents-repository': `${documentRouteBase}/documents-repository`,
+  'kyc-queues': `${documentRouteBase}/kyc-queues`,
+  'document-audit-trail': `${documentRouteBase}/document-audit-trail`,
+};
+const documentRouteLookup = Object.fromEntries(
+  Object.entries(documentRouteMap).flatMap(([key, path]) => [
+    [path, key],
+    [`${path}/`, key],
+  ])
+);
+const documentSectionHandlers = {};
+const documentSectionButtons = {};
+let activeDocumentSection = '';
 
 const customerPanel = document.querySelector('#customer-panel');
 const customerSummary = document.querySelector('#customer-summary');
@@ -839,7 +857,7 @@ function selectAdminCustomersTab(tab = 'all') {
   }
 }
 
-function createDocumentTile({ title, description, buttonLabel }) {
+function createDocumentTile({ title, description, buttonLabel, key, path }) {
   const card = document.createElement('div');
   card.className = 'subcard';
 
@@ -862,6 +880,14 @@ function createDocumentTile({ title, description, buttonLabel }) {
   button.type = 'button';
   button.className = 'primary';
   button.textContent = buttonLabel;
+  button.dataset.documentKey = key || '';
+  button.dataset.documentRoute = path || '';
+  button.addEventListener('click', () => {
+    handleDocumentRoute(path || documentRouteBase, { pushState: true, key });
+  });
+  if (key) {
+    documentSectionButtons[key] = button;
+  }
   actionRow.appendChild(button);
   card.appendChild(actionRow);
 
@@ -895,31 +921,43 @@ function ensureAdminDocumentsUI() {
 
   const tiles = [
     {
+      key: 'document-inbox',
+      path: documentRouteMap['document-inbox'],
       title: 'Document inbox',
       description: 'View all newly uploaded customer documents.',
       buttonLabel: 'Open',
     },
     {
+      key: 'pending-verification',
+      path: documentRouteMap['pending-verification'],
       title: 'Pending verification',
       description: 'Documents awaiting KYC review.',
       buttonLabel: 'View queue',
     },
     {
+      key: 'rejected-documents',
+      path: documentRouteMap['rejected-documents'],
       title: 'Rejected documents',
       description: 'Items needing re-submission by customers.',
       buttonLabel: 'View list',
     },
     {
+      key: 'documents-repository',
+      path: documentRouteMap['documents-repository'],
       title: 'All documents (repository)',
       description: 'Central repository of all uploaded files.',
       buttonLabel: 'Open repository',
     },
     {
+      key: 'kyc-queues',
+      path: documentRouteMap['kyc-queues'],
       title: 'KYC queues',
       description: 'Organized queues by loan officer or branch.',
       buttonLabel: 'Manage queues',
     },
     {
+      key: 'document-audit-trail',
+      path: documentRouteMap['document-audit-trail'],
       title: 'Document audit trail',
       description: 'Track who viewed and approved documents.',
       buttonLabel: 'View logs',
@@ -933,6 +971,35 @@ function ensureAdminDocumentsUI() {
   adminDocumentsSection.appendChild(grid);
 
   adminDocumentsInitialized = true;
+}
+
+function setActiveDocumentSection(key = '') {
+  activeDocumentSection = key || '';
+  if (adminDocumentsSection) {
+    adminDocumentsSection.dataset.activeDocument = activeDocumentSection;
+  }
+  const handler = documentSectionHandlers[activeDocumentSection];
+  if (typeof handler === 'function') handler();
+}
+
+function getDocumentSectionKeyFromPath(path = '') {
+  const normalizedPath = path.endsWith('/') && path !== documentRouteBase ? path.slice(0, -1) : path;
+  if (normalizedPath === documentRouteBase) return '';
+  return documentRouteLookup[normalizedPath] || '';
+}
+
+function handleDocumentRoute(path = documentRouteBase, { pushState = false, key } = {}) {
+  if (!path.startsWith(documentRouteBase)) return false;
+  showAdminSection('documents');
+  ensureAdminDocumentsUI();
+  const sectionKey = key || getDocumentSectionKeyFromPath(path);
+
+  if (pushState && window.location.pathname !== path) {
+    history.pushState({ documentRoute: path }, '', path);
+  }
+
+  setActiveDocumentSection(sectionKey);
+  return true;
 }
 
 function loadAdminDocuments() {
@@ -2177,7 +2244,8 @@ refreshApplicationsBtn?.addEventListener('click', async () => {
 adminMenuItems.forEach((item) => {
   item.addEventListener('click', () => {
     const target = item.dataset.section || 'dashboard';
-    showAdminSection(target);
+    if (target === 'documents') handleDocumentRoute(documentRouteBase, { pushState: true });
+    else showAdminSection(target);
   });
 });
 
@@ -2205,11 +2273,13 @@ staffRouteBack?.addEventListener('click', () => {
 window.addEventListener('popstate', () => {
   const path = window.location.pathname;
   if (staffRoutes[path]) renderStaffRoute(path);
-  else clearStaffRouteView();
+  else if (!handleDocumentRoute(path)) clearStaffRouteView();
 });
 
 if (staffRoutes[window.location.pathname]) {
   renderStaffRoute(window.location.pathname);
+} else if (handleDocumentRoute(window.location.pathname)) {
+  // handled by document routing
 }
 
 staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
