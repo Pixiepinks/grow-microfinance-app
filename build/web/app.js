@@ -1040,24 +1040,40 @@ function renderDocumentRepositoryTable(items = []) {
     return;
   }
 
-  const baseUrl = (documentRepositoryState.baseUrl || '').replace(/\/+$/, '');
-
   items.forEach((row) => {
     const tr = document.createElement('tr');
 
     columns.forEach((col) => {
       const td = document.createElement('td');
       if (col.key === 'file_path') {
-        const filePath = (col.getter(row) || '').toString();
-        const normalizedPath = filePath.replace(/^\/+/, '');
-        const href = normalizedPath ? `${baseUrl}/${normalizedPath}` : baseUrl;
-        const link = document.createElement('a');
-        link.href = href;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = filePath || 'View file';
-        link.className = 'link';
-        td.appendChild(link);
+        const href = row.file_url || row.file_path || '#';
+        const linkElement = React.createElement(
+          "a",
+          {
+            href: href,
+            target: "_blank",
+            rel: "noopener noreferrer"
+          },
+          row.file_path || "Open file"
+        );
+
+        if (typeof ReactDOM !== 'undefined' && ReactDOM.createRoot) {
+          const container = document.createElement('span');
+          ReactDOM.createRoot(container).render(linkElement);
+          td.appendChild(container);
+        } else if (typeof ReactDOM !== 'undefined' && ReactDOM.render) {
+          const container = document.createElement('span');
+          ReactDOM.render(linkElement, container);
+          td.appendChild(container);
+        } else {
+          const fallbackLink = document.createElement('a');
+          fallbackLink.href = href;
+          fallbackLink.target = '_blank';
+          fallbackLink.rel = 'noopener noreferrer';
+          fallbackLink.textContent = row.file_path || 'Open file';
+          fallbackLink.className = 'link';
+          td.appendChild(fallbackLink);
+        }
       } else if (col.key === 'uploaded_at') {
         const uploadedAt = col.getter(row);
         const formatted = uploadedAt ? new Date(uploadedAt).toLocaleString() : '';
