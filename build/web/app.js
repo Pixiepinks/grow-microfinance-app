@@ -223,6 +223,17 @@ const staffRoutes = {
 
 const customerRouteHomePath = '/admin/customers';
 const staffRouteHomePath = staffRoutes[window.location.pathname] ? '/' : window.location.pathname || '/';
+const leadsRouteBase = '/admin/leads';
+const leadsRoutes = {
+  '/admin/leads/all': {
+    title: 'All leads',
+    description: 'View and manage all inbound leads.',
+  },
+  '/admin/leads/new': {
+    title: 'Create lead',
+    description: 'Add a new prospect to the leads pipeline.',
+  },
+};
 const documentRouteBase = '/admin/documents';
 const documentRouteMap = {
   'document-inbox': `${documentRouteBase}/document-inbox`,
@@ -376,6 +387,13 @@ let leadNameError;
 let leadLoanTypeError;
 let leadSourceError;
 let newLeadBtn;
+let leadsCardsGrid;
+let leadsRoutePlaceholder;
+let leadsRouteTitle;
+let leadsRouteDescription;
+let leadsRouteBack;
+let leadsRouteContent;
+let leadsListCard;
 let adminDocumentsInitialized = false;
 let adminCustomersFiltersInitialized = false;
 let currentStep = 0;
@@ -1127,19 +1145,17 @@ function resetLeadForm() {
   }
 }
 
-function closeLeadModal() {
+function closeLeadModal(targetPath = leadsRouteBase) {
   adminLeadsState.showNewLeadForm = false;
   if (leadModal) leadModal.classList.add('hidden');
   adminLeadFormState.submitting = false;
   resetLeadForm();
-  renderAdminLeads();
+  if (window.location.pathname.startsWith(leadsRouteBase)) navigateLeadsRoute(targetPath);
+  else renderAdminLeads();
 }
 
 function openLeadModal() {
-  adminLeadsState.showNewLeadForm = true;
-  resetLeadForm();
-  if (leadModal) leadModal.classList.remove('hidden');
-  renderAdminLeads();
+  navigateLeadsRoute(`${leadsRouteBase}/new`);
 }
 
 function validateLeadForm(values) {
@@ -1150,22 +1166,20 @@ function validateLeadForm(values) {
   return errors;
 }
 
-function buildLeadModal() {
+function buildLeadModal(host) {
   if (leadModal) return;
 
-  if (!adminLeadsSection) return;
-
-  const header = adminLeadsSection.querySelector('.card-header');
-  const host = header?.parentElement || adminLeadsSection;
+  const targetHost = host || leadsRouteContent || adminLeadsSection;
+  if (!targetHost) return;
 
   leadModal = document.createElement('div');
   leadModal.id = 'lead-modal';
-  leadModal.className = 'sheet hidden';
+  leadModal.className = 'subcard hidden';
   leadModal.innerHTML = `
-    <div class="sheet-header">
+    <div class="card-header">
       <div>
         <div class="eyebrow">Leads</div>
-        <h4>Create New Lead</h4>
+        <h3>Create new lead</h3>
         <p class="muted">Capture a prospect’s basic details so you can follow up and convert them into a customer.</p>
       </div>
     </div>
@@ -1209,11 +1223,7 @@ function buildLeadModal() {
     </form>
   `;
 
-  if (host && header && header.nextSibling) {
-    host.insertBefore(leadModal, header.nextSibling);
-  } else {
-    host?.appendChild(leadModal);
-  }
+  targetHost.appendChild(leadModal);
 
   leadForm = leadModal.querySelector('#lead-form');
   leadFormMessage = leadModal.querySelector('#lead-form-message');
@@ -1242,25 +1252,92 @@ function ensureAdminLeadsUI() {
 
   const header = adminLeadsSection.querySelector('.card-header');
   if (header) {
-    const actions = document.createElement('div');
-    actions.className = 'header-actions';
-
-    if (refreshLeadsBtn) {
-      refreshLeadsBtn.classList.add('ghost');
-      actions.appendChild(refreshLeadsBtn);
-    }
-
-    newLeadBtn = document.createElement('button');
-    newLeadBtn.type = 'button';
-    newLeadBtn.className = 'primary';
-    newLeadBtn.id = 'new-lead-btn';
-    newLeadBtn.textContent = 'New Lead';
-    actions.appendChild(newLeadBtn);
-
-    header.appendChild(actions);
+    const eyebrow = header.querySelector('.eyebrow');
+    if (eyebrow) eyebrow.textContent = 'Prospects';
+    const title = header.querySelector('h2');
+    if (title) title.textContent = 'Leads';
+    const subtitle = header.querySelector('p');
+    if (subtitle) subtitle.textContent = 'Review inbound leads and convert them into customers.';
+    header.querySelector('.header-actions')?.remove();
+    header.querySelector('#refresh-leads-btn')?.remove();
   }
 
-  const leadsHeaderRow = document.querySelector('#admin-leads-table thead tr');
+  leadsListCard = adminLeadsSection.querySelector('.subcard');
+  if (leadsListCard) {
+    leadsListCard.classList.add('hidden');
+    leadsListCard.remove();
+  }
+
+  leadsCardsGrid = document.createElement('div');
+  leadsCardsGrid.className = 'subcard-grid';
+  const leadCards = [
+    {
+      path: '/admin/leads/all',
+      title: 'All leads',
+      description: 'View and manage all inbound leads.',
+      buttonLabel: 'Open',
+    },
+    {
+      path: '/admin/leads/new',
+      title: 'Create lead',
+      description: 'Add a new prospect to the leads pipeline.',
+      buttonLabel: 'New lead',
+    },
+  ];
+
+  leadCards.forEach(({ path, title, description, buttonLabel }) => {
+    const card = document.createElement('div');
+    card.className = 'subcard';
+    card.dataset.leadRoute = path;
+    card.innerHTML = `
+      <div class="card-header">
+        <div>
+          <h3>${title}</h3>
+          <p class="muted">${description}</p>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="primary" type="button">${buttonLabel}</button>
+      </div>
+    `;
+    leadsCardsGrid.appendChild(card);
+  });
+
+  adminLeadsSection.appendChild(leadsCardsGrid);
+
+  leadsRoutePlaceholder = document.createElement('div');
+  leadsRoutePlaceholder.id = 'leads-route-placeholder';
+  leadsRoutePlaceholder.className = 'subcard hidden';
+  leadsRoutePlaceholder.innerHTML = `
+    <div class="card-header">
+      <div>
+        <div class="eyebrow">Leads</div>
+        <h3 id="leads-route-title"></h3>
+        <p class="muted" id="leads-route-description"></p>
+      </div>
+    </div>
+    <div class="action-row">
+      <button id="leads-route-back" class="ghost" type="button">Back to Leads</button>
+    </div>
+  `;
+
+  leadsRouteContent = document.createElement('div');
+  leadsRouteContent.id = 'leads-route-content';
+  leadsRoutePlaceholder.appendChild(leadsRouteContent);
+
+  leadsRouteTitle = leadsRoutePlaceholder.querySelector('#leads-route-title');
+  leadsRouteDescription = leadsRoutePlaceholder.querySelector('#leads-route-description');
+  leadsRouteBack = leadsRoutePlaceholder.querySelector('#leads-route-back');
+
+  if (leadsListCard) {
+    leadsRouteContent.appendChild(leadsListCard);
+  }
+
+  adminLeadsSection.appendChild(leadsRoutePlaceholder);
+
+  const leadsHeaderRow =
+    leadsListCard?.querySelector('#admin-leads-table thead tr') ||
+    document.querySelector('#admin-leads-table thead tr');
   if (leadsHeaderRow) {
     leadsHeaderRow.innerHTML = `
       <th>ID</th>
@@ -1274,11 +1351,126 @@ function ensureAdminLeadsUI() {
     `;
   }
 
-  buildLeadModal();
-
   adminLeadsInitialized = true;
+}
 
-  if (newLeadBtn) newLeadBtn.addEventListener('click', openLeadModal);
+function renderLeadsListPage(root) {
+  if (!root) return;
+  ensureAdminLeadsUI();
+
+  adminLeadsState.showNewLeadForm = false;
+  if (leadModal) leadModal.classList.add('hidden');
+
+  if (leadsListCard) {
+    leadsListCard.classList.remove('hidden');
+    if (leadsListCard.parentElement !== root) root.appendChild(leadsListCard);
+
+    let actions = leadsListCard.querySelector('.table-actions');
+    if (!actions) {
+      actions = document.createElement('div');
+      actions.className = 'table-actions';
+      const spacer = document.createElement('div');
+      const buttons = document.createElement('div');
+      buttons.className = 'actions';
+      actions.appendChild(spacer);
+      actions.appendChild(buttons);
+      leadsListCard.prepend(actions);
+    }
+
+    const buttons = actions.querySelector('.actions') || actions;
+    if (refreshLeadsBtn) {
+      refreshLeadsBtn.classList.add('ghost');
+      if (!buttons.contains(refreshLeadsBtn)) buttons.appendChild(refreshLeadsBtn);
+    }
+
+    if (!newLeadBtn) {
+      newLeadBtn = document.createElement('button');
+      newLeadBtn.type = 'button';
+      newLeadBtn.className = 'primary';
+      newLeadBtn.id = 'new-lead-btn';
+      newLeadBtn.textContent = 'New lead';
+    }
+
+    newLeadBtn.onclick = () => navigateLeadsRoute(`${leadsRouteBase}/new`);
+    if (!buttons.contains(newLeadBtn)) buttons.appendChild(newLeadBtn);
+  }
+
+  renderAdminLeads();
+  if (!adminLeadsState.hasLoaded && !adminLeadsState.loading) loadAdminLeads();
+}
+
+function renderLeadCreatePage(root) {
+  if (!root) return;
+  ensureAdminLeadsUI();
+  adminLeadsState.showNewLeadForm = true;
+  if (leadsListCard) leadsListCard.classList.add('hidden');
+  buildLeadModal(root);
+  if (leadModal) {
+    if (leadModal.parentElement !== root) root.appendChild(leadModal);
+    leadModal.classList.remove('hidden');
+  }
+  resetLeadForm();
+  renderAdminLeads();
+}
+
+function clearLeadsRouteView() {
+  if (!leadsRoutePlaceholder) return;
+  leadsRoutePlaceholder.classList.add('hidden');
+  leadsCardsGrid?.classList.remove('hidden');
+  if (leadsRouteTitle) leadsRouteTitle.textContent = '';
+  if (leadsRouteDescription) leadsRouteDescription.textContent = '';
+  if (leadModal) leadModal.classList.add('hidden');
+  adminLeadsState.showNewLeadForm = false;
+}
+
+function renderLeadsRoute(path) {
+  if (!leadsRoutePlaceholder || !leadsRoutes[path]) return;
+  showAdminSection('leads');
+
+  leadsCardsGrid?.classList.add('hidden');
+  leadsRoutePlaceholder.classList.remove('hidden');
+
+  if (leadsRouteTitle) leadsRouteTitle.textContent = leadsRoutes[path].title;
+  if (leadsRouteDescription) leadsRouteDescription.textContent = leadsRoutes[path].description;
+
+  const content = leadsRouteContent || (() => {
+    const node = document.createElement('div');
+    node.id = 'leads-route-content';
+    leadsRoutePlaceholder.appendChild(node);
+    return node;
+  })();
+
+  content.innerHTML = '';
+
+  if (path === `${leadsRouteBase}/all`) {
+    renderLeadsListPage(content);
+  } else if (path === `${leadsRouteBase}/new`) {
+    renderLeadCreatePage(content);
+  }
+}
+
+function handleLeadsRoute(path = leadsRouteBase, { pushState = false } = {}) {
+  if (!path.startsWith(leadsRouteBase)) return false;
+  ensureAdminLeadsUI();
+  const normalizedPath = path.endsWith('/') && path !== leadsRouteBase ? path.slice(0, -1) : path;
+
+  if (pushState && window.location.pathname !== normalizedPath) {
+    history.pushState({ leadsRoute: normalizedPath }, '', normalizedPath);
+  }
+
+  if (normalizedPath === leadsRouteBase) {
+    clearLeadsRouteView();
+    showAdminSection('leads');
+    return true;
+  }
+
+  if (!leadsRoutes[normalizedPath]) return false;
+  renderLeadsRoute(normalizedPath);
+  return true;
+}
+
+function navigateLeadsRoute(path) {
+  handleLeadsRoute(path, { pushState: true });
 }
 
 async function handleLeadFormSubmit(event) {
@@ -1316,7 +1508,7 @@ async function handleLeadFormSubmit(event) {
   try {
     const path = endpoint('leads') || '/leads';
     await api(path, { method: 'POST', body: payload });
-    closeLeadModal();
+    closeLeadModal(`${leadsRouteBase}/all`);
     setInlineAlert(adminLeadsMessage, 'Lead created successfully.', 'success');
     setTimeout(() => setInlineAlert(adminLeadsMessage, ''), 3000);
     await loadAdminLeads(true);
@@ -2474,6 +2666,8 @@ function showAdminSection(section = 'dashboard') {
   } else if (target === 'documents') {
     loadAdminDocuments();
   } else if (target === 'leads') {
+    ensureAdminLeadsUI();
+    clearLeadsRouteView();
     loadAdminLeads();
   }
 }
@@ -3788,10 +3982,8 @@ adminMenuItems.forEach((item) => {
     const target = item.dataset.section || 'dashboard';
     if (target === 'documents') handleDocumentRoute(documentRouteBase, { pushState: true });
     else if (target === 'customers') handleCustomerRoute(customerRouteHomePath, { pushState: true });
-    else if (target === 'leads') {
-      history.pushState({ adminSection: 'leads' }, '', '/admin/leads');
-      showAdminSection('leads');
-    } else showAdminSection(target);
+    else if (target === 'leads') handleLeadsRoute(leadsRouteBase, { pushState: true });
+    else showAdminSection(target);
   });
 });
 
@@ -3801,6 +3993,14 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   const target = routeTarget.dataset.staffRoute;
   navigateStaffRoute(target);
+});
+
+document.addEventListener('click', (event) => {
+  const routeTarget = event.target.closest('[data-lead-route]');
+  if (!routeTarget) return;
+  event.preventDefault();
+  const target = routeTarget.dataset.leadRoute;
+  navigateLeadsRoute(target);
 });
 
 document.addEventListener('click', (event) => {
@@ -3856,6 +4056,10 @@ customerRouteBack?.addEventListener('click', () => {
   clearCustomerRouteView();
 });
 
+leadsRouteBack?.addEventListener('click', () => {
+  handleLeadsRoute(leadsRouteBase, { pushState: true });
+});
+
 window.addEventListener('popstate', () => {
   const path = window.location.pathname;
   if (path === '/lead') {
@@ -3867,8 +4071,9 @@ window.addEventListener('popstate', () => {
 
   if (customerRoutes[path] || path.startsWith(customerRouteHomePath)) handleCustomerRoute(path);
   else if (staffRoutes[path]) renderStaffRoute(path);
-  else if (path === '/admin/leads') showAdminSection('leads');
-  else if (!handleDocumentRoute(path)) {
+  else if (handleLeadsRoute(path)) {
+    // handled
+  } else if (!handleDocumentRoute(path)) {
     clearCustomerRouteView();
     clearStaffRouteView();
   }
@@ -3885,8 +4090,8 @@ if (window.location.pathname === '/lead') {
   renderStaffRoute(window.location.pathname);
 } else if (handleDocumentRoute(window.location.pathname)) {
   // handled by document routing
-} else if (window.location.pathname === '/admin/leads') {
-  showAdminSection('leads');
+} else if (handleLeadsRoute(window.location.pathname)) {
+  // handled by leads routing
 }
 
 staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
