@@ -16,8 +16,8 @@ const defaultApiConfig = {
     customerLoans: '/customer/loans',
     customerLoanPayments: '/customer/loans/{id}/payments',
     loanApplications: '/api/loan-applications',
-    adminCustomers: '/api/admin/customers',
-    customers: '/api/admin/customers',
+    adminCustomers: '/customers',
+    customers: '/customers',
     leads: '/leads',
     leadConvert: '/leads/{id}/convert-to-customer',
   },
@@ -113,6 +113,8 @@ const adminCustomersTableWrapper = document.querySelector('#admin-customers-tabl
 const adminCustomersLoading = document.querySelector('#admin-customers-loading');
 const adminCustomersEmptyState = document.querySelector('#admin-customers-empty');
 const refreshCustomersBtn = document.querySelector('#refresh-customers-btn');
+const adminCustomersFilters = document.querySelector('.customers-table-card .filters');
+const adminCustomersTable = document.querySelector('#admin-customers-table');
 const adminLeadsSection = document.querySelector('.admin-section[data-section="leads"]');
 const adminLeadsMessage = document.querySelector('#admin-leads-message');
 const adminLeadsTableBody = document.querySelector('#admin-leads-table-body');
@@ -312,7 +314,10 @@ const adminCustomersState = {
   error: null,
   hasLoaded: false,
   activeTab: 'all',
+  filters: { kyc: 'ALL', eligibility: 'ALL' },
 };
+const customerKycStatuses = ['ALL', 'PENDING', 'UPLOADED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'];
+const customerEligibilityStatuses = ['ALL', 'ELIGIBLE', 'NOT_ELIGIBLE'];
 const adminLeadsState = {
   leads: [],
   loading: false,
@@ -320,6 +325,7 @@ const adminLeadsState = {
   hasLoaded: false,
 };
 let adminDocumentsInitialized = false;
+let adminCustomersFiltersInitialized = false;
 let currentStep = 0;
 let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
@@ -589,6 +595,10 @@ function renderStatusBadge(status) {
     STAFF_APPROVED: 'badge-success',
     APPROVED: 'badge-success',
     REJECTED: 'badge-danger',
+    PENDING: 'badge-warning',
+    UPLOADED: 'badge-warning',
+    ELIGIBLE: 'badge-success',
+    NOT_ELIGIBLE: 'badge-danger',
   };
 
   const badgeClass = badgeClassMap[normalized] || 'badge-neutral';
@@ -623,6 +633,7 @@ function resetAdminCustomersState() {
   adminCustomersState.error = null;
   adminCustomersState.loading = false;
   adminCustomersState.hasLoaded = false;
+  adminCustomersState.filters = { kyc: 'ALL', eligibility: 'ALL' };
 
   if (adminCustomersMessage) setInlineAlert(adminCustomersMessage, '');
   adminCustomersLoading?.classList.add('hidden');
@@ -939,6 +950,203 @@ function renderAdminLeads() {
   });
 }
 
+function ensureAdminCustomersTableHeaders() {
+  if (!adminCustomersTable) return;
+  const headerRow = adminCustomersTable.querySelector('thead tr');
+  if (!headerRow) return;
+
+  headerRow.innerHTML = [
+    'Customer Code',
+    'Name',
+    'NIC',
+    'Mobile',
+    'Address',
+    'Business Type',
+    'Lead Status',
+    'KYC Status',
+    'Eligibility',
+    'Created',
+    'Actions',
+  ]
+    .map((label) => `<th>${label}</th>`)
+    .join('');
+}
+
+function ensureAdminCustomersFilters() {
+  if (!adminCustomersFilters) return;
+
+  const currentKyc = adminCustomersState.filters.kyc || 'ALL';
+  const currentEligibility = adminCustomersState.filters.eligibility || 'ALL';
+
+  if (adminCustomersFiltersInitialized) {
+    const kycFilter = adminCustomersFilters.querySelector('[data-filter="kyc"]');
+    const eligibilityFilter = adminCustomersFilters.querySelector('[data-filter="eligibility"]');
+    if (kycFilter) kycFilter.value = currentKyc;
+    if (eligibilityFilter) eligibilityFilter.value = currentEligibility;
+    return;
+  }
+
+  adminCustomersFilters.innerHTML = '';
+
+  const kycWrapper = document.createElement('label');
+  kycWrapper.className = 'filter';
+  kycWrapper.textContent = 'KYC status';
+  const kycSelect = document.createElement('select');
+  kycSelect.dataset.filter = 'kyc';
+  customerKycStatuses.forEach((status) => {
+    const option = document.createElement('option');
+    option.value = status;
+    option.textContent = status === 'ALL' ? 'All KYC statuses' : status.replace(/_/g, ' ');
+    kycSelect.appendChild(option);
+  });
+  kycSelect.value = currentKyc;
+  kycSelect.addEventListener('change', (event) => {
+    adminCustomersState.filters.kyc = (event.target.value || 'ALL').toUpperCase();
+    loadAdminCustomers(true);
+  });
+  kycWrapper.appendChild(kycSelect);
+
+  const eligibilityWrapper = document.createElement('label');
+  eligibilityWrapper.className = 'filter';
+  eligibilityWrapper.textContent = 'Eligibility';
+  const eligibilitySelect = document.createElement('select');
+  eligibilitySelect.dataset.filter = 'eligibility';
+  customerEligibilityStatuses.forEach((status) => {
+    const option = document.createElement('option');
+    option.value = status;
+    option.textContent = status === 'ALL' ? 'All eligibility statuses' : status.replace(/_/g, ' ');
+    eligibilitySelect.appendChild(option);
+  });
+  eligibilitySelect.value = currentEligibility;
+  eligibilitySelect.addEventListener('change', (event) => {
+    adminCustomersState.filters.eligibility = (event.target.value || 'ALL').toUpperCase();
+    loadAdminCustomers(true);
+  });
+  eligibilityWrapper.appendChild(eligibilitySelect);
+
+  adminCustomersFilters.appendChild(kycWrapper);
+  adminCustomersFilters.appendChild(eligibilityWrapper);
+
+  adminCustomersFiltersInitialized = true;
+}
+
+function normalizeCustomerStatus(status) {
+  return (status || '').toString().trim().toUpperCase();
+}
+
+function renderCustomerStatusBadge(status) {
+  if (!status) return '—';
+  return renderStatusBadge(status);
+}
+
+function getCustomerId(customer = {}) {
+  return customer.id || customer.customer_id || customer.customerId || customer.customer_code || customer.customerCode;
+}
+
+function createCustomerActionButton(label, action, customerId) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'ghost';
+  button.dataset.customerAction = action;
+  button.dataset.customerId = customerId;
+  button.textContent = label;
+  return button;
+}
+
+function renderCustomerActions(customer, kycStatus, eligibilityStatus) {
+  const customerId = getCustomerId(customer);
+  const actionsCell = document.createElement('td');
+  const actionContainer = document.createElement('div');
+  actionContainer.className = 'table-actions';
+
+  if (!customerId) {
+    actionContainer.textContent = '—';
+    actionsCell.appendChild(actionContainer);
+    return actionsCell;
+  }
+
+  const kycNormalized = normalizeCustomerStatus(kycStatus);
+  const eligibilityNormalized = normalizeCustomerStatus(eligibilityStatus);
+
+  if (kycNormalized === 'PENDING' || kycNormalized === 'UPLOADED') {
+    actionContainer.appendChild(createCustomerActionButton('Mark Under Review', 'kyc-under-review', customerId));
+  }
+
+  if (kycNormalized === 'UNDER_REVIEW') {
+    actionContainer.appendChild(createCustomerActionButton('Approve KYC', 'kyc-approve', customerId));
+    actionContainer.appendChild(createCustomerActionButton('Reject KYC', 'kyc-reject', customerId));
+  }
+
+  if (kycNormalized === 'APPROVED' && eligibilityNormalized !== 'ELIGIBLE') {
+    actionContainer.appendChild(createCustomerActionButton('Mark Eligible', 'mark-eligible', customerId));
+  }
+
+  actionContainer.appendChild(createCustomerActionButton('Mark Not Eligible', 'mark-not-eligible', customerId));
+
+  if (!actionContainer.children.length) {
+    actionContainer.textContent = '—';
+  }
+
+  actionsCell.appendChild(actionContainer);
+  return actionsCell;
+}
+
+async function handleCustomerAction(action, customerId, trigger) {
+  if (!action || !customerId) return;
+
+  const button = trigger?.closest('button');
+  const originalText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Working...';
+  }
+
+  const path = (() => {
+    const basePath = `/customers/${encodeURIComponent(customerId)}`;
+    switch (action) {
+      case 'kyc-under-review':
+        return `${basePath}/kyc-under-review`;
+      case 'kyc-approve':
+        return `${basePath}/kyc-approve`;
+      case 'kyc-reject':
+        return `${basePath}/kyc-reject`;
+      case 'mark-eligible':
+        return `${basePath}/mark-eligible`;
+      case 'mark-not-eligible':
+        return `${basePath}/mark-not-eligible`;
+      default:
+        return '';
+    }
+  })();
+
+  if (!path) {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || 'Submit';
+    }
+    return;
+  }
+
+  try {
+    await api(path, { method: 'POST' });
+    setInlineAlert(adminCustomersMessage, 'Customer status updated successfully.', 'success');
+    setTimeout(() => setInlineAlert(adminCustomersMessage, ''), 3000);
+    await loadAdminCustomers(true);
+  } catch (error) {
+    console.error('Failed to update customer status', error);
+    setInlineAlert(
+      adminCustomersMessage,
+      error?.message || 'Unable to update customer status. Please try again.',
+      'error',
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || 'Submit';
+    }
+  }
+}
+
 async function loadAdminLeads(force = false) {
   if (adminLeadsState.loading) return;
   if (adminLeadsState.hasLoaded && !force) {
@@ -1000,6 +1208,9 @@ async function convertLeadToCustomer(leadId, trigger) {
 function renderAdminCustomers() {
   const { customers, loading, error, hasLoaded } = adminCustomersState;
 
+  ensureAdminCustomersTableHeaders();
+  ensureAdminCustomersFilters();
+
   setInlineAlert(adminCustomersMessage, error || '', 'error');
 
   adminCustomersLoading?.classList.toggle('hidden', !loading);
@@ -1042,7 +1253,9 @@ function renderAdminCustomers() {
     const nic = customer.nic_number || customer.nic || customer.nicNumber || customer.nic_no || '—';
     const address = customer.address || customer.address_line || customer.addressLine || customer.location || '—';
     const businessType = customer.business_type || customer.businessType || customer.segment || '—';
-    const status = customer.status || customer.kyc_status || customer.kycStatus || '—';
+    const leadStatus = customer.lead_status || customer.leadStatus || customer.status || customer.customer_status;
+    const kycStatus = customer.kyc_status || customer.kycStatus || customer.status;
+    const eligibilityStatus = customer.eligibility_status || customer.eligibilityStatus;
     const createdAt = formatDate(customer.created_at || customer.createdAt || customer.created_at_utc) || '—';
     const code = customer.customer_code || customer.customerCode || customer.code || customer.id || '—';
 
@@ -1053,9 +1266,14 @@ function renderAdminCustomers() {
       <td>${mobile}</td>
       <td>${address}</td>
       <td>${businessType}</td>
-      <td>${status ? renderStatusBadge(status) : '—'}</td>
+      <td>${renderCustomerStatusBadge(leadStatus)}</td>
+      <td>${renderCustomerStatusBadge(kycStatus)}</td>
+      <td>${renderCustomerStatusBadge(eligibilityStatus)}</td>
       <td>${createdAt}</td>
     `;
+
+    const actionsCell = renderCustomerActions(customer, kycStatus, eligibilityStatus);
+    row.appendChild(actionsCell);
 
     adminCustomersTableBody.appendChild(row);
   });
@@ -1073,7 +1291,15 @@ async function loadAdminCustomers(force = false) {
   renderAdminCustomers();
 
   try {
-    const response = await api.get('/admin/customers');
+    const basePath = endpoint('customers') || '/customers';
+    const query = new URLSearchParams();
+    const kycFilter = adminCustomersState.filters.kyc || 'ALL';
+    const eligibilityFilter = adminCustomersState.filters.eligibility || 'ALL';
+    if (kycFilter && kycFilter !== 'ALL') query.append('kyc_status', kycFilter);
+    if (eligibilityFilter && eligibilityFilter !== 'ALL') query.append('eligibility_status', eligibilityFilter);
+    const path = query.toString() ? `${basePath}?${query.toString()}` : basePath;
+
+    const response = await api.get(path);
     const customers = normalizeCustomersResponse(response);
     adminCustomersState.customers = customers;
     adminCustomersState.hasLoaded = true;
@@ -2861,6 +3087,13 @@ refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
 refreshLeadsBtn?.addEventListener('click', () => loadAdminLeads(true));
 
 document.addEventListener('click', (event) => {
+  const customerActionBtn = event.target.closest('[data-customer-action]');
+  if (customerActionBtn) {
+    const { customerAction, customerId } = customerActionBtn.dataset;
+    handleCustomerAction(customerAction, customerId, customerActionBtn);
+    return;
+  }
+
   const convertBtn = event.target.closest('[data-action="convert-lead"]');
   if (convertBtn) {
     const leadId = convertBtn.dataset.leadId;
