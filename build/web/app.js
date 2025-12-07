@@ -105,8 +105,6 @@ const adminApplicationsMessage = document.querySelector('#admin-applications-mes
 const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
-const adminCustomersTabs = document.querySelectorAll('[data-customers-tab]');
-const adminCustomersPanels = document.querySelectorAll('[data-customers-content]');
 const adminCustomersMessage = document.querySelector('#admin-customers-message');
 const adminCustomersTableBody = document.querySelector('#admin-customers-table-body');
 const adminCustomersTableWrapper = document.querySelector('#admin-customers-table-wrapper');
@@ -114,6 +112,16 @@ const adminCustomersLoading = document.querySelector('#admin-customers-loading')
 const adminCustomersEmptyState = document.querySelector('#admin-customers-empty');
 const refreshCustomersBtn = document.querySelector('#refresh-customers-btn');
 const createCustomerBtn = document.querySelector('#create-customer-btn');
+const customerRoutePlaceholder = document.querySelector('#customer-route-placeholder');
+const customerRouteTitle = document.querySelector('#customer-route-title');
+const customerRouteDescription = document.querySelector('#customer-route-description');
+const customerRoutePath = document.querySelector('#customer-route-path');
+const customerRouteBack = document.querySelector('#customer-route-back');
+const customerRouteGrid = document.querySelector(
+  '.admin-section[data-section="customers"] .subcard-grid'
+);
+const customerRouteContent = document.querySelector('#customer-route-content');
+const customerRouteViews = document.querySelectorAll('[data-customer-view]');
 const adminDocumentsSection = document.querySelector(
   '.admin-content .admin-section[data-section="documents"]'
 );
@@ -139,6 +147,29 @@ const staffRouteTitle = document.querySelector('#staff-route-title');
 const staffRouteDescription = document.querySelector('#staff-route-description');
 const staffRoutePath = document.querySelector('#staff-route-path');
 const staffRouteBack = document.querySelector('#staff-route-back');
+
+const customerRoutes = {
+  '/admin/customers/all-customers': {
+    title: 'All customers',
+    description: 'View and manage all customer profiles.',
+    view: 'all',
+  },
+  '/admin/customers/new': {
+    title: 'Create customer',
+    description: 'Register a new customer and capture full KYC details.',
+    view: 'new',
+  },
+  '/admin/customers/kyc-verification-queue': {
+    title: 'KYC verification queue',
+    description: 'Review and verify customer KYC submissions.',
+    view: 'kyc',
+  },
+  '/admin/customers/risk-profiles': {
+    title: 'Risk profiles',
+    description: 'Evaluate and manage customer risk profiles.',
+    view: 'risk',
+  },
+};
 
 const staffRoutes = {
   '/admin/staff-list': {
@@ -171,6 +202,7 @@ const staffRoutes = {
   },
 };
 
+const customerRouteHomePath = '/admin/customers';
 const staffRouteHomePath = staffRoutes[window.location.pathname] ? '/' : window.location.pathname || '/';
 const documentRouteBase = '/admin/documents';
 const documentRouteMap = {
@@ -856,22 +888,64 @@ async function loadAdminCustomers(force = false) {
   }
 }
 
-function selectAdminCustomersTab(tab = 'all') {
-  adminCustomersState.activeTab = tab;
-  adminCustomersTabs.forEach((button) => {
-    const isActive = button.dataset.customersTab === tab;
-    button.classList.toggle('active', isActive);
-    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+function setActiveCustomerView(view = '') {
+  customerRouteViews.forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.customerView !== view);
   });
+}
 
-  adminCustomersPanels.forEach((panel) => {
-    panel.classList.toggle('hidden', panel.dataset.customersContent !== tab);
-  });
+function clearCustomerRouteView() {
+  if (!customerRoutePlaceholder) return;
+  setActiveCustomerView('');
+  customerRoutePlaceholder.classList.add('hidden');
+  customerRouteGrid?.classList.remove('hidden');
+  if (customerRouteTitle) customerRouteTitle.textContent = '';
+  if (customerRouteDescription) customerRouteDescription.textContent = '';
+  if (customerRoutePath) customerRoutePath.textContent = '';
+}
 
-  if (tab === 'all') {
+function renderCustomerRoute(path) {
+  if (!customerRoutePlaceholder || !customerRoutes[path]) return;
+
+  customerRouteGrid?.classList.add('hidden');
+  customerRoutePlaceholder.classList.remove('hidden');
+  const route = customerRoutes[path];
+
+  if (customerRouteTitle) customerRouteTitle.textContent = route.title;
+  if (customerRouteDescription) customerRouteDescription.textContent = route.description;
+  if (customerRoutePath) customerRoutePath.textContent = '';
+
+  setActiveCustomerView(route.view || '');
+
+  if (route.view === 'all') {
     renderAdminCustomers();
     loadAdminCustomers();
   }
+}
+
+function handleCustomerRoute(path = customerRouteHomePath, { pushState = false } = {}) {
+  if (!path.startsWith(customerRouteHomePath)) return false;
+  showAdminSection('customers');
+
+  if (customerRoutes[path]) {
+    if (pushState && window.location.pathname !== path) {
+      history.pushState({ customerRoute: path }, '', path);
+    }
+    renderCustomerRoute(path);
+  } else {
+    if (pushState && window.location.pathname !== customerRouteHomePath) {
+      history.pushState({ customerRoute: customerRouteHomePath }, '', customerRouteHomePath);
+    }
+    clearCustomerRouteView();
+  }
+
+  return true;
+}
+
+function navigateCustomerRoute(path) {
+  if (!customerRoutes[path]) return;
+  history.pushState({ customerRoute: path }, '', path);
+  renderCustomerRoute(path);
 }
 
 function createDocumentTile({ title, description, buttonLabel, key, path }) {
@@ -1336,8 +1410,6 @@ function showAdminSection(section = 'dashboard') {
     ensureAdminLoanApplicationsUI();
     renderAdminLoanApplications();
     loadAdminLoanApplicationsAll();
-  } else if (target === 'customers') {
-    selectAdminCustomersTab(adminCustomersState.activeTab || 'all');
   } else if (target === 'documents') {
     loadAdminDocuments();
   }
@@ -2556,6 +2628,7 @@ adminMenuItems.forEach((item) => {
   item.addEventListener('click', () => {
     const target = item.dataset.section || 'dashboard';
     if (target === 'documents') handleDocumentRoute(documentRouteBase, { pushState: true });
+    else if (target === 'customers') handleCustomerRoute(customerRouteHomePath, { pushState: true });
     else showAdminSection(target);
   });
 });
@@ -2568,10 +2641,12 @@ document.addEventListener('click', (event) => {
   navigateStaffRoute(target);
 });
 
-adminCustomersTabs.forEach((button) => {
-  button.addEventListener('click', () => {
-    selectAdminCustomersTab(button.dataset.customersTab || 'all');
-  });
+document.addEventListener('click', (event) => {
+  const routeTarget = event.target.closest('[data-customer-route]');
+  if (!routeTarget) return;
+  event.preventDefault();
+  const target = routeTarget.dataset.customerRoute;
+  navigateCustomerRoute(target);
 });
 
 refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
@@ -2585,13 +2660,24 @@ staffRouteBack?.addEventListener('click', () => {
   clearStaffRouteView();
 });
 
-window.addEventListener('popstate', () => {
-  const path = window.location.pathname;
-  if (staffRoutes[path]) renderStaffRoute(path);
-  else if (!handleDocumentRoute(path)) clearStaffRouteView();
+customerRouteBack?.addEventListener('click', () => {
+  history.pushState({}, '', customerRouteHomePath);
+  clearCustomerRouteView();
 });
 
-if (staffRoutes[window.location.pathname]) {
+window.addEventListener('popstate', () => {
+  const path = window.location.pathname;
+  if (customerRoutes[path] || path.startsWith(customerRouteHomePath)) handleCustomerRoute(path);
+  else if (staffRoutes[path]) renderStaffRoute(path);
+  else if (!handleDocumentRoute(path)) {
+    clearCustomerRouteView();
+    clearStaffRouteView();
+  }
+});
+
+if (customerRoutes[window.location.pathname] || window.location.pathname.startsWith(customerRouteHomePath)) {
+  handleCustomerRoute(window.location.pathname);
+} else if (staffRoutes[window.location.pathname]) {
   renderStaffRoute(window.location.pathname);
 } else if (handleDocumentRoute(window.location.pathname)) {
   // handled by document routing

@@ -185,75 +185,142 @@
                       <p class="muted">Manage customer profiles and KYC status.</p>
                     </div>
                   </div>
-                  <div class="subnav" role="tablist" aria-label="Customer options">
-                    <button class="subnav-item active" type="button" data-customers-tab="all" aria-selected="true">
-                      All Customers
-                    </button>
-                    <button class="subnav-item" type="button" data-customers-tab="kyc" aria-selected="false">
-                      KYC Verification Queue
-                    </button>
-                    <button class="subnav-item" type="button" data-customers-tab="risk" aria-selected="false">
-                      Risk Profiles (COMING SOON)
-                    </button>
-                  </div>
-
-                  <div class="customers-layout" data-customers-content="all">
-                    <div class="subcard customers-action-card">
+                  <div class="subcard-grid">
+                    <div class="subcard" data-customer-route="/admin/customers/all-customers">
                       <div class="card-header">
                         <div>
-                          <h3>Create customer</h3>
-                          <p class="muted">Add a new customer profile and capture full KYC details.</p>
+                          <h3>All customers</h3>
+                          <p class="muted">View and manage all customer profiles.</p>
                         </div>
                       </div>
                       <div class="action-row">
-                        <button id="create-customer-btn" class="primary" type="button">
-                          <span class="button-icon" aria-hidden="true">+</span>
-                          <span>New customer</span>
-                        </button>
+                        <button class="primary" type="button">Open</button>
                       </div>
                     </div>
 
-                    <div class="subcard customers-table-card">
-                      <div class="table-actions">
-                        <div class="filters"></div>
-                        <button id="refresh-customers-btn" class="ghost" type="button">Refresh</button>
+                    <div class="subcard" data-customer-route="/admin/customers/new">
+                      <div class="card-header">
+                        <div>
+                          <h3>Create customer</h3>
+                          <p class="muted">Register a new customer and capture full KYC details.</p>
+                        </div>
                       </div>
-                      <div id="admin-customers-message" class="alert hidden"></div>
-                      <div id="admin-customers-loading" class="loading-row hidden" aria-live="polite">
-                        <div class="spinner"></div>
-                        <span>Loading customers...</span>
+                      <div class="action-row">
+                        <button class="primary" type="button">New customer</button>
                       </div>
-                      <div id="admin-customers-empty" class="muted hidden">No customers found yet.</div>
-                      <div id="admin-customers-table-wrapper" class="loan-table-wrapper hidden">
-                        <table id="admin-customers-table" class="placeholder-table loan-table">
-                          <thead>
-                            <tr>
-                              <th>Customer Code</th>
-                              <th>Name</th>
-                              <th>NIC</th>
-                              <th>Mobile</th>
-                              <th>Address</th>
-                              <th>Business Type</th>
-                              <th>Status</th>
-                              <th>Created</th>
-                            </tr>
-                          </thead>
-                          <tbody id="admin-customers-table-body"></tbody>
-                        </table>
+                    </div>
+
+                    <div class="subcard" data-customer-route="/admin/customers/kyc-verification-queue">
+                      <div class="card-header">
+                        <div>
+                          <h3>KYC verification queue</h3>
+                          <p class="muted">Review and verify customer KYC submissions.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Open queue</button>
+                      </div>
+                    </div>
+
+                    <div class="subcard" data-customer-route="/admin/customers/risk-profiles">
+                      <div class="card-header">
+                        <div>
+                          <h3>Risk profiles</h3>
+                          <p class="muted">Evaluate and manage customer risk profiles.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Open</button>
                       </div>
                     </div>
                   </div>
 
-                  <div class="subcard hidden" data-customers-content="kyc">
-                    <ul class="bullet-list">
-                      <li>All Customers</li>
-                      <li>KYC Verification Queue</li>
-                      <li>Risk Profiles (COMING SOON)</li>
-                    </ul>
-                  </div>
+                  <div id="customer-route-placeholder" class="subcard hidden">
+                    <div class="card-header">
+                      <div>
+                        <div class="eyebrow">Customers</div>
+                        <h3 id="customer-route-title"></h3>
+                        <p class="muted" id="customer-route-description"></p>
+                      </div>
+                    </div>
+                    <p class="muted" id="customer-route-path"></p>
+                    <div class="action-row">
+                      <button id="customer-route-back" class="ghost" type="button">Back to Customers</button>
+                    </div>
+                    <div id="customer-route-content">
+                      <div data-customer-view="all" class="hidden">
+                        <div class="subcard customers-table-card">
+                          <div class="table-actions">
+                            <div class="filters"></div>
+                            <button id="refresh-customers-btn" class="ghost" type="button">Refresh</button>
+                          </div>
+                          <div id="admin-customers-message" class="alert hidden"></div>
+                          <div id="admin-customers-loading" class="loading-row hidden" aria-live="polite">
+                            <div class="spinner"></div>
+                            <span>Loading customers...</span>
+                          </div>
+                          <div id="admin-customers-empty" class="muted hidden">No customers found yet.</div>
+                          <div id="admin-customers-table-wrapper" class="loan-table-wrapper hidden">
+                            <table id="admin-customers-table" class="placeholder-table loan-table">
+                              <thead>
+                                <tr>
+                                  <th>Customer Code</th>
+                                  <th>Name</th>
+                                  <th>NIC</th>
+                                  <th>Mobile</th>
+                                  <th>Address</th>
+                                  <th>Business Type</th>
+                                  <th>Status</th>
+                                  <th>Created</th>
+                                </tr>
+                              </thead>
+                              <tbody id="admin-customers-table-body"></tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
 
-                  <div class="subcard hidden" data-customers-content="risk">
-                    <p class="muted">Risk profiles module will be added soon.</p>
+                      <div data-customer-view="new" class="hidden">
+                        <div class="subcard customers-action-card">
+                          <div class="card-header">
+                            <div>
+                              <h3>Create customer</h3>
+                              <p class="muted">Add a new customer profile and capture full KYC details.</p>
+                            </div>
+                          </div>
+                          <div class="action-row">
+                            <button id="create-customer-btn" class="primary" type="button">
+                              <span class="button-icon" aria-hidden="true">+</span>
+                              <span>New customer</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div data-customer-view="kyc" class="hidden">
+                        <div class="subcard">
+                          <div class="card-header">
+                            <div>
+                              <h3>KYC verification queue</h3>
+                              <p class="muted">Queue of customer submissions awaiting review.</p>
+                            </div>
+                          </div>
+                          <p class="muted">KYC verification queue</p>
+                        </div>
+                      </div>
+
+                      <div data-customer-view="risk" class="hidden">
+                        <div class="subcard">
+                          <div class="card-header">
+                            <div>
+                              <h3>Risk profiles</h3>
+                              <p class="muted">Insights into customer risk profiles.</p>
+                            </div>
+                          </div>
+                          <p class="muted">Risk profiles – coming soon.</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
