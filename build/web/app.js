@@ -91,6 +91,8 @@ let apiConfig = { ...defaultApiConfig };
 
 const storageKeys = { token: 'gm_jwt', role: 'gm_role' };
 
+const appMain = document.querySelector('.app-main');
+const loginCard = document.querySelector('#login-card');
 const loginForm = document.querySelector('#login-form');
 const loginMessage = document.querySelector('#login-message');
 const loginSubmit = document.querySelector('#login-submit');
@@ -381,6 +383,164 @@ let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
 let currentLoanForPayment = null;
 const selectedDocuments = new Map();
+let publicLeadSection;
+let publicLeadForm;
+let publicLeadMessage;
+let publicLeadNameInput;
+let publicLeadMobileInput;
+let publicLeadLoanSelect;
+let publicLeadSourceInput;
+let publicLeadSubmit;
+let publicLeadSourceBadge;
+
+function getPublicLeadSource() {
+  const params = new URLSearchParams(window.location.search || '');
+  const source = (params.get('source') || '').trim();
+  return source || 'ONLINE_FORM';
+}
+
+function setPublicLeadMessage(text = '', type = 'info') {
+  if (!publicLeadMessage) return;
+  publicLeadMessage.textContent = text;
+  publicLeadMessage.className = 'alert ' + (type === 'error' ? 'error' : 'success');
+  publicLeadMessage.classList.toggle('hidden', !text);
+}
+
+function ensurePublicLeadSection() {
+  if (publicLeadSection || !appMain) return;
+
+  publicLeadSection = document.createElement('section');
+  publicLeadSection.id = 'public-lead-section';
+  publicLeadSection.className = 'card hidden';
+  publicLeadSection.innerHTML = `
+    <div class="card-header">
+      <div>
+        <div class="eyebrow">Get started</div>
+        <h1>Tell us about your loan need</h1>
+        <p class="muted">Share a few details and our team will get in touch.</p>
+      </div>
+      <div class="pill" id="public-lead-source-badge"></div>
+    </div>
+    <form id="public-lead-form" class="form-grid">
+      <label class="form-field">
+        <span>Full Name</span>
+        <input id="public-lead-name" name="name" type="text" required placeholder="Enter your full name" />
+      </label>
+      <label class="form-field">
+        <span>Mobile Number</span>
+        <input
+          id="public-lead-mobile"
+          name="mobile"
+          type="tel"
+          required
+          inputmode="tel"
+          placeholder="e.g. 024XXXXXXX"
+        />
+      </label>
+      <label class="form-field">
+        <span>Loan Type</span>
+        <select id="public-lead-loan-type" name="loan_type_interest" required></select>
+      </label>
+      <input type="hidden" id="public-lead-source" name="source" />
+      <button type="submit" class="primary" id="public-lead-submit">Submit</button>
+    </form>
+    <p id="public-lead-message" class="alert hidden" role="status"></p>
+  `;
+
+  appMain.insertBefore(publicLeadSection, appMain.firstChild);
+
+  publicLeadForm = publicLeadSection.querySelector('#public-lead-form');
+  publicLeadMessage = publicLeadSection.querySelector('#public-lead-message');
+  publicLeadNameInput = publicLeadSection.querySelector('#public-lead-name');
+  publicLeadMobileInput = publicLeadSection.querySelector('#public-lead-mobile');
+  publicLeadLoanSelect = publicLeadSection.querySelector('#public-lead-loan-type');
+  publicLeadSourceInput = publicLeadSection.querySelector('#public-lead-source');
+  publicLeadSubmit = publicLeadSection.querySelector('#public-lead-submit');
+  publicLeadSourceBadge = publicLeadSection.querySelector('#public-lead-source-badge');
+
+  loanTypes.forEach((type) => {
+    const option = document.createElement('option');
+    option.value = type;
+    option.textContent = type;
+    publicLeadLoanSelect.appendChild(option);
+  });
+
+  publicLeadForm?.addEventListener('submit', handlePublicLeadSubmit);
+}
+
+async function handlePublicLeadSubmit(event) {
+  event.preventDefault();
+  if (!publicLeadForm || !publicLeadSubmit) return;
+
+  const payload = {
+    name: publicLeadNameInput?.value?.trim() || '',
+    mobile: publicLeadMobileInput?.value?.trim() || '',
+    loan_type_interest: publicLeadLoanSelect?.value || '',
+    source: publicLeadSourceInput?.value || 'ONLINE_FORM',
+  };
+
+  if (!payload.name || !payload.mobile || !payload.loan_type_interest) {
+    setPublicLeadMessage('Please fill in all required fields.', 'error');
+    return;
+  }
+
+  setPublicLeadMessage('Submitting your request...', 'success');
+  publicLeadSubmit.disabled = true;
+  publicLeadSubmit.textContent = 'Submitting...';
+
+  try {
+    const path = endpoint('leads') || '/leads';
+    const response = await fetch(`${apiConfig.baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const { data } = await parseResponse(response);
+      const message = buildErrorMessage({ status: response.status, data, raw: '' });
+      throw new Error(message || 'Unable to submit lead.');
+    }
+
+    setPublicLeadMessage('Thank you! We will contact you shortly.', 'success');
+    publicLeadForm.reset();
+    publicLeadSourceInput.value = payload.source;
+    if (publicLeadLoanSelect) publicLeadLoanSelect.value = loanTypes[0];
+  } catch (error) {
+    console.error('Failed to submit lead', error);
+    setPublicLeadMessage(error?.message || 'Could not submit your request.', 'error');
+  } finally {
+    publicLeadSubmit.disabled = false;
+    publicLeadSubmit.textContent = 'Submit';
+  }
+}
+
+function showPublicLeadPage() {
+  ensurePublicLeadSection();
+  const source = getPublicLeadSource();
+  if (publicLeadSourceInput) publicLeadSourceInput.value = source;
+  if (publicLeadSourceBadge) {
+    publicLeadSourceBadge.textContent = `Source: ${source}`;
+    publicLeadSourceBadge.classList.toggle('hidden', !source);
+  }
+
+  setPublicLeadMessage('');
+  loginCard?.classList.add('hidden');
+  dashboards.classList.add('hidden');
+  userRoleChip?.classList.add('hidden');
+  logoutBtn?.classList.add('hidden');
+  publicLeadSection?.classList.remove('hidden');
+  window.scrollTo({ top: 0 });
+}
+
+function hidePublicLeadPage() {
+  publicLeadSection?.classList.add('hidden');
+  const { role } = getSession();
+  togglePanels(role || null);
+}
 
 async function loadApiConfig() {
   try {
@@ -2466,7 +2626,7 @@ function togglePanels(role) {
   dashboards.classList.toggle('hidden', !role);
   userRoleChip.classList.toggle('hidden', !role);
   logoutBtn.classList.toggle('hidden', !role);
-  document.querySelector('#login-card').classList.toggle('hidden', !!role);
+  loginCard?.classList.toggle('hidden', !!role);
 
   adminPanel.classList.toggle('hidden', role !== 'admin');
   if (role === 'admin') showAdminSection('dashboard');
@@ -3546,6 +3706,12 @@ function goToPrevStep() {
 
 async function bootstrap() {
   await loadApiConfig();
+
+  if (window.location.pathname === '/lead') {
+    showPublicLeadPage();
+    return;
+  }
+
   renderLoanTypeOptions();
   selectLoanType(selectedLoanType);
   updateTypeSpecificVisibility();
@@ -3692,6 +3858,13 @@ customerRouteBack?.addEventListener('click', () => {
 
 window.addEventListener('popstate', () => {
   const path = window.location.pathname;
+  if (path === '/lead') {
+    showPublicLeadPage();
+    return;
+  }
+
+  hidePublicLeadPage();
+
   if (customerRoutes[path] || path.startsWith(customerRouteHomePath)) handleCustomerRoute(path);
   else if (staffRoutes[path]) renderStaffRoute(path);
   else if (path === '/admin/leads') showAdminSection('leads');
@@ -3701,7 +3874,12 @@ window.addEventListener('popstate', () => {
   }
 });
 
-if (customerRoutes[window.location.pathname] || window.location.pathname.startsWith(customerRouteHomePath)) {
+if (window.location.pathname === '/lead') {
+  showPublicLeadPage();
+} else if (
+  customerRoutes[window.location.pathname] ||
+  window.location.pathname.startsWith(customerRouteHomePath)
+) {
   handleCustomerRoute(window.location.pathname);
 } else if (staffRoutes[window.location.pathname]) {
   renderStaffRoute(window.location.pathname);
