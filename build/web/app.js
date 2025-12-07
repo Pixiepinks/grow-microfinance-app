@@ -338,6 +338,7 @@ const adminLeadsState = {
   loading: false,
   error: null,
   hasLoaded: false,
+  showNewLeadForm: false,
 };
 const leadLoanTypeLabels = {
   GROW_ONLINE_BUSINESS: 'Grow Online Business',
@@ -727,6 +728,7 @@ function resetAdminLeadsState() {
   adminLeadsState.error = null;
   adminLeadsState.loading = false;
   adminLeadsState.hasLoaded = false;
+  adminLeadsState.showNewLeadForm = false;
 
   if (adminLeadsMessage) setInlineAlert(adminLeadsMessage, '');
   adminLeadsLoading?.classList.add('hidden');
@@ -966,13 +968,18 @@ function resetLeadForm() {
 }
 
 function closeLeadModal() {
+  adminLeadsState.showNewLeadForm = false;
   if (leadModal) leadModal.classList.add('hidden');
   adminLeadFormState.submitting = false;
+  resetLeadForm();
+  renderAdminLeads();
 }
 
 function openLeadModal() {
+  adminLeadsState.showNewLeadForm = true;
   resetLeadForm();
   if (leadModal) leadModal.classList.remove('hidden');
+  renderAdminLeads();
 }
 
 function validateLeadForm(values) {
@@ -986,6 +993,11 @@ function validateLeadForm(values) {
 function buildLeadModal() {
   if (leadModal) return;
 
+  if (!adminLeadsSection) return;
+
+  const header = adminLeadsSection.querySelector('.card-header');
+  const host = header?.parentElement || adminLeadsSection;
+
   leadModal = document.createElement('div');
   leadModal.id = 'lead-modal';
   leadModal.className = 'sheet hidden';
@@ -996,7 +1008,6 @@ function buildLeadModal() {
         <h4>Create New Lead</h4>
         <p class="muted">Capture a prospect’s basic details so you can follow up and convert them into a customer.</p>
       </div>
-      <button type="button" class="ghost" data-action="close-lead-modal">Cancel</button>
     </div>
     <form id="lead-form" class="form-grid">
       <label class="form-field">
@@ -1010,7 +1021,7 @@ function buildLeadModal() {
         <small class="error-text hidden" data-error="mobile" style="color:#b91c1c;font-weight:600;"></small>
       </label>
       <label class="form-field">
-        <span>Loan type interest</span>
+        <span>Loan type</span>
         <select id="lead-loan-type" name="loan_type_interest">
           <option value="">Select loan type</option>
           ${Object.entries(leadLoanTypeLabels)
@@ -1028,19 +1039,21 @@ function buildLeadModal() {
         </select>
         <small class="error-text hidden" data-error="source" style="color:#b91c1c;font-weight:600;"></small>
       </label>
-      <label class="form-field">
-        <span>Notes <span class="muted">(optional)</span></span>
-        <textarea id="lead-notes" name="notes" rows="3" placeholder="Additional context for your team"></textarea>
-      </label>
-      <div class="action-row">
-        <button type="button" class="ghost" data-action="close-lead-modal">Cancel</button>
-        <button type="submit" class="primary" id="lead-submit">Save lead</button>
+      <div class="form-footer full-width">
+        <p id="lead-form-message" class="alert hidden"></p>
+        <div class="actions">
+          <button type="button" class="ghost" data-action="close-lead-modal">Cancel</button>
+          <button type="submit" class="primary" id="lead-submit">Save lead</button>
+        </div>
       </div>
     </form>
-    <div id="lead-form-message" class="alert hidden"></div>
   `;
 
-  document.body.appendChild(leadModal);
+  if (host && header && header.nextSibling) {
+    host.insertBefore(leadModal, header.nextSibling);
+  } else {
+    host?.appendChild(leadModal);
+  }
 
   leadForm = leadModal.querySelector('#lead-form');
   leadFormMessage = leadModal.querySelector('#lead-form-message');
@@ -1161,13 +1174,14 @@ async function handleLeadFormSubmit(event) {
 }
 
 function renderAdminLeads() {
-  const { leads, loading, error, hasLoaded } = adminLeadsState;
+  const { leads, loading, error, hasLoaded, showNewLeadForm } = adminLeadsState;
 
   ensureAdminLeadsUI();
 
   setInlineAlert(adminLeadsMessage, error || '', 'error');
 
   adminLeadsLoading?.classList.toggle('hidden', !loading);
+  if (leadModal) leadModal.classList.toggle('hidden', !showNewLeadForm);
 
   if (loading) {
     adminLeadsTableWrapper?.classList.add('hidden');
@@ -1185,7 +1199,7 @@ function renderAdminLeads() {
 
   const hasLeads = leads.length > 0;
   adminLeadsTableWrapper?.classList.toggle('hidden', !hasLeads);
-  adminLeadsEmptyState?.classList.toggle('hidden', hasLeads || !hasLoaded);
+  adminLeadsEmptyState?.classList.toggle('hidden', hasLeads || !hasLoaded || showNewLeadForm);
 
   if (!hasLeads) {
     if (adminLeadsTableBody) adminLeadsTableBody.innerHTML = '';
