@@ -140,7 +140,13 @@ const customerRouteGrid = document.querySelector(
   '.admin-section[data-section="customers"] .subcard-grid'
 );
 const customerRouteContent = document.querySelector('#customer-route-content');
-const customerRouteViews = document.querySelectorAll('[data-customer-view]');
+let customerRouteViews = document.querySelectorAll('[data-customer-view]');
+let customerDetailView;
+let customerDetailMessage;
+let customerDetailLoading;
+let customerDetailBody;
+let customerDetailBackBtn;
+const customerDetailState = { customer: null, loading: false, error: null, customerId: null };
 const adminDocumentsSection = document.querySelector(
   '.admin-content .admin-section[data-section="documents"]'
 );
@@ -1798,6 +1804,13 @@ function renderCustomerActions(customer, kycStatus, eligibilityStatus) {
     return actionsCell;
   }
 
+  const viewButton = document.createElement('button');
+  viewButton.type = 'button';
+  viewButton.className = 'primary small';
+  viewButton.dataset.customerDetailRoute = `/admin/customers/${customerId}`;
+  viewButton.textContent = 'View';
+  actionContainer.appendChild(viewButton);
+
   const kycNormalized = normalizeCustomerStatus(kycStatus);
   const eligibilityNormalized = normalizeCustomerStatus(eligibilityStatus);
 
@@ -2167,7 +2180,205 @@ async function loadAdminKycQueue(force = false) {
   }
 }
 
+function ensureCustomerDetailView() {
+  if (customerDetailView || !customerRouteContent) return;
+
+  customerDetailView = document.createElement('div');
+  customerDetailView.dataset.customerView = 'detail';
+  customerDetailView.className = 'hidden';
+
+  const detailCard = document.createElement('div');
+  detailCard.className = 'subcard customers-table-card';
+
+  const header = document.createElement('div');
+  header.className = 'card-header';
+
+  const headerText = document.createElement('div');
+  const title = document.createElement('h3');
+  title.textContent = 'Customer detail';
+  const subtitle = document.createElement('p');
+  subtitle.className = 'muted';
+  subtitle.textContent = 'View customer profile and verification status.';
+  headerText.appendChild(title);
+  headerText.appendChild(subtitle);
+  header.appendChild(headerText);
+
+  const headerActions = document.createElement('div');
+  headerActions.className = 'action-row';
+  customerDetailBackBtn = document.createElement('button');
+  customerDetailBackBtn.type = 'button';
+  customerDetailBackBtn.className = 'ghost';
+  customerDetailBackBtn.textContent = 'Back to customers';
+  headerActions.appendChild(customerDetailBackBtn);
+  header.appendChild(headerActions);
+
+  detailCard.appendChild(header);
+
+  customerDetailMessage = document.createElement('div');
+  customerDetailMessage.id = 'customer-detail-message';
+  customerDetailMessage.className = 'alert hidden';
+  detailCard.appendChild(customerDetailMessage);
+
+  customerDetailLoading = document.createElement('div');
+  customerDetailLoading.id = 'customer-detail-loading';
+  customerDetailLoading.className = 'loading-row hidden';
+  customerDetailLoading.setAttribute('aria-live', 'polite');
+  customerDetailLoading.innerHTML = '<div class="spinner"></div><span>Loading customer...</span>';
+  detailCard.appendChild(customerDetailLoading);
+
+  customerDetailBody = document.createElement('div');
+  customerDetailBody.id = 'customer-detail-body';
+  customerDetailBody.className = 'customer-detail-body hidden';
+  detailCard.appendChild(customerDetailBody);
+
+  customerDetailView.appendChild(detailCard);
+  customerRouteContent.appendChild(customerDetailView);
+  refreshCustomerRouteViews();
+
+  if (customerDetailBackBtn) {
+    customerDetailBackBtn.addEventListener('click', () => {
+      handleCustomerRoute('/admin/customers/all-customers', { pushState: true });
+    });
+  }
+}
+
+function resetCustomerDetailState() {
+  customerDetailState.customer = null;
+  customerDetailState.error = null;
+  customerDetailState.loading = false;
+  customerDetailState.customerId = null;
+  if (customerDetailBody) customerDetailBody.innerHTML = '';
+  setInlineAlert(customerDetailMessage, '');
+  customerDetailLoading?.classList.add('hidden');
+}
+
+function renderCustomerDetailContent() {
+  ensureCustomerDetailView();
+
+  setInlineAlert(customerDetailMessage, customerDetailState.error || '', 'error');
+
+  if (customerDetailLoading)
+    customerDetailLoading.classList.toggle('hidden', !customerDetailState.loading);
+
+  const hideBody =
+    customerDetailState.loading || !!customerDetailState.error || !customerDetailState.customer;
+  if (customerDetailBody) {
+    customerDetailBody.classList.toggle('hidden', hideBody);
+  }
+
+  if (hideBody || !customerDetailBody) return;
+
+  const customer = customerDetailState.customer || {};
+  const code =
+    customer.customer_code || customer.customerCode || customer.code || customer.id || '—';
+  const name =
+    customer.full_name ||
+    customer.fullName ||
+    customer.name ||
+    [customer.first_name, customer.last_name].filter(Boolean).join(' ') ||
+    '—';
+  const nic = customer.nic_number || customer.nic || customer.nicNumber || customer.nic_no || '—';
+  const mobile = customer.mobile || customer.mobile_number || customer.phone || customer.contact || '—';
+  const address =
+    customer.address || customer.address_line || customer.addressLine || customer.location || '—';
+  const businessType = customer.business_type || customer.businessType || customer.segment || '—';
+  const kycStatus = customer.kyc_status || customer.kycStatus || customer.status;
+  const eligibilityStatus = customer.eligibility_status || customer.eligibilityStatus;
+
+  const detailFields = [
+    { label: 'Customer code', value: code },
+    { label: 'Full name', value: name },
+    { label: 'NIC', value: nic },
+    { label: 'Mobile', value: mobile },
+    { label: 'Address', value: address },
+    { label: 'Business type', value: businessType },
+    { label: 'KYC status', value: renderCustomerStatusBadge(kycStatus) },
+    { label: 'Eligibility status', value: renderCustomerStatusBadge(eligibilityStatus) },
+  ];
+
+  customerDetailBody.innerHTML = `
+    <div class="detail-grid">
+      ${detailFields
+        .map(
+          ({ label, value }) => `
+            <div class="detail-row">
+              <p class="muted">${label}</p>
+              <div class="detail-value">${value || '—'}</div>
+            </div>
+          `,
+        )
+        .join('')}
+    </div>
+  `;
+}
+
+async function loadCustomerDetail(customerId) {
+  const normalizedId = customerId?.toString();
+
+  if (!normalizedId) {
+    customerDetailState.error = 'Customer not found.';
+    renderCustomerDetailContent();
+    return;
+  }
+
+  customerDetailState.loading = true;
+  customerDetailState.error = null;
+  customerDetailState.customerId = normalizedId;
+  renderCustomerDetailContent();
+
+  try {
+    const basePath = endpoint('customers', { id: normalizedId }) || '/customers';
+    const normalizedBase = basePath.replace(/\/+$/, '');
+    const path = normalizedBase.endsWith(`/${normalizedId}`)
+      ? normalizedBase
+      : `${normalizedBase}/${normalizedId}`;
+
+    const response = await api.get(path);
+    const customer = response?.customer || response?.data || response;
+    customerDetailState.customer = customer;
+  } catch (error) {
+    console.error('Failed to load customer detail', error);
+    const friendlyError = /404/.test(error?.message || '')
+      ? 'Customer not found.'
+      : error?.message || "Couldn't load customer. Please try again.";
+    customerDetailState.error = friendlyError;
+  } finally {
+    customerDetailState.loading = false;
+    renderCustomerDetailContent();
+  }
+}
+
+function renderCustomerDetail(customerId) {
+  ensureCustomerDetailView();
+
+  const normalizedId = customerId?.toString();
+
+  if (!normalizedId) {
+    customerDetailState.error = 'Customer not found.';
+    customerDetailState.customer = null;
+    renderCustomerDetailContent();
+    return;
+  }
+
+  if (
+    customerDetailState.customerId === normalizedId &&
+    customerDetailState.customer &&
+    !customerDetailState.loading
+  ) {
+    renderCustomerDetailContent();
+    return;
+  }
+
+  resetCustomerDetailState();
+  loadCustomerDetail(normalizedId);
+}
+
+function refreshCustomerRouteViews() {
+  customerRouteViews = document.querySelectorAll('[data-customer-view]');
+}
+
 function setActiveCustomerView(view = '') {
+  refreshCustomerRouteViews();
   customerRouteViews.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.customerView !== view);
   });
@@ -2183,17 +2394,42 @@ function clearCustomerRouteView() {
   if (customerRoutePath) customerRoutePath.textContent = '';
 }
 
-function renderCustomerRoute(path) {
-  if (!customerRoutePlaceholder || !customerRoutes[path]) return;
+function getCustomerRouteConfig(path = customerRouteHomePath) {
+  if (!path || !path.startsWith(customerRouteHomePath)) return null;
+  const normalizedPath = path.replace(/\/+$/, '') || customerRouteHomePath;
+
+  if (customerRoutes[normalizedPath]) {
+    return { ...customerRoutes[normalizedPath], path: normalizedPath };
+  }
+
+  const detailMatch = normalizedPath.match(/^\/admin\/customers\/(\d+)$/);
+  if (detailMatch) {
+    return {
+      title: 'Customer detail',
+      description: 'Review customer profile, KYC and eligibility.',
+      view: 'detail',
+      customerId: detailMatch[1],
+      path: normalizedPath,
+    };
+  }
+
+  return null;
+}
+
+function renderCustomerRoute(pathOrRoute) {
+  const routeConfig = typeof pathOrRoute === 'string' ? getCustomerRouteConfig(pathOrRoute) : pathOrRoute;
+  if (!customerRoutePlaceholder || !routeConfig) return;
 
   customerRouteGrid?.classList.add('hidden');
   customerRoutePlaceholder.classList.remove('hidden');
-  const route = customerRoutes[path];
 
-  if (customerRouteTitle) customerRouteTitle.textContent = route.title;
-  if (customerRouteDescription) customerRouteDescription.textContent = route.description;
-  if (customerRoutePath) customerRoutePath.textContent = '';
+  const route = routeConfig;
 
+  if (customerRouteTitle) customerRouteTitle.textContent = route.title || '';
+  if (customerRouteDescription) customerRouteDescription.textContent = route.description || '';
+  if (customerRoutePath) customerRoutePath.textContent = route.path ? `Route: ${route.path}` : '';
+
+  if (route.view === 'detail') ensureCustomerDetailView();
   setActiveCustomerView(route.view || '');
 
   if (route.view === 'all') {
@@ -2205,17 +2441,24 @@ function renderCustomerRoute(path) {
     renderAdminKycQueue();
     loadAdminKycQueue();
   }
+
+  if (route.view === 'detail') {
+    renderCustomerDetail(route.customerId);
+  }
 }
 
 function handleCustomerRoute(path = customerRouteHomePath, { pushState = false } = {}) {
   if (!path.startsWith(customerRouteHomePath)) return false;
   showAdminSection('customers');
 
-  if (customerRoutes[path]) {
-    if (pushState && window.location.pathname !== path) {
-      history.pushState({ customerRoute: path }, '', path);
+  const routeConfig = getCustomerRouteConfig(path);
+
+  if (routeConfig) {
+    const targetPath = routeConfig.path || path;
+    if (pushState && window.location.pathname !== targetPath) {
+      history.pushState({ customerRoute: targetPath }, '', targetPath);
     }
-    renderCustomerRoute(path);
+    renderCustomerRoute(routeConfig);
   } else {
     if (pushState && window.location.pathname !== customerRouteHomePath) {
       history.pushState({ customerRoute: customerRouteHomePath }, '', customerRouteHomePath);
@@ -2227,9 +2470,11 @@ function handleCustomerRoute(path = customerRouteHomePath, { pushState = false }
 }
 
 function navigateCustomerRoute(path) {
-  if (!customerRoutes[path]) return;
-  history.pushState({ customerRoute: path }, '', path);
-  renderCustomerRoute(path);
+  const routeConfig = getCustomerRouteConfig(path);
+  if (!routeConfig) return;
+  const targetPath = routeConfig.path || path;
+  history.pushState({ customerRoute: targetPath }, '', targetPath);
+  renderCustomerRoute(routeConfig);
 }
 
 function createDocumentTile({ title, description, buttonLabel, key, path }) {
@@ -4047,6 +4292,13 @@ refreshKycQueueBtn?.addEventListener('click', () => loadAdminKycQueue(true));
 refreshLeadsBtn?.addEventListener('click', () => loadAdminLeads(true));
 
 document.addEventListener('click', (event) => {
+  const customerDetailBtn = event.target.closest('[data-customer-detail-route]');
+  if (customerDetailBtn) {
+    const targetPath = customerDetailBtn.dataset.customerDetailRoute;
+    if (targetPath) handleCustomerRoute(targetPath, { pushState: true });
+    return;
+  }
+
   const customerActionBtn = event.target.closest('[data-customer-action]');
   if (customerActionBtn) {
     const { customerAction, customerId } = customerActionBtn.dataset;
