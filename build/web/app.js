@@ -1076,6 +1076,37 @@ async function loadAdminLoanApplicationsAll(force = false) {
   }
 }
 
+// Generic helper to extract a list of items from various API response shapes.
+function resolveItemsList(payload, fallbackKey) {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+
+  // If the payload itself is an array, just return it.
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  // Common pattern: { items: [...] }
+  if (Array.isArray(payload.items)) {
+    return payload.items;
+  }
+
+  // Fallback key, e.g. "customers", "leads", etc.
+  if (fallbackKey && Array.isArray(payload[fallbackKey])) {
+    return payload[fallbackKey];
+  }
+
+  // As a last resort, return the first array property we can find.
+  for (const key in payload) {
+    if (Object.prototype.hasOwnProperty.call(payload, key) && Array.isArray(payload[key])) {
+      return payload[key];
+    }
+  }
+
+  return [];
+}
+
 function normalizeCustomersResponse(response) {
   if (Array.isArray(response)) return response;
 
