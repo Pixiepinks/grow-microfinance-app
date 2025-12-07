@@ -211,10 +211,10 @@
                       </div>
                     </div>
 
-                    <div class="subcard" data-customer-route="/admin/customers/kyc-verification-queue">
+                    <div class="subcard" data-customer-route="/admin/customers/kyc-queue">
                       <div class="card-header">
                         <div>
-                          <h3>KYC verification queue</h3>
+                          <h3>KYC Verification Queue</h3>
                           <p class="muted">Review and verify customer KYC submissions.</p>
                         </div>
                       </div>
@@ -299,14 +299,39 @@
                       </div>
 
                       <div data-customer-view="kyc" class="hidden">
-                        <div class="subcard">
+                        <div class="subcard customers-table-card">
                           <div class="card-header">
                             <div>
-                              <h3>KYC verification queue</h3>
-                              <p class="muted">Queue of customer submissions awaiting review.</p>
+                              <h3>KYC Verification Queue</h3>
+                              <p class="muted">Customers awaiting KYC review and action.</p>
                             </div>
+                            <button id="refresh-kyc-queue-btn" class="ghost" type="button">Refresh</button>
                           </div>
-                          <p class="muted">KYC verification queue</p>
+
+                          <div id="admin-kyc-queue-message" class="alert hidden"></div>
+                          <div id="admin-kyc-queue-loading" class="loading-row hidden" aria-live="polite">
+                            <div class="spinner"></div>
+                            <span>Loading KYC queue...</span>
+                          </div>
+                          <div id="admin-kyc-queue-empty" class="muted hidden">
+                            No customers are waiting for KYC review.
+                          </div>
+
+                          <div id="admin-kyc-queue-table-wrapper" class="loan-table-wrapper hidden">
+                            <table class="placeholder-table loan-table">
+                              <thead>
+                                <tr>
+                                  <th>Customer ID</th>
+                                  <th>Name</th>
+                                  <th>Mobile</th>
+                                  <th>KYC Status</th>
+                                  <th>Eligibility Status</th>
+                                  <th>Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody id="admin-kyc-queue-table-body"></tbody>
+                            </table>
+                          </div>
                         </div>
                       </div>
 

@@ -115,6 +115,12 @@ const adminCustomersEmptyState = document.querySelector('#admin-customers-empty'
 const refreshCustomersBtn = document.querySelector('#refresh-customers-btn');
 const adminCustomersFilters = document.querySelector('.customers-table-card .filters');
 const adminCustomersTable = document.querySelector('#admin-customers-table');
+const adminKycQueueMessage = document.querySelector('#admin-kyc-queue-message');
+const adminKycQueueTableBody = document.querySelector('#admin-kyc-queue-table-body');
+const adminKycQueueTableWrapper = document.querySelector('#admin-kyc-queue-table-wrapper');
+const adminKycQueueLoading = document.querySelector('#admin-kyc-queue-loading');
+const adminKycQueueEmptyState = document.querySelector('#admin-kyc-queue-empty');
+const refreshKycQueueBtn = document.querySelector('#refresh-kyc-queue-btn');
 const adminLeadsSection = document.querySelector('.admin-section[data-section="leads"]');
 const adminLeadsMessage = document.querySelector('#admin-leads-message');
 const adminLeadsTableBody = document.querySelector('#admin-leads-table-body');
@@ -170,7 +176,7 @@ const customerRoutes = {
     description: 'Register a new customer and capture full KYC details.',
     view: 'new',
   },
-  '/admin/customers/kyc-verification-queue': {
+  '/admin/customers/kyc-queue': {
     title: 'KYC verification queue',
     description: 'Review and verify customer KYC submissions.',
     view: 'kyc',
@@ -316,8 +322,15 @@ const adminCustomersState = {
   activeTab: 'all',
   filters: { kyc: 'ALL', eligibility: 'ALL' },
 };
+const adminKycQueueState = {
+  customers: [],
+  loading: false,
+  error: null,
+  hasLoaded: false,
+};
 const customerKycStatuses = ['ALL', 'PENDING', 'UPLOADED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'];
 const customerEligibilityStatuses = ['ALL', 'ELIGIBLE', 'NOT_ELIGIBLE'];
+const kycQueueStatuses = ['PENDING', 'UPLOADED', 'UNDER_REVIEW'];
 const adminLeadsState = {
   leads: [],
   loading: false,
@@ -640,6 +653,19 @@ function resetAdminCustomersState() {
   adminCustomersEmptyState?.classList.add('hidden');
   adminCustomersTableWrapper?.classList.add('hidden');
   if (adminCustomersTableBody) adminCustomersTableBody.innerHTML = '';
+}
+
+function resetAdminKycQueueState() {
+  adminKycQueueState.customers = [];
+  adminKycQueueState.error = null;
+  adminKycQueueState.loading = false;
+  adminKycQueueState.hasLoaded = false;
+
+  setInlineAlert(adminKycQueueMessage, '');
+  adminKycQueueLoading?.classList.add('hidden');
+  adminKycQueueEmptyState?.classList.add('hidden');
+  adminKycQueueTableWrapper?.classList.add('hidden');
+  if (adminKycQueueTableBody) adminKycQueueTableBody.innerHTML = '';
 }
 
 function resetAdminLeadsState() {
@@ -1130,12 +1156,21 @@ async function handleCustomerAction(action, customerId, trigger) {
   try {
     await api(path, { method: 'POST' });
     setInlineAlert(adminCustomersMessage, 'Customer status updated successfully.', 'success');
-    setTimeout(() => setInlineAlert(adminCustomersMessage, ''), 3000);
-    await loadAdminCustomers(true);
+    setInlineAlert(adminKycQueueMessage, 'Customer status updated successfully.', 'success');
+    setTimeout(() => {
+      setInlineAlert(adminCustomersMessage, '');
+      setInlineAlert(adminKycQueueMessage, '');
+    }, 3000);
+    await Promise.all([loadAdminCustomers(true), loadAdminKycQueue(true)]);
   } catch (error) {
     console.error('Failed to update customer status', error);
     setInlineAlert(
       adminCustomersMessage,
+      error?.message || 'Unable to update customer status. Please try again.',
+      'error',
+    );
+    setInlineAlert(
+      adminKycQueueMessage,
       error?.message || 'Unable to update customer status. Please try again.',
       'error',
     );
@@ -1316,6 +1351,110 @@ async function loadAdminCustomers(force = false) {
   }
 }
 
+function renderAdminKycQueue() {
+  const { customers, loading, error, hasLoaded } = adminKycQueueState;
+
+  setInlineAlert(adminKycQueueMessage, error || '', 'error');
+
+  adminKycQueueLoading?.classList.toggle('hidden', !loading);
+
+  if (loading) {
+    adminKycQueueTableWrapper?.classList.add('hidden');
+    adminKycQueueEmptyState?.classList.add('hidden');
+    if (adminKycQueueTableBody) adminKycQueueTableBody.innerHTML = '';
+    return;
+  }
+
+  if (error) {
+    adminKycQueueTableWrapper?.classList.add('hidden');
+    adminKycQueueEmptyState?.classList.add('hidden');
+    if (adminKycQueueTableBody) adminKycQueueTableBody.innerHTML = '';
+    return;
+  }
+
+  const hasCustomers = customers.length > 0;
+  adminKycQueueTableWrapper?.classList.toggle('hidden', !hasCustomers);
+  adminKycQueueEmptyState?.classList.toggle('hidden', hasCustomers || !hasLoaded);
+
+  if (!adminKycQueueTableBody) return;
+  adminKycQueueTableBody.innerHTML = '';
+
+  customers.forEach((customer) => {
+    const row = document.createElement('tr');
+    const name =
+      customer.full_name ||
+      customer.fullName ||
+      customer.name ||
+      [customer.first_name, customer.last_name].filter(Boolean).join(' ') ||
+      '—';
+    const mobile = customer.mobile || customer.mobile_number || customer.phone || customer.contact || '—';
+    const kycStatus = customer.kyc_status || customer.kycStatus || customer.status;
+    const eligibilityStatus = customer.eligibility_status || customer.eligibilityStatus;
+    const code =
+      customer.customer_code ||
+      customer.customerCode ||
+      customer.code ||
+      customer.id ||
+      customer.customer_id ||
+      customer.customerId ||
+      '—';
+
+    row.innerHTML = `
+      <td>${code}</td>
+      <td>${name}</td>
+      <td>${mobile}</td>
+      <td>${renderCustomerStatusBadge(kycStatus)}</td>
+      <td>${renderCustomerStatusBadge(eligibilityStatus)}</td>
+    `;
+
+    const actionsCell = renderCustomerActions(customer, kycStatus, eligibilityStatus);
+    row.appendChild(actionsCell);
+
+    adminKycQueueTableBody.appendChild(row);
+  });
+}
+
+async function loadAdminKycQueue(force = false) {
+  if (adminKycQueueState.loading) return;
+  if (adminKycQueueState.hasLoaded && !force) {
+    renderAdminKycQueue();
+    return;
+  }
+
+  adminKycQueueState.loading = true;
+  adminKycQueueState.error = null;
+  renderAdminKycQueue();
+
+  try {
+    const basePath = endpoint('customers') || '/customers';
+    const query = new URLSearchParams();
+    kycQueueStatuses.forEach((status) => query.append('kyc_status', status));
+    const separator = basePath.includes('?') ? '&' : '?';
+    const path = `${basePath}${separator}${query.toString()}`;
+
+    const response = await api.get(path);
+    const customers = normalizeCustomersResponse(response).filter((customer) => {
+      const status = normalizeCustomerStatus(
+        customer.kyc_status || customer.kycStatus || customer.status,
+      );
+      return kycQueueStatuses.includes(status);
+    });
+
+    adminKycQueueState.customers = customers;
+    adminKycQueueState.hasLoaded = true;
+  } catch (error) {
+    console.error('Failed to load KYC queue', error);
+    const friendlyError = /404/.test(error?.message || '') || /reach the server/i.test(error?.message || '')
+      ? 'Unable to load KYC queue. Please try again later.'
+      : error?.message || "Couldn't load KYC queue. Please try again.";
+    adminKycQueueState.error = friendlyError;
+    adminKycQueueState.hasLoaded = false;
+  } finally {
+    adminKycQueueState.loading = false;
+    renderAdminKycQueue();
+  }
+}
+
 function setActiveCustomerView(view = '') {
   customerRouteViews.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.customerView !== view);
@@ -1348,6 +1487,11 @@ function renderCustomerRoute(path) {
   if (route.view === 'all') {
     renderAdminCustomers();
     loadAdminCustomers();
+  }
+
+  if (route.view === 'kyc') {
+    renderAdminKycQueue();
+    loadAdminKycQueue();
   }
 }
 
@@ -3084,6 +3228,7 @@ document.addEventListener('click', (event) => {
 });
 
 refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
+refreshKycQueueBtn?.addEventListener('click', () => loadAdminKycQueue(true));
 refreshLeadsBtn?.addEventListener('click', () => loadAdminLeads(true));
 
 document.addEventListener('click', (event) => {
