@@ -83,6 +83,7 @@
                   <button class="admin-menu-item active" type="button" data-section="dashboard">Dashboard</button>
                   <button class="admin-menu-item" type="button" data-section="loan-applications">Loan Applications</button>
                   <button class="admin-menu-item" type="button" data-section="customers">Customers</button>
+                  <button class="admin-menu-item" type="button" data-section="leads">Leads</button>
                   <button class="admin-menu-item" type="button" data-section="loans">Loans</button>
                   <button class="admin-menu-item" type="button" data-section="collections">Collections</button>
                   <button class="admin-menu-item" type="button" data-section="payments">Payments</button>
@@ -320,6 +321,42 @@
                           <p class="muted">Risk profiles – coming soon.</p>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-section hidden" data-section="leads">
+                  <div class="card-header">
+                    <div>
+                      <div class="eyebrow">Prospects</div>
+                      <h2>Leads</h2>
+                      <p class="muted">Review inbound leads and convert them into customers.</p>
+                    </div>
+                    <button id="refresh-leads-btn" class="ghost" type="button">Refresh</button>
+                  </div>
+
+                  <div class="subcard">
+                    <div id="admin-leads-message" class="alert hidden"></div>
+                    <div id="admin-leads-loading" class="loading-row hidden" aria-live="polite">
+                      <div class="spinner"></div>
+                      <span>Loading leads...</span>
+                    </div>
+                    <div id="admin-leads-empty" class="muted hidden">No leads found yet.</div>
+                    <div id="admin-leads-table-wrapper" class="loan-table-wrapper hidden">
+                      <table id="admin-leads-table" class="placeholder-table loan-table">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Mobile</th>
+                            <th>Loan Type Interest</th>
+                            <th>Source</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody id="admin-leads-table-body"></tbody>
+                      </table>
                     </div>
                   </div>
                 </section>

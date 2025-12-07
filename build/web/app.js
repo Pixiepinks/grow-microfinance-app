@@ -18,6 +18,8 @@ const defaultApiConfig = {
     loanApplications: '/api/loan-applications',
     adminCustomers: '/api/admin/customers',
     customers: '/api/admin/customers',
+    leads: '/leads',
+    leadConvert: '/leads/{id}/convert-to-customer',
   },
 };
 
@@ -111,6 +113,13 @@ const adminCustomersTableWrapper = document.querySelector('#admin-customers-tabl
 const adminCustomersLoading = document.querySelector('#admin-customers-loading');
 const adminCustomersEmptyState = document.querySelector('#admin-customers-empty');
 const refreshCustomersBtn = document.querySelector('#refresh-customers-btn');
+const adminLeadsSection = document.querySelector('.admin-section[data-section="leads"]');
+const adminLeadsMessage = document.querySelector('#admin-leads-message');
+const adminLeadsTableBody = document.querySelector('#admin-leads-table-body');
+const adminLeadsTableWrapper = document.querySelector('#admin-leads-table-wrapper');
+const adminLeadsLoading = document.querySelector('#admin-leads-loading');
+const adminLeadsEmptyState = document.querySelector('#admin-leads-empty');
+const refreshLeadsBtn = document.querySelector('#refresh-leads-btn');
 const createCustomerBtn = document.querySelector('#create-customer-btn');
 const customerRoutePlaceholder = document.querySelector('#customer-route-placeholder');
 const customerRouteTitle = document.querySelector('#customer-route-title');
@@ -303,6 +312,12 @@ const adminCustomersState = {
   error: null,
   hasLoaded: false,
   activeTab: 'all',
+};
+const adminLeadsState = {
+  leads: [],
+  loading: false,
+  error: null,
+  hasLoaded: false,
 };
 let adminDocumentsInitialized = false;
 let currentStep = 0;
@@ -616,6 +631,19 @@ function resetAdminCustomersState() {
   if (adminCustomersTableBody) adminCustomersTableBody.innerHTML = '';
 }
 
+function resetAdminLeadsState() {
+  adminLeadsState.leads = [];
+  adminLeadsState.error = null;
+  adminLeadsState.loading = false;
+  adminLeadsState.hasLoaded = false;
+
+  if (adminLeadsMessage) setInlineAlert(adminLeadsMessage, '');
+  adminLeadsLoading?.classList.add('hidden');
+  adminLeadsEmptyState?.classList.add('hidden');
+  adminLeadsTableWrapper?.classList.add('hidden');
+  if (adminLeadsTableBody) adminLeadsTableBody.innerHTML = '';
+}
+
 function ensureAdminLoanApplicationsUI() {
   if (!adminLoanApplicationsSection || adminLoanApplicationsInitialized) return;
   adminLoanApplicationsInitialized = true;
@@ -793,6 +821,180 @@ function normalizeCustomersResponse(response) {
   }
 
   return [];
+}
+
+function normalizeLeadsResponse(response) {
+  if (Array.isArray(response)) return response;
+
+  const candidates = [
+    response?.leads,
+    response?.data?.leads,
+    response?.results,
+    response?.data?.results,
+    resolveItemsList(response),
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function renderAdminLeads() {
+  const { leads, loading, error, hasLoaded } = adminLeadsState;
+
+  setInlineAlert(adminLeadsMessage, error || '', 'error');
+
+  adminLeadsLoading?.classList.toggle('hidden', !loading);
+
+  if (loading) {
+    adminLeadsTableWrapper?.classList.add('hidden');
+    adminLeadsEmptyState?.classList.add('hidden');
+    if (adminLeadsTableBody) adminLeadsTableBody.innerHTML = '';
+    return;
+  }
+
+  if (error) {
+    adminLeadsTableWrapper?.classList.add('hidden');
+    adminLeadsEmptyState?.classList.add('hidden');
+    if (adminLeadsTableBody) adminLeadsTableBody.innerHTML = '';
+    return;
+  }
+
+  const hasLeads = leads.length > 0;
+  adminLeadsTableWrapper?.classList.toggle('hidden', !hasLeads);
+  adminLeadsEmptyState?.classList.toggle('hidden', hasLeads || !hasLoaded);
+
+  if (!hasLeads) {
+    if (adminLeadsTableBody) adminLeadsTableBody.innerHTML = '';
+    return;
+  }
+
+  if (!adminLeadsTableBody) return;
+  adminLeadsTableBody.innerHTML = '';
+
+  leads.forEach((lead) => {
+    const row = document.createElement('tr');
+    const leadId = lead.id ?? lead.lead_id ?? lead.leadId ?? '—';
+    const name =
+      lead.name ||
+      lead.full_name ||
+      [lead.first_name, lead.last_name].filter(Boolean).join(' ') ||
+      '—';
+    const mobile = lead.mobile || lead.mobile_number || lead.phone || lead.contact || '—';
+    const loanInterest =
+      lead.loan_type_interest ||
+      lead.loanTypeInterest ||
+      lead.loan_type ||
+      lead.interested_loan_type ||
+      '—';
+    const source = lead.source || lead.channel || lead.acquisition_source || '—';
+    const status = lead.status || lead.lead_status || '—';
+    const statusBadge = status ? renderStatusBadge(status) : '—';
+    const customerId = lead.customer_id || lead.customerId || lead.customer_code;
+    const isConverted = (status || '').toUpperCase() === 'CONVERTED';
+
+    row.innerHTML = `
+      <td>${leadId}</td>
+      <td>${name}</td>
+      <td>${mobile}</td>
+      <td>${loanInterest}</td>
+      <td>${source}</td>
+      <td>${statusBadge}</td>
+    `;
+
+    const actionsCell = document.createElement('td');
+    const actionContainer = document.createElement('div');
+    actionContainer.className = 'table-actions';
+
+    if (!isConverted) {
+      const convertBtn = document.createElement('button');
+      convertBtn.type = 'button';
+      convertBtn.className = 'primary';
+      convertBtn.dataset.action = 'convert-lead';
+      convertBtn.dataset.leadId = leadId;
+      convertBtn.textContent = 'Convert to Customer';
+      actionContainer.appendChild(convertBtn);
+    }
+
+    if (isConverted && customerId) {
+      const openCustomerBtn = document.createElement('button');
+      openCustomerBtn.type = 'button';
+      openCustomerBtn.className = 'ghost';
+      openCustomerBtn.dataset.action = 'open-customer-from-lead';
+      openCustomerBtn.dataset.customerId = customerId;
+      openCustomerBtn.textContent = 'Open customer';
+      actionContainer.appendChild(openCustomerBtn);
+    }
+
+    if (!actionContainer.children.length) {
+      actionContainer.textContent = '—';
+    }
+
+    actionsCell.appendChild(actionContainer);
+    row.appendChild(actionsCell);
+
+    adminLeadsTableBody.appendChild(row);
+  });
+}
+
+async function loadAdminLeads(force = false) {
+  if (adminLeadsState.loading) return;
+  if (adminLeadsState.hasLoaded && !force) {
+    renderAdminLeads();
+    return;
+  }
+
+  adminLeadsState.loading = true;
+  adminLeadsState.error = null;
+  renderAdminLeads();
+
+  try {
+    const path = endpoint('leads') || '/leads';
+    const response = await api.get(path);
+    adminLeadsState.leads = normalizeLeadsResponse(response);
+    adminLeadsState.hasLoaded = true;
+  } catch (error) {
+    console.error('Failed to load leads', error);
+    const friendlyError = /404/.test(error?.message || '') || /reach the server/i.test(error?.message || '')
+      ? 'Unable to load leads. Please try again later.'
+      : error?.message || "Couldn't load leads. Please try again.";
+    adminLeadsState.error = friendlyError;
+    adminLeadsState.hasLoaded = false;
+  } finally {
+    adminLeadsState.loading = false;
+    renderAdminLeads();
+  }
+}
+
+async function convertLeadToCustomer(leadId, trigger) {
+  if (!leadId) return;
+  const pathTemplate = endpoint('leadConvert') || '/leads/{id}/convert-to-customer';
+  const path = pathTemplate.replace('{id}', encodeURIComponent(leadId));
+
+  const button = trigger?.closest('button');
+  const originalText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Converting...';
+  }
+
+  try {
+    await api(path, { method: 'POST' });
+    setInlineAlert(adminLeadsMessage, 'Lead converted to customer', 'success');
+    setTimeout(() => setInlineAlert(adminLeadsMessage, ''), 3000);
+    await loadAdminLeads(true);
+    loadAdminCustomers(true);
+  } catch (error) {
+    console.error('Failed to convert lead', error);
+    setInlineAlert(adminLeadsMessage, error?.message || 'Failed to convert lead.', 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || 'Convert to Customer';
+    }
+  }
 }
 
 function renderAdminCustomers() {
@@ -1412,6 +1614,8 @@ function showAdminSection(section = 'dashboard') {
     loadAdminLoanApplicationsAll();
   } else if (target === 'documents') {
     loadAdminDocuments();
+  } else if (target === 'leads') {
+    loadAdminLeads();
   }
 }
 
@@ -1570,6 +1774,7 @@ function togglePanels(role) {
   else {
     resetAdminLoanApplicationsState();
     resetAdminCustomersState();
+    resetAdminLeadsState();
   }
   staffPanel.classList.toggle('hidden', role !== 'staff');
   customerPanel.classList.toggle('hidden', role !== 'customer');
@@ -2629,7 +2834,10 @@ adminMenuItems.forEach((item) => {
     const target = item.dataset.section || 'dashboard';
     if (target === 'documents') handleDocumentRoute(documentRouteBase, { pushState: true });
     else if (target === 'customers') handleCustomerRoute(customerRouteHomePath, { pushState: true });
-    else showAdminSection(target);
+    else if (target === 'leads') {
+      history.pushState({ adminSection: 'leads' }, '', '/admin/leads');
+      showAdminSection('leads');
+    } else showAdminSection(target);
   });
 });
 
@@ -2650,6 +2858,27 @@ document.addEventListener('click', (event) => {
 });
 
 refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
+refreshLeadsBtn?.addEventListener('click', () => loadAdminLeads(true));
+
+document.addEventListener('click', (event) => {
+  const convertBtn = event.target.closest('[data-action="convert-lead"]');
+  if (convertBtn) {
+    const leadId = convertBtn.dataset.leadId;
+    convertLeadToCustomer(leadId, convertBtn);
+    return;
+  }
+
+  const openCustomerBtn = event.target.closest('[data-action="open-customer-from-lead"]');
+  if (openCustomerBtn) {
+    const customerId = openCustomerBtn.dataset.customerId;
+    const path = '/admin/customers/all-customers';
+    handleCustomerRoute(path, { pushState: true });
+    if (customerId) {
+      setInlineAlert(adminCustomersMessage, `Opening customer ${customerId}`, 'success');
+    }
+    loadAdminCustomers(true);
+  }
+});
 
 createCustomerBtn?.addEventListener('click', () => {
   alert('New customer creation form coming soon');
@@ -2669,6 +2898,7 @@ window.addEventListener('popstate', () => {
   const path = window.location.pathname;
   if (customerRoutes[path] || path.startsWith(customerRouteHomePath)) handleCustomerRoute(path);
   else if (staffRoutes[path]) renderStaffRoute(path);
+  else if (path === '/admin/leads') showAdminSection('leads');
   else if (!handleDocumentRoute(path)) {
     clearCustomerRouteView();
     clearStaffRouteView();
@@ -2681,6 +2911,8 @@ if (customerRoutes[window.location.pathname] || window.location.pathname.startsW
   renderStaffRoute(window.location.pathname);
 } else if (handleDocumentRoute(window.location.pathname)) {
   // handled by document routing
+} else if (window.location.pathname === '/admin/leads') {
+  showAdminSection('leads');
 }
 
 staffRefreshApplicationsBtn?.addEventListener('click', () => loadStaff());
