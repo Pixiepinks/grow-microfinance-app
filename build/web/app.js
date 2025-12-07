@@ -302,6 +302,8 @@ const paymentMessage = document.querySelector('#payment-message');
 const closePaymentSheet = document.querySelector('#close-payment-sheet');
 
 let cachedProfile = null;
+let cachedCustomerRecord = null;
+let activeCustomerId = null;
 let cachedLoans = [];
 let cachedApplications = [];
 let cachedStaffApplications = [];
@@ -1067,6 +1069,23 @@ function renderCustomerStatusBadge(status) {
 
 function getCustomerId(customer = {}) {
   return customer.id || customer.customer_id || customer.customerId || customer.customer_code || customer.customerCode;
+}
+
+function setActiveCustomerId(customerId) {
+  activeCustomerId = customerId || null;
+  if (loanApplicationForm) loanApplicationForm.dataset.customerId = activeCustomerId || '';
+  if (newApplicationBtn) newApplicationBtn.dataset.customerId = activeCustomerId || '';
+}
+
+function resolveActiveCustomerId() {
+  return (
+    loanApplicationForm?.dataset.customerId ||
+    newApplicationBtn?.dataset.customerId ||
+    activeCustomerId ||
+    getCustomerId(cachedCustomerRecord || {}) ||
+    getCustomerId(cachedProfile || {}) ||
+    null
+  );
 }
 
 function createCustomerActionButton(label, action, customerId) {
@@ -2364,9 +2383,85 @@ async function loadStaff() {
   }
 }
 
+async function fetchCustomerRecordById(customerId) {
+  if (!customerId) throw new Error('Customer ID is required to start an application.');
+  const path = `${endpoint('customers')}/${encodeURIComponent(customerId)}`;
+  return api(path);
+}
+
+function extractCustomerStatuses(customer = {}) {
+  return {
+    kyc: normalizeCustomerStatus(customer.kyc_status || customer.kycStatus || customer.status),
+    eligibility: normalizeCustomerStatus(customer.eligibility_status || customer.eligibilityStatus),
+  };
+}
+
+async function ensureCustomerEligibilityForApplication() {
+  const customerId = resolveActiveCustomerId();
+  if (!customerId) {
+    setInlineAlert(
+      applicationFormMessage,
+      'Unable to start application: missing customer information.',
+      'error'
+    );
+    applicationFormCard?.classList.add('hidden');
+    return null;
+  }
+
+  try {
+    const customer = await fetchCustomerRecordById(customerId);
+    cachedCustomerRecord = customer;
+    setActiveCustomerId(getCustomerId(customer) || customerId);
+
+    const { kyc, eligibility } = extractCustomerStatuses(customer);
+
+    if (kyc !== 'APPROVED') {
+      applicationFormCard?.classList.add('hidden');
+      setInlineAlert(
+        applicationFormMessage,
+        'Your KYC verification is not yet approved. Please contact support or wait until verification is complete.',
+        'error'
+      );
+      return null;
+    }
+
+    if (eligibility !== 'ELIGIBLE') {
+      applicationFormCard?.classList.add('hidden');
+      setInlineAlert(
+        applicationFormMessage,
+        'You are currently not eligible to apply for a loan based on our assessment.',
+        'error'
+      );
+      return null;
+    }
+
+    setInlineAlert(applicationFormMessage, '');
+    return customer;
+  } catch (error) {
+    console.error('Unable to verify customer eligibility', error);
+    const friendlyMessage =
+      error?.status === 400
+        ? error.message ||
+          'We could not start a loan application because your eligibility or KYC status has changed.'
+        : error?.message || 'Unable to load customer details. Please try again later.';
+    applicationFormCard?.classList.add('hidden');
+    setInlineAlert(applicationFormMessage, friendlyMessage, 'error');
+    return null;
+  }
+}
+
 async function loadCustomer() {
   const profile = await api(endpoint('customerProfile'));
   cachedProfile = profile;
+  setActiveCustomerId(getCustomerId(profile));
+
+  if (resolveActiveCustomerId()) {
+    try {
+      cachedCustomerRecord = await fetchCustomerRecordById(resolveActiveCustomerId());
+    } catch (error) {
+      console.warn('Unable to load customer record for eligibility checks', error);
+    }
+  }
   renderProfile(profile);
 
   const loansResponse = await api(endpoint('customerLoans'));
@@ -3041,7 +3136,12 @@ async function saveDraft(showMessage = true) {
     return app;
   } catch (err) {
     console.error(err);
-    setInlineAlert(applicationFormMessage, err.message || 'Unable to save application', 'error');
+    const friendlyMessage =
+      err?.status === 400
+        ? err.message ||
+          'Unable to save application because your eligibility or KYC status has changed. Please verify and try again.'
+        : err.message || 'Unable to save application';
+    setInlineAlert(applicationFormMessage, friendlyMessage, 'error');
     throw err;
   }
 }
@@ -3091,7 +3191,12 @@ async function submitApplication() {
     applicationFormCard.classList.add('hidden');
   } catch (err) {
     console.error(err);
-    setInlineAlert(applicationFormMessage, err.message || 'Unable to submit application', 'error');
+    const friendlyMessage =
+      err?.status === 400
+        ? err.message ||
+          'Unable to submit because your eligibility or KYC status has changed. Please refresh and try again.'
+        : err.message || 'Unable to submit application';
+    setInlineAlert(applicationFormMessage, friendlyMessage, 'error');
   } finally {
     isSubmitting = false;
     if (submitApplicationBtn) {
@@ -3179,7 +3284,10 @@ logoutBtn?.addEventListener('click', () => {
 
 loanApplicationForm?.addEventListener('submit', (event) => event.preventDefault());
 
-newApplicationBtn?.addEventListener('click', () => {
+newApplicationBtn?.addEventListener('click', async () => {
+  const eligibleCustomer = await ensureCustomerEligibilityForApplication();
+  if (!eligibleCustomer) return;
+
   resetApplicationForm();
   applicationFormCard.classList.remove('hidden');
   loanApplicationForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
