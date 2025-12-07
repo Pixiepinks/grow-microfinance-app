@@ -339,6 +339,40 @@ const adminLeadsState = {
   error: null,
   hasLoaded: false,
 };
+const leadLoanTypeLabels = {
+  GROW_ONLINE_BUSINESS: 'Grow Online Business',
+  GROW_BUSINESS: 'Grow Business',
+  GROW_PERSONAL: 'Grow Personal',
+  GROW_TEAM: 'Grow Team',
+};
+const leadSourceLabels = {
+  BRANCH: 'Branch',
+  ONLINE_FORM: 'Online form',
+  FACEBOOK_AD: 'Facebook Ad',
+  WHATSAPP: 'WhatsApp',
+  REFERRAL: 'Referral',
+  OTHER: 'Other',
+};
+const adminLeadFormState = {
+  values: { name: '', mobile: '', loan_type_interest: '', source: 'OTHER', notes: '' },
+  errors: {},
+  submitting: false,
+};
+let adminLeadsInitialized = false;
+let leadModal;
+let leadForm;
+let leadFormMessage;
+let leadFormSubmit;
+let leadNameInput;
+let leadMobileInput;
+let leadLoanTypeSelect;
+let leadSourceSelect;
+let leadNotesInput;
+let leadMobileError;
+let leadNameError;
+let leadLoanTypeError;
+let leadSourceError;
+let newLeadBtn;
 let adminDocumentsInitialized = false;
 let adminCustomersFiltersInitialized = false;
 let currentStep = 0;
@@ -570,6 +604,19 @@ function formatDate(value) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function getApiBaseUrl() {
   return (
     apiConfig?.baseUrl || window.apiConfig?.apiBaseUrl || window.apiConfig?.baseUrl || defaultApiConfig.baseUrl
@@ -614,6 +661,11 @@ function renderStatusBadge(status) {
     UPLOADED: 'badge-warning',
     ELIGIBLE: 'badge-success',
     NOT_ELIGIBLE: 'badge-danger',
+    NEW: 'badge-info',
+    CONTACTED: 'badge-warning',
+    IN_PROGRESS: 'badge-info',
+    CONVERTED: 'badge-success',
+    LOST: 'badge-neutral',
   };
 
   const badgeClass = badgeClassMap[normalized] || 'badge-neutral';
@@ -880,8 +932,238 @@ function normalizeLeadsResponse(response) {
   return [];
 }
 
+function formatLeadLoanType(value) {
+  const key = (value || '').toUpperCase();
+  return leadLoanTypeLabels[key] || (value ? String(value).replace(/_/g, ' ') : '—');
+}
+
+function formatLeadSource(value) {
+  const key = (value || '').toUpperCase();
+  return leadSourceLabels[key] || 'Other';
+}
+
+function renderLeadFormErrors(errors = {}) {
+  const fields = { name: leadNameError, mobile: leadMobileError, loan_type_interest: leadLoanTypeError, source: leadSourceError };
+  Object.entries(fields).forEach(([key, node]) => {
+    if (!node) return;
+    const message = errors[key] || '';
+    node.textContent = message;
+    node.classList.toggle('hidden', !message);
+  });
+}
+
+function resetLeadForm() {
+  adminLeadFormState.values = { name: '', mobile: '', loan_type_interest: '', source: 'OTHER', notes: '' };
+  adminLeadFormState.errors = {};
+  if (leadForm) leadForm.reset();
+  if (leadSourceSelect) leadSourceSelect.value = 'OTHER';
+  renderLeadFormErrors({});
+  setInlineAlert(leadFormMessage, '');
+  if (leadFormSubmit) {
+    leadFormSubmit.disabled = false;
+    leadFormSubmit.textContent = 'Save lead';
+  }
+}
+
+function closeLeadModal() {
+  if (leadModal) leadModal.classList.add('hidden');
+  adminLeadFormState.submitting = false;
+}
+
+function openLeadModal() {
+  resetLeadForm();
+  if (leadModal) leadModal.classList.remove('hidden');
+}
+
+function validateLeadForm(values) {
+  const errors = {};
+  if (!values.mobile || !values.mobile.trim()) {
+    errors.mobile = 'Mobile number is required.';
+  }
+  return errors;
+}
+
+function buildLeadModal() {
+  if (leadModal) return;
+
+  leadModal = document.createElement('div');
+  leadModal.id = 'lead-modal';
+  leadModal.className = 'sheet hidden';
+  leadModal.innerHTML = `
+    <div class="sheet-header">
+      <div>
+        <div class="eyebrow">Leads</div>
+        <h4>Create New Lead</h4>
+        <p class="muted">Capture a prospect’s basic details so you can follow up and convert them into a customer.</p>
+      </div>
+      <button type="button" class="ghost" data-action="close-lead-modal">Cancel</button>
+    </div>
+    <form id="lead-form" class="form-grid">
+      <label class="form-field">
+        <span>Full name <span class="muted">(optional)</span></span>
+        <input id="lead-name" name="name" type="text" placeholder="Enter full name" />
+        <small class="error-text hidden" data-error="name" style="color:#b91c1c;font-weight:600;"></small>
+      </label>
+      <label class="form-field">
+        <span>Mobile number <span class="muted">(required)</span></span>
+        <input id="lead-mobile" name="mobile" type="text" required placeholder="e.g. 024XXXXXXX" />
+        <small class="error-text hidden" data-error="mobile" style="color:#b91c1c;font-weight:600;"></small>
+      </label>
+      <label class="form-field">
+        <span>Loan type interest</span>
+        <select id="lead-loan-type" name="loan_type_interest">
+          <option value="">Select loan type</option>
+          ${Object.entries(leadLoanTypeLabels)
+            .map(([value, label]) => `<option value="${value}">${label}</option>`)
+            .join('')}
+        </select>
+        <small class="error-text hidden" data-error="loan_type_interest" style="color:#b91c1c;font-weight:600;"></small>
+      </label>
+      <label class="form-field">
+        <span>Source</span>
+        <select id="lead-source" name="source">
+          ${Object.entries(leadSourceLabels)
+            .map(([value, label]) => `<option value="${value}">${label}</option>`)
+            .join('')}
+        </select>
+        <small class="error-text hidden" data-error="source" style="color:#b91c1c;font-weight:600;"></small>
+      </label>
+      <label class="form-field">
+        <span>Notes <span class="muted">(optional)</span></span>
+        <textarea id="lead-notes" name="notes" rows="3" placeholder="Additional context for your team"></textarea>
+      </label>
+      <div class="action-row">
+        <button type="button" class="ghost" data-action="close-lead-modal">Cancel</button>
+        <button type="submit" class="primary" id="lead-submit">Save lead</button>
+      </div>
+    </form>
+    <div id="lead-form-message" class="alert hidden"></div>
+  `;
+
+  document.body.appendChild(leadModal);
+
+  leadForm = leadModal.querySelector('#lead-form');
+  leadFormMessage = leadModal.querySelector('#lead-form-message');
+  leadFormSubmit = leadModal.querySelector('#lead-submit');
+  leadNameInput = leadModal.querySelector('#lead-name');
+  leadMobileInput = leadModal.querySelector('#lead-mobile');
+  leadLoanTypeSelect = leadModal.querySelector('#lead-loan-type');
+  leadSourceSelect = leadModal.querySelector('#lead-source');
+  leadNotesInput = leadModal.querySelector('#lead-notes');
+  leadNameError = leadModal.querySelector('[data-error="name"]');
+  leadMobileError = leadModal.querySelector('[data-error="mobile"]');
+  leadLoanTypeError = leadModal.querySelector('[data-error="loan_type_interest"]');
+  leadSourceError = leadModal.querySelector('[data-error="source"]');
+
+  leadSourceSelect.value = 'OTHER';
+
+  leadModal.querySelectorAll('[data-action="close-lead-modal"]').forEach((btn) => {
+    btn.addEventListener('click', closeLeadModal);
+  });
+
+  if (leadForm) leadForm.addEventListener('submit', handleLeadFormSubmit);
+}
+
+function ensureAdminLeadsUI() {
+  if (!adminLeadsSection || adminLeadsInitialized) return;
+
+  const header = adminLeadsSection.querySelector('.card-header');
+  if (header) {
+    const actions = document.createElement('div');
+    actions.className = 'header-actions';
+
+    if (refreshLeadsBtn) {
+      refreshLeadsBtn.classList.add('ghost');
+      actions.appendChild(refreshLeadsBtn);
+    }
+
+    newLeadBtn = document.createElement('button');
+    newLeadBtn.type = 'button';
+    newLeadBtn.className = 'primary';
+    newLeadBtn.id = 'new-lead-btn';
+    newLeadBtn.textContent = 'New Lead';
+    actions.appendChild(newLeadBtn);
+
+    header.appendChild(actions);
+  }
+
+  const leadsHeaderRow = document.querySelector('#admin-leads-table thead tr');
+  if (leadsHeaderRow) {
+    leadsHeaderRow.innerHTML = `
+      <th>ID</th>
+      <th>Name</th>
+      <th>Mobile</th>
+      <th>Loan Type</th>
+      <th>Source</th>
+      <th>Status</th>
+      <th>Created at</th>
+      <th>Actions</th>
+    `;
+  }
+
+  buildLeadModal();
+
+  adminLeadsInitialized = true;
+
+  if (newLeadBtn) newLeadBtn.addEventListener('click', openLeadModal);
+}
+
+async function handleLeadFormSubmit(event) {
+  event.preventDefault();
+  if (adminLeadFormState.submitting) return;
+
+  const values = {
+    name: leadNameInput?.value || '',
+    mobile: leadMobileInput?.value || '',
+    loan_type_interest: leadLoanTypeSelect?.value || '',
+    source: leadSourceSelect?.value || 'OTHER',
+    notes: leadNotesInput?.value || '',
+  };
+
+  const errors = validateLeadForm(values);
+  adminLeadFormState.errors = errors;
+  renderLeadFormErrors(errors);
+
+  if (Object.keys(errors).length) return;
+
+  adminLeadFormState.submitting = true;
+  setInlineAlert(leadFormMessage, 'Saving lead...', 'success');
+  if (leadFormSubmit) {
+    leadFormSubmit.disabled = true;
+    leadFormSubmit.textContent = 'Saving...';
+  }
+
+  const payload = {
+    name: values.name?.trim() || null,
+    mobile: values.mobile.trim(),
+    loan_type_interest: values.loan_type_interest || null,
+    source: values.source || 'OTHER',
+  };
+
+  try {
+    const path = endpoint('leads') || '/leads';
+    await api(path, { method: 'POST', body: payload });
+    closeLeadModal();
+    setInlineAlert(adminLeadsMessage, 'Lead created successfully.', 'success');
+    setTimeout(() => setInlineAlert(adminLeadsMessage, ''), 3000);
+    await loadAdminLeads(true);
+  } catch (error) {
+    console.error('Failed to create lead', error);
+    setInlineAlert(leadFormMessage, 'Failed to create lead. Please try again.', 'error');
+    setInlineAlert(adminLeadsMessage, 'Failed to create lead. Please try again.', 'error');
+  } finally {
+    adminLeadFormState.submitting = false;
+    if (leadFormSubmit) {
+      leadFormSubmit.disabled = false;
+      leadFormSubmit.textContent = 'Save lead';
+    }
+  }
+}
+
 function renderAdminLeads() {
   const { leads, loading, error, hasLoaded } = adminLeadsState;
+
+  ensureAdminLeadsUI();
 
   setInlineAlert(adminLeadsMessage, error || '', 'error');
 
@@ -922,17 +1204,18 @@ function renderAdminLeads() {
       [lead.first_name, lead.last_name].filter(Boolean).join(' ') ||
       '—';
     const mobile = lead.mobile || lead.mobile_number || lead.phone || lead.contact || '—';
-    const loanInterest =
-      lead.loan_type_interest ||
-      lead.loanTypeInterest ||
-      lead.loan_type ||
-      lead.interested_loan_type ||
-      '—';
-    const source = lead.source || lead.channel || lead.acquisition_source || '—';
+    const loanInterestValue =
+      lead.loan_type_interest || lead.loanTypeInterest || lead.loan_type || lead.interested_loan_type || '';
+    const loanInterest = formatLeadLoanType(loanInterestValue);
+    const sourceValue = lead.source || lead.channel || lead.acquisition_source || '';
+    const source = formatLeadSource(sourceValue);
     const status = lead.status || lead.lead_status || '—';
     const statusBadge = status ? renderStatusBadge(status) : '—';
     const customerId = lead.customer_id || lead.customerId || lead.customer_code;
     const isConverted = (status || '').toUpperCase() === 'CONVERTED';
+    const createdAt =
+      lead.created_at || lead.createdAt || lead.created || lead.created_on || lead.createdOn || lead.date_created;
+    const createdAtLabel = formatDateTime(createdAt) || '—';
 
     row.innerHTML = `
       <td>${leadId}</td>
@@ -941,20 +1224,28 @@ function renderAdminLeads() {
       <td>${loanInterest}</td>
       <td>${source}</td>
       <td>${statusBadge}</td>
+      <td>${createdAtLabel}</td>
     `;
 
     const actionsCell = document.createElement('td');
     const actionContainer = document.createElement('div');
     actionContainer.className = 'table-actions';
 
-    if (!isConverted) {
+    if (!isConverted && leadId !== '—') {
       const convertBtn = document.createElement('button');
       convertBtn.type = 'button';
-      convertBtn.className = 'primary';
+      convertBtn.className = 'ghost';
       convertBtn.dataset.action = 'convert-lead';
       convertBtn.dataset.leadId = leadId;
       convertBtn.textContent = 'Convert to Customer';
       actionContainer.appendChild(convertBtn);
+    }
+
+    if (isConverted) {
+      const convertedLabel = document.createElement('span');
+      convertedLabel.className = 'badge badge-success';
+      convertedLabel.textContent = 'Converted';
+      actionContainer.appendChild(convertedLabel);
     }
 
     if (isConverted && customerId) {
@@ -1202,6 +1493,7 @@ async function handleCustomerAction(action, customerId, trigger) {
 }
 
 async function loadAdminLeads(force = false) {
+  ensureAdminLeadsUI();
   if (adminLeadsState.loading) return;
   if (adminLeadsState.hasLoaded && !force) {
     renderAdminLeads();
@@ -1232,6 +1524,10 @@ async function loadAdminLeads(force = false) {
 
 async function convertLeadToCustomer(leadId, trigger) {
   if (!leadId) return;
+  const confirmed = window.confirm(
+    'Convert lead to customer?\n\nThis will create a customer profile from this lead and mark the lead as converted.',
+  );
+  if (!confirmed) return;
   const pathTemplate = endpoint('leadConvert') || '/leads/{id}/convert-to-customer';
   const path = pathTemplate.replace('{id}', encodeURIComponent(leadId));
 
@@ -1244,7 +1540,7 @@ async function convertLeadToCustomer(leadId, trigger) {
 
   try {
     await api(path, { method: 'POST' });
-    setInlineAlert(adminLeadsMessage, 'Lead converted to customer', 'success');
+    setInlineAlert(adminLeadsMessage, 'Lead converted to customer.', 'success');
     setTimeout(() => setInlineAlert(adminLeadsMessage, ''), 3000);
     await loadAdminLeads(true);
     loadAdminCustomers(true);
