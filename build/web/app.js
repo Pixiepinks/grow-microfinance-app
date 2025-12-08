@@ -148,7 +148,15 @@ let customerDetailMessage;
 let customerDetailLoading;
 let customerDetailBody;
 let customerDetailBackBtn;
-const customerDetailState = { customer: null, loading: false, error: null, customerId: null };
+const customerDetailState = {
+  customer: null,
+  loading: false,
+  error: null,
+  customerId: null,
+  documents: [],
+  documentsLoading: false,
+  documentsError: null,
+};
 const adminDocumentsSection = document.querySelector(
   '.admin-content .admin-section[data-section="documents"]'
 );
@@ -802,6 +810,15 @@ function formatDateTime(value) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function buildDocumentUrl(filePath) {
+  if (!filePath) return '#';
+  if (/^https?:\/\//i.test(filePath) || filePath.startsWith('data:')) return filePath;
+
+  const base = getApiBaseUrl().replace(/\/+$/, '');
+  if (filePath.startsWith('/')) return `${base}${filePath}`;
+  return `${base}/${filePath}`;
 }
 
 function getApiBaseUrl() {
@@ -2274,6 +2291,9 @@ function resetCustomerDetailState() {
   customerDetailState.error = null;
   customerDetailState.loading = false;
   customerDetailState.customerId = null;
+  customerDetailState.documents = [];
+  customerDetailState.documentsLoading = false;
+  customerDetailState.documentsError = null;
   if (customerDetailBody) customerDetailBody.innerHTML = '';
   setInlineAlert(customerDetailMessage, '');
   customerDetailLoading?.classList.add('hidden');
@@ -2343,6 +2363,9 @@ function renderCustomerDetailContent() {
   const customerId = getCustomerId(customer);
   const kycNormalized = normalizeCustomerStatus(kycStatus);
   const eligibilityNormalized = normalizeCustomerStatus(eligibilityStatus);
+  const customerDocuments = customerDetailState.documents || [];
+  const customerDocumentsLoading = customerDetailState.documentsLoading;
+  const customerDocumentsError = customerDetailState.documentsError;
 
   const detailFields = [
     { label: 'Customer code', value: code },
@@ -2430,6 +2453,166 @@ function renderCustomerDetailContent() {
   if (eligibilityNormalized || kycNormalized) {
     customerDetailBody.appendChild(kycSection);
   }
+
+  const documentsSection = document.createElement('div');
+  documentsSection.className = 'customer-kyc-actions';
+
+  const documentsHeader = document.createElement('div');
+  documentsHeader.className = 'section-header';
+  const documentsTitle = document.createElement('h3');
+  documentsTitle.textContent = 'KYC documents';
+  documentsHeader.appendChild(documentsTitle);
+  documentsSection.appendChild(documentsHeader);
+
+  if (customerDocumentsError) {
+    const errorAlert = document.createElement('div');
+    errorAlert.className = 'alert error';
+    errorAlert.textContent = customerDocumentsError;
+    documentsSection.appendChild(errorAlert);
+  }
+
+  const documentsWrapper = document.createElement('div');
+  documentsWrapper.className = 'loan-table-wrapper documents-repository-table';
+  const documentsTable = document.createElement('table');
+  documentsTable.className = 'loan-table placeholder-table';
+
+  const tableHead = document.createElement('thead');
+  const tableHeadRow = document.createElement('tr');
+  ['Document type', 'Uploaded at', 'File'].forEach((label) => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    tableHeadRow.appendChild(th);
+  });
+  tableHead.appendChild(tableHeadRow);
+  documentsTable.appendChild(tableHead);
+
+  const tableBody = document.createElement('tbody');
+
+  if (customerDocumentsLoading) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3;
+    td.className = 'text-center text-muted';
+    td.textContent = 'Loading documents...';
+    tr.appendChild(td);
+    tableBody.appendChild(tr);
+  } else if (!customerDocuments.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3;
+    td.className = 'text-center text-muted';
+    td.textContent = 'No KYC documents uploaded yet.';
+    tr.appendChild(td);
+    tableBody.appendChild(tr);
+  } else {
+    customerDocuments.forEach((doc) => {
+      const tr = document.createElement('tr');
+      const typeTd = document.createElement('td');
+      typeTd.textContent = doc.document_type || doc.documentType || '—';
+      tr.appendChild(typeTd);
+
+      const uploadedTd = document.createElement('td');
+      const uploadedAt = doc.uploaded_at || doc.uploadedAt || doc.created_at || doc.createdAt;
+      uploadedTd.textContent = uploadedAt ? new Date(uploadedAt).toLocaleString() : '—';
+      tr.appendChild(uploadedTd);
+
+      const fileTd = document.createElement('td');
+      const href = buildDocumentUrl(doc.file_path || doc.filePath || '');
+      const link = document.createElement('a');
+      link.href = href || '#';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Open';
+      link.className = 'link';
+      fileTd.appendChild(link);
+      tr.appendChild(fileTd);
+
+      tableBody.appendChild(tr);
+    });
+  }
+
+  documentsTable.appendChild(tableBody);
+  documentsWrapper.appendChild(documentsTable);
+  documentsSection.appendChild(documentsWrapper);
+
+  const uploadControls = document.createElement('div');
+  uploadControls.className = 'document-upload-grid';
+
+  const documentTypes = [
+    { label: 'NIC front', value: 'NIC_FRONT' },
+    { label: 'NIC back', value: 'NIC_BACK' },
+    { label: 'Selfie with NIC', value: 'SELFIE_NIC' },
+    { label: 'Address proof', value: 'ADDRESS_PROOF' },
+  ];
+
+  const createUploadRow = ({ label, value }) => {
+    const row = document.createElement('div');
+    row.className = 'document-upload-row';
+
+    const labelEl = document.createElement('label');
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,.pdf';
+    input.dataset.documentType = value;
+    row.appendChild(input);
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.type = 'button';
+    uploadBtn.className = 'secondary small';
+    uploadBtn.textContent = 'Upload';
+    uploadBtn.addEventListener('click', async () => {
+      if (!customerId) {
+        showToast('Customer ID is missing for upload.', 'error');
+        return;
+      }
+
+      const file = input?.files?.[0];
+      if (!file) {
+        showToast('Please select a file to upload.', 'error');
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Uploading...';
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('document_type', value);
+
+        const response = await apiMultipart(`/customers/${encodeURIComponent(customerId)}/documents`, formData);
+        showToast('Document uploaded successfully.');
+        input.value = '';
+
+        if (response?.kyc_status && customerDetailState.customer) {
+          customerDetailState.customer = {
+            ...customerDetailState.customer,
+            kyc_status: response.kyc_status,
+          };
+        }
+
+        await loadCustomerDocuments(customerId);
+      } catch (error) {
+        console.error('Failed to upload document', error);
+        showToast('Failed to upload document.', 'error');
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload';
+      }
+    });
+
+    row.appendChild(uploadBtn);
+    uploadControls.appendChild(row);
+  };
+
+  documentTypes.forEach(createUploadRow);
+
+  documentsSection.appendChild(uploadControls);
+
+  customerDetailBody.appendChild(documentsSection);
 }
 
 async function loadCustomerDetail(customerId) {
@@ -2444,6 +2627,8 @@ async function loadCustomerDetail(customerId) {
   customerDetailState.loading = true;
   customerDetailState.error = null;
   customerDetailState.customerId = normalizedId;
+  customerDetailState.documents = [];
+  customerDetailState.documentsError = null;
   renderCustomerDetailContent();
 
   try {
@@ -2456,6 +2641,7 @@ async function loadCustomerDetail(customerId) {
     const response = await api.get(path);
     const customer = response?.customer || response?.data || response;
     customerDetailState.customer = customer;
+    await loadCustomerDocuments(normalizedId);
   } catch (error) {
     console.error('Failed to load customer detail', error);
     const friendlyError = /404/.test(error?.message || '')
@@ -2464,6 +2650,32 @@ async function loadCustomerDetail(customerId) {
     customerDetailState.error = friendlyError;
   } finally {
     customerDetailState.loading = false;
+    renderCustomerDetailContent();
+  }
+}
+
+async function loadCustomerDocuments(customerId) {
+  const normalizedId = customerId?.toString();
+  if (!normalizedId) return;
+
+  customerDetailState.documentsLoading = true;
+  customerDetailState.documentsError = null;
+  renderCustomerDetailContent();
+
+  try {
+    const documents = await api.get(`/customers/${encodeURIComponent(normalizedId)}/documents`);
+    if (Array.isArray(documents?.items)) customerDetailState.documents = documents.items;
+    else if (Array.isArray(documents?.data?.items)) customerDetailState.documents = documents.data.items;
+    else if (Array.isArray(documents?.documents)) customerDetailState.documents = documents.documents;
+    else if (Array.isArray(documents?.data)) customerDetailState.documents = documents.data;
+    else if (Array.isArray(documents)) customerDetailState.documents = documents;
+    else customerDetailState.documents = [];
+  } catch (error) {
+    console.error('Failed to load customer documents', error);
+    customerDetailState.documents = [];
+    customerDetailState.documentsError = 'Unable to load KYC documents.';
+  } finally {
+    customerDetailState.documentsLoading = false;
     renderCustomerDetailContent();
   }
 }
