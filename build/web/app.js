@@ -696,10 +696,10 @@ function renderPublicKycSuccess(result) {
 
 async function fetchPublicCustomerByCode(code) {
   const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
-  const url = `${baseUrl}/customers/by-code?customer_code=${encodeURIComponent(code)}`;
+  const url = `${baseUrl}/public/customers/by-code?customer_code=${encodeURIComponent(code)}`;
   let response;
   try {
-    response = await fetch(url, { headers: { Accept: 'application/json' } });
+    response = await fetch(url, { method: 'GET' });
   } catch (networkError) {
     console.error('Network error while fetching customer by code', networkError);
     throw new Error("Couldn't reach the server. Please check your connection.");
