@@ -430,6 +430,17 @@ body {
   gap: 10px;
 }
 
+.customer-kyc-actions {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.customer-kyc-actions .action-row {
+  flex-wrap: wrap;
+}
+
 .card-header h1,
 .card-header h2 {
   margin: 4px 0 0;
@@ -485,6 +496,45 @@ body {
   background: rgba(148, 163, 184, 0.14);
   color: #475569;
   border-color: rgba(148, 163, 184, 0.32);
+}
+
+.toast-container {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.toast {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  font-weight: 700;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast.success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #065f46;
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.toast.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+  border-color: rgba(239, 68, 68, 0.45);
 }
 
 .clickable-row {

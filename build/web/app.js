@@ -102,6 +102,8 @@ const dashboards = document.querySelector('#dashboards');
 const userRoleChip = document.querySelector('#user-role');
 const logoutBtn = document.querySelector('#logout-btn');
 
+let toastContainer;
+
 const adminPanel = document.querySelector('#admin-panel');
 const adminMetrics = document.querySelector('#admin-metrics');
 const adminApplications = document.querySelector('#admin-applications');
@@ -862,6 +864,31 @@ function setInlineAlert(target, text, type = 'success') {
   target.textContent = text;
   target.className = `alert ${type === 'error' ? 'error' : 'success'}`;
   target.classList.toggle('hidden', !text);
+}
+
+function getToastContainer() {
+  if (toastContainer) return toastContainer;
+  toastContainer = document.createElement('div');
+  toastContainer.className = 'toast-container';
+  document.body.appendChild(toastContainer);
+  return toastContainer;
+}
+
+function showToast(message, type = 'success') {
+  if (!message) return;
+  const container = getToastContainer();
+  const toast = document.createElement('div');
+  toast.className = `toast ${type === 'error' ? 'error' : 'success'}`;
+  toast.setAttribute('role', 'status');
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add('visible'));
+
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => toast.remove(), 250);
+  }, 3200);
 }
 
 function resetAdminLoanApplicationsState() {
@@ -2252,6 +2279,35 @@ function resetCustomerDetailState() {
   customerDetailLoading?.classList.add('hidden');
 }
 
+async function updateCustomerStatus(endpoint, trigger) {
+  if (!endpoint) return;
+
+  const button = trigger?.closest ? trigger.closest('button') : trigger;
+  const originalText = button?.textContent;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Updating...';
+  }
+
+  try {
+    await api(endpoint, { method: 'POST' });
+    if (customerDetailState.customerId) {
+      await loadCustomerDetail(customerDetailState.customerId);
+    }
+    showToast('Status updated successfully.');
+  } catch (error) {
+    console.error('Failed to update customer status', error);
+    showToast('Failed to update status.', 'error');
+    throw error;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || 'Submit';
+    }
+  }
+}
+
 function renderCustomerDetailContent() {
   ensureCustomerDetailView();
 
@@ -2284,6 +2340,9 @@ function renderCustomerDetailContent() {
   const businessType = customer.business_type || customer.businessType || customer.segment || '—';
   const kycStatus = customer.kyc_status || customer.kycStatus || customer.status;
   const eligibilityStatus = customer.eligibility_status || customer.eligibilityStatus;
+  const customerId = getCustomerId(customer);
+  const kycNormalized = normalizeCustomerStatus(kycStatus);
+  const eligibilityNormalized = normalizeCustomerStatus(eligibilityStatus);
 
   const detailFields = [
     { label: 'Customer code', value: code },
@@ -2310,6 +2369,67 @@ function renderCustomerDetailContent() {
         .join('')}
     </div>
   `;
+
+  const kycSection = document.createElement('div');
+  kycSection.className = 'customer-kyc-actions';
+  const sectionHeader = document.createElement('div');
+  sectionHeader.className = 'section-header';
+  const sectionTitle = document.createElement('h3');
+  sectionTitle.textContent = 'KYC & Eligibility';
+  sectionHeader.appendChild(sectionTitle);
+  kycSection.appendChild(sectionHeader);
+
+  const actionRow = document.createElement('div');
+  actionRow.className = 'action-row';
+
+  const addAction = (label, endpoint, style = 'secondary') => {
+    if (!endpoint) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = style;
+    button.textContent = label;
+    button.addEventListener('click', async () => {
+      try {
+        await updateCustomerStatus(endpoint, button);
+      } catch (_) {}
+    });
+    actionRow.appendChild(button);
+  };
+
+  if (customerId) {
+    const basePath = `/customers/${encodeURIComponent(customerId)}`;
+
+    if (kycNormalized === 'PENDING' || kycNormalized === 'UPLOADED' || kycNormalized === 'REJECTED') {
+      addAction('Mark Under Review', `${basePath}/kyc-under-review`, 'secondary');
+    }
+
+    if (kycNormalized === 'UNDER_REVIEW') {
+      addAction('Approve KYC', `${basePath}/kyc-approve`, 'primary');
+      addAction('Reject KYC', `${basePath}/kyc-reject`, 'secondary');
+    }
+
+    if (kycNormalized === 'APPROVED') {
+      addAction('Mark Eligible', `${basePath}/mark-eligible`, 'primary');
+      addAction('Mark Not Eligible', `${basePath}/mark-not-eligible`, 'ghost');
+    }
+
+    if (kycNormalized === 'REJECTED') {
+      addAction('Mark Not Eligible', `${basePath}/mark-not-eligible`, 'ghost');
+    }
+  }
+
+  if (!actionRow.children.length) {
+    const noActions = document.createElement('p');
+    noActions.className = 'muted';
+    noActions.textContent = 'No actions available for the current status.';
+    kycSection.appendChild(noActions);
+  } else {
+    kycSection.appendChild(actionRow);
+  }
+
+  if (eligibilityNormalized || kycNormalized) {
+    customerDetailBody.appendChild(kycSection);
+  }
 }
 
 async function loadCustomerDetail(customerId) {
