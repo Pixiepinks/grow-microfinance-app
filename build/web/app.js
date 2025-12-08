@@ -442,10 +442,75 @@ let publicKycSubmit;
 let publicKycHelperText;
 let publicKycSuccess;
 let publicKycSavedList;
+let publicKycDobInput;
+let publicKycCivilStatusSelect;
+let publicKycPermanentLine1;
+let publicKycPermanentLine2;
+let publicKycPermanentCity;
+let publicKycPermanentDistrict;
+let publicKycPermanentProvince;
+let publicKycPermanentPostalCode;
+let publicKycCurrentDifferent;
+let publicKycCurrentLine1;
+let publicKycCurrentLine2;
+let publicKycCurrentCity;
+let publicKycCurrentDistrict;
+let publicKycCurrentProvince;
+let publicKycCurrentPostalCode;
+let publicKycCurrentSince;
+let publicKycHouseholdSize;
+let publicKycDependentsCount;
+let publicKycCustomerType;
+let publicKycEmployerName;
+let publicKycEmployerAddress;
+let publicKycOccupation;
+let publicKycMonthlyIncome;
+let publicKycBusinessName;
+let publicKycBusinessAddress;
+let publicKycGuarantorName;
+let publicKycGuarantorRelationship;
+let publicKycGuarantorMobile;
+let publicKycConsentDataProcessing;
+let publicKycConsentCreditChecks;
+let publicKycCurrentAddressGroup;
+let publicKycIncomeSalaried;
+let publicKycIncomeSelfEmployed;
+let publicKycIncomeOther;
+let publicKycOtherIncomeLabel;
 const publicKycState = {
   code: '',
   customer: null,
   submissionResult: null,
+  civilStatus: '',
+  dateOfBirth: '',
+  permanentAddressLine1: '',
+  permanentAddressLine2: '',
+  permanentCity: '',
+  permanentDistrict: '',
+  permanentProvince: '',
+  permanentPostalCode: '',
+  currentAddressLine1: '',
+  currentAddressLine2: '',
+  currentCity: '',
+  currentDistrict: '',
+  currentProvince: '',
+  currentPostalCode: '',
+  currentAddressSince: '',
+  householdSize: '',
+  dependentsCount: '',
+  customerType: '',
+  employerName: '',
+  employerAddress: '',
+  occupation: '',
+  monthlyIncome: '',
+  businessName: '',
+  businessAddress: '',
+  guarantorName: '',
+  guarantorRelationship: '',
+  guarantorMobile: '',
+  consentDataProcessing: false,
+  consentCreditChecks: false,
+  currentAddressDifferent: false,
 };
 
 function getPublicLeadSource() {
@@ -619,6 +684,36 @@ function resetPublicKycState() {
   if (publicKycSavedList) publicKycSavedList.innerHTML = '';
   publicKycState.customer = null;
   publicKycState.submissionResult = null;
+  publicKycState.civilStatus = '';
+  publicKycState.dateOfBirth = '';
+  publicKycState.permanentAddressLine1 = '';
+  publicKycState.permanentAddressLine2 = '';
+  publicKycState.permanentCity = '';
+  publicKycState.permanentDistrict = '';
+  publicKycState.permanentProvince = '';
+  publicKycState.permanentPostalCode = '';
+  publicKycState.currentAddressLine1 = '';
+  publicKycState.currentAddressLine2 = '';
+  publicKycState.currentCity = '';
+  publicKycState.currentDistrict = '';
+  publicKycState.currentProvince = '';
+  publicKycState.currentPostalCode = '';
+  publicKycState.currentAddressSince = '';
+  publicKycState.householdSize = '';
+  publicKycState.dependentsCount = '';
+  publicKycState.customerType = '';
+  publicKycState.employerName = '';
+  publicKycState.employerAddress = '';
+  publicKycState.occupation = '';
+  publicKycState.monthlyIncome = '';
+  publicKycState.businessName = '';
+  publicKycState.businessAddress = '';
+  publicKycState.guarantorName = '';
+  publicKycState.guarantorRelationship = '';
+  publicKycState.guarantorMobile = '';
+  publicKycState.consentDataProcessing = false;
+  publicKycState.consentCreditChecks = false;
+  publicKycState.currentAddressDifferent = false;
   ['nic_front', 'nic_back', 'selfie_nic', 'address_proof'].forEach((field) =>
     setPublicKycFieldError(field, '')
   );
@@ -772,8 +867,54 @@ function hidePublicKycPage() {
   togglePanels(role || null);
 }
 
+function collectPublicKycFormState() {
+  publicKycState.dateOfBirth = (publicKycDobInput?.value || '').trim();
+  publicKycState.civilStatus = publicKycCivilStatusSelect?.value || '';
+  publicKycState.permanentAddressLine1 = (publicKycPermanentLine1?.value || '').trim();
+  publicKycState.permanentAddressLine2 = (publicKycPermanentLine2?.value || '').trim();
+  publicKycState.permanentCity = (publicKycPermanentCity?.value || '').trim();
+  publicKycState.permanentDistrict = (publicKycPermanentDistrict?.value || '').trim();
+  publicKycState.permanentProvince = (publicKycPermanentProvince?.value || '').trim();
+  publicKycState.permanentPostalCode = (publicKycPermanentPostalCode?.value || '').trim();
+  publicKycState.currentAddressDifferent = !!publicKycCurrentDifferent?.checked;
+  publicKycState.currentAddressLine1 = (publicKycCurrentLine1?.value || '').trim();
+  publicKycState.currentAddressLine2 = (publicKycCurrentLine2?.value || '').trim();
+  publicKycState.currentCity = (publicKycCurrentCity?.value || '').trim();
+  publicKycState.currentDistrict = (publicKycCurrentDistrict?.value || '').trim();
+  publicKycState.currentProvince = (publicKycCurrentProvince?.value || '').trim();
+  publicKycState.currentPostalCode = (publicKycCurrentPostalCode?.value || '').trim();
+  publicKycState.currentAddressSince = (publicKycCurrentSince?.value || '').trim();
+  publicKycState.householdSize = (publicKycHouseholdSize?.value || '').trim();
+  publicKycState.dependentsCount = (publicKycDependentsCount?.value || '').trim();
+  publicKycState.customerType = publicKycCustomerType?.value || '';
+  publicKycState.employerName = (publicKycEmployerName?.value || '').trim();
+  publicKycState.employerAddress = (publicKycEmployerAddress?.value || '').trim();
+  publicKycState.occupation = (publicKycOccupation?.value || '').trim();
+  publicKycState.businessName = (publicKycBusinessName?.value || '').trim();
+  publicKycState.businessAddress = (publicKycBusinessAddress?.value || '').trim();
+  publicKycState.guarantorName = (publicKycGuarantorName?.value || '').trim();
+  publicKycState.guarantorRelationship = (publicKycGuarantorRelationship?.value || '').trim();
+  publicKycState.guarantorMobile = (publicKycGuarantorMobile?.value || '').trim();
+  publicKycState.consentDataProcessing = !!publicKycConsentDataProcessing?.checked;
+  publicKycState.consentCreditChecks = !!publicKycConsentCreditChecks?.checked;
+
+  if (publicKycState.customerType === 'SALARIED') {
+    publicKycState.monthlyIncome = (publicKycMonthlyIncome?.value || '').trim();
+  } else if (publicKycState.customerType === 'SELF_EMPLOYED') {
+    publicKycState.monthlyIncome = (publicKycSection.querySelector('#public-kyc-monthly-income-self')?.value || '').trim();
+  } else if (publicKycState.customerType === 'OTHER') {
+    publicKycState.monthlyIncome = (publicKycSection.querySelector('#public-kyc-monthly-income-other')?.value || '').trim();
+    publicKycState.occupation =
+      (publicKycSection.querySelector('#public-kyc-occupation-other')?.value || '').trim() ||
+      publicKycState.occupation;
+  } else {
+    publicKycState.monthlyIncome = (publicKycMonthlyIncome?.value || '').trim();
+  }
+}
+
 function validatePublicKycForm() {
   let isValid = true;
+  setPublicKycMessage('');
   ['nic_front', 'nic_back', 'selfie_nic', 'address_proof'].forEach((field) =>
     setPublicKycFieldError(field, '')
   );
@@ -790,6 +931,31 @@ function validatePublicKycForm() {
     }
   });
 
+  const missingFields = [];
+  if (!publicKycState.dateOfBirth) missingFields.push('Date of birth');
+  if (!publicKycState.civilStatus) missingFields.push('Civil status');
+  if (!publicKycState.permanentAddressLine1) missingFields.push('Permanent address line 1');
+  if (!publicKycState.permanentCity) missingFields.push('Permanent city');
+  if (!publicKycState.permanentDistrict) missingFields.push('Permanent district');
+  if (!publicKycState.customerType) missingFields.push('Customer type');
+  if (!publicKycState.monthlyIncome) missingFields.push('Monthly income');
+
+  if (publicKycState.customerType === 'SALARIED' && !publicKycState.employerName) {
+    missingFields.push('Employer name');
+  }
+  if (publicKycState.customerType === 'SELF_EMPLOYED' && !publicKycState.businessName) {
+    missingFields.push('Business name');
+  }
+
+  if (!publicKycState.consentDataProcessing || !publicKycState.consentCreditChecks) {
+    missingFields.push('Required consents');
+  }
+
+  if (missingFields.length) {
+    isValid = false;
+    setPublicKycMessage(`Please complete the following required fields: ${missingFields.join(', ')}.`, 'error');
+  }
+
   return isValid;
 }
 
@@ -802,6 +968,7 @@ async function handlePublicKycSubmit() {
     return;
   }
 
+  collectPublicKycFormState();
   if (!validatePublicKycForm()) return;
 
   const fileNicFront = publicKycFileNicFront?.files?.[0];
@@ -816,6 +983,36 @@ async function handlePublicKycSubmit() {
   if (fileAddressProof) {
     formData.append('address_proof', fileAddressProof);
   }
+
+  formData.append('date_of_birth', publicKycState.dateOfBirth || '');
+  formData.append('civil_status', publicKycState.civilStatus || '');
+  formData.append('permanent_address_line1', publicKycState.permanentAddressLine1 || '');
+  formData.append('permanent_address_line2', publicKycState.permanentAddressLine2 || '');
+  formData.append('permanent_city', publicKycState.permanentCity || '');
+  formData.append('permanent_district', publicKycState.permanentDistrict || '');
+  formData.append('permanent_province', publicKycState.permanentProvince || '');
+  formData.append('permanent_postal_code', publicKycState.permanentPostalCode || '');
+  formData.append('current_address_line1', publicKycState.currentAddressLine1 || '');
+  formData.append('current_address_line2', publicKycState.currentAddressLine2 || '');
+  formData.append('current_city', publicKycState.currentCity || '');
+  formData.append('current_district', publicKycState.currentDistrict || '');
+  formData.append('current_province', publicKycState.currentProvince || '');
+  formData.append('current_postal_code', publicKycState.currentPostalCode || '');
+  formData.append('current_address_since', publicKycState.currentAddressSince || '');
+  formData.append('household_size', publicKycState.householdSize || '');
+  formData.append('dependents_count', publicKycState.dependentsCount || '');
+  formData.append('customer_type', publicKycState.customerType || '');
+  formData.append('employer_name', publicKycState.employerName || '');
+  formData.append('employer_address', publicKycState.employerAddress || '');
+  formData.append('occupation', publicKycState.occupation || '');
+  formData.append('monthly_income', publicKycState.monthlyIncome || '');
+  formData.append('business_name', publicKycState.businessName || '');
+  formData.append('business_address', publicKycState.businessAddress || '');
+  formData.append('guarantor_name', publicKycState.guarantorName || '');
+  formData.append('guarantor_relationship', publicKycState.guarantorRelationship || '');
+  formData.append('guarantor_mobile', publicKycState.guarantorMobile || '');
+  formData.append('consent_data_processing', publicKycState.consentDataProcessing ? 'true' : 'false');
+  formData.append('consent_credit_checks', publicKycState.consentCreditChecks ? 'true' : 'false');
 
   const nicNumber = (publicKycNicInput?.value || '').trim();
   if (nicNumber) console.log('Public KYC NIC number provided for reference', nicNumber);
@@ -1149,6 +1346,175 @@ function ensurePublicKycSection() {
         <input id="public-kyc-address-proof" type="file" accept="image/*" />
         <div class="muted hidden" data-error-for="address_proof" style="color: #b91c1c; font-weight: 600;"></div>
       </label>
+      <div class="form-section">
+        <h3>Personal</h3>
+        <label class="form-field">
+          <span>Date of birth</span>
+          <input id="public-kyc-dob" type="date" />
+        </label>
+        <label class="form-field">
+          <span>Civil status</span>
+          <select id="public-kyc-civil-status">
+            <option value="">Select status</option>
+            <option value="SINGLE">Single</option>
+            <option value="MARRIED">Married</option>
+            <option value="WIDOWED">Widowed</option>
+            <option value="DIVORCED">Divorced</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-section">
+        <h3>Permanent address</h3>
+        <label class="form-field">
+          <span>Address line 1</span>
+          <input id="public-kyc-permanent-line1" type="text" />
+        </label>
+        <label class="form-field">
+          <span>Address line 2</span>
+          <input id="public-kyc-permanent-line2" type="text" />
+        </label>
+        <label class="form-field">
+          <span>City</span>
+          <input id="public-kyc-permanent-city" type="text" />
+        </label>
+        <label class="form-field">
+          <span>District</span>
+          <input id="public-kyc-permanent-district" type="text" />
+        </label>
+        <label class="form-field">
+          <span>Province</span>
+          <input id="public-kyc-permanent-province" type="text" />
+        </label>
+        <label class="form-field">
+          <span>Postal code</span>
+          <input id="public-kyc-permanent-postal" type="text" />
+        </label>
+      </div>
+      <div class="form-section">
+        <h3>Current address</h3>
+        <label class="form-field">
+          <span><input id="public-kyc-current-different" type="checkbox" /> Current address is different from permanent</span>
+        </label>
+        <div id="public-kyc-current-address-group" class="form-subgrid hidden">
+          <label class="form-field">
+            <span>Address line 1</span>
+            <input id="public-kyc-current-line1" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Address line 2</span>
+            <input id="public-kyc-current-line2" type="text" />
+          </label>
+          <label class="form-field">
+            <span>City</span>
+            <input id="public-kyc-current-city" type="text" />
+          </label>
+          <label class="form-field">
+            <span>District</span>
+            <input id="public-kyc-current-district" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Province</span>
+            <input id="public-kyc-current-province" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Postal code</span>
+            <input id="public-kyc-current-postal" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Living here since</span>
+            <input id="public-kyc-current-since" type="month" />
+          </label>
+        </div>
+      </div>
+      <div class="form-section">
+        <h3>Household</h3>
+        <label class="form-field">
+          <span>Household size</span>
+          <input id="public-kyc-household-size" type="number" min="0" />
+        </label>
+        <label class="form-field">
+          <span>Number of dependents</span>
+          <input id="public-kyc-dependents" type="number" min="0" />
+        </label>
+      </div>
+      <div class="form-section">
+        <h3>Customer type & income</h3>
+        <label class="form-field">
+          <span>Customer type</span>
+          <select id="public-kyc-customer-type">
+            <option value="">Select type</option>
+            <option value="SALARIED">Salaried</option>
+            <option value="SELF_EMPLOYED">Self-employed</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </label>
+        <div id="public-kyc-income-salaried" class="form-subgrid hidden">
+          <label class="form-field">
+            <span>Employer name</span>
+            <input id="public-kyc-employer-name" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Employer address</span>
+            <input id="public-kyc-employer-address" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Occupation</span>
+            <input id="public-kyc-occupation" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Monthly income</span>
+            <input id="public-kyc-monthly-income" type="number" min="0" />
+          </label>
+        </div>
+        <div id="public-kyc-income-self" class="form-subgrid hidden">
+          <label class="form-field">
+            <span>Business name</span>
+            <input id="public-kyc-business-name" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Business address</span>
+            <input id="public-kyc-business-address" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Monthly income (approximate net)</span>
+            <input id="public-kyc-monthly-income-self" type="number" min="0" />
+          </label>
+        </div>
+        <div id="public-kyc-income-other" class="form-subgrid hidden">
+          <label class="form-field">
+            <span>Occupation/description</span>
+            <input id="public-kyc-occupation-other" type="text" />
+          </label>
+          <label class="form-field" id="public-kyc-other-income-label">
+            <span>Monthly income</span>
+            <input id="public-kyc-monthly-income-other" type="number" min="0" />
+          </label>
+        </div>
+      </div>
+      <div class="form-section">
+        <h3>Guarantor / emergency contact</h3>
+        <label class="form-field">
+          <span>Guarantor name</span>
+          <input id="public-kyc-guarantor-name" type="text" />
+        </label>
+        <label class="form-field">
+          <span>Relationship</span>
+          <input id="public-kyc-guarantor-relationship" type="text" />
+        </label>
+        <label class="form-field">
+          <span>Mobile</span>
+          <input id="public-kyc-guarantor-mobile" type="tel" />
+        </label>
+      </div>
+      <div class="form-section">
+        <h3>Consents</h3>
+        <label class="form-field">
+          <span><input id="public-kyc-consent-data" type="checkbox" /> I confirm the above information is accurate and true.</span>
+        </label>
+        <label class="form-field">
+          <span><input id="public-kyc-consent-credit" type="checkbox" /> I authorize Grow Microfinance to verify my information with banks/employers if necessary.</span>
+        </label>
+      </div>
       <button type="submit" class="primary" id="public-kyc-submit">Submit KYC documents</button>
     </form>
     <p id="public-kyc-helper" class="muted">
@@ -1183,6 +1549,41 @@ function ensurePublicKycSection() {
   publicKycHelperText = publicKycSection.querySelector('#public-kyc-helper');
   publicKycSuccess = publicKycSection.querySelector('#public-kyc-success');
   publicKycSavedList = publicKycSection.querySelector('#public-kyc-saved-list');
+  publicKycDobInput = publicKycSection.querySelector('#public-kyc-dob');
+  publicKycCivilStatusSelect = publicKycSection.querySelector('#public-kyc-civil-status');
+  publicKycPermanentLine1 = publicKycSection.querySelector('#public-kyc-permanent-line1');
+  publicKycPermanentLine2 = publicKycSection.querySelector('#public-kyc-permanent-line2');
+  publicKycPermanentCity = publicKycSection.querySelector('#public-kyc-permanent-city');
+  publicKycPermanentDistrict = publicKycSection.querySelector('#public-kyc-permanent-district');
+  publicKycPermanentProvince = publicKycSection.querySelector('#public-kyc-permanent-province');
+  publicKycPermanentPostalCode = publicKycSection.querySelector('#public-kyc-permanent-postal');
+  publicKycCurrentDifferent = publicKycSection.querySelector('#public-kyc-current-different');
+  publicKycCurrentLine1 = publicKycSection.querySelector('#public-kyc-current-line1');
+  publicKycCurrentLine2 = publicKycSection.querySelector('#public-kyc-current-line2');
+  publicKycCurrentCity = publicKycSection.querySelector('#public-kyc-current-city');
+  publicKycCurrentDistrict = publicKycSection.querySelector('#public-kyc-current-district');
+  publicKycCurrentProvince = publicKycSection.querySelector('#public-kyc-current-province');
+  publicKycCurrentPostalCode = publicKycSection.querySelector('#public-kyc-current-postal');
+  publicKycCurrentSince = publicKycSection.querySelector('#public-kyc-current-since');
+  publicKycHouseholdSize = publicKycSection.querySelector('#public-kyc-household-size');
+  publicKycDependentsCount = publicKycSection.querySelector('#public-kyc-dependents');
+  publicKycCustomerType = publicKycSection.querySelector('#public-kyc-customer-type');
+  publicKycEmployerName = publicKycSection.querySelector('#public-kyc-employer-name');
+  publicKycEmployerAddress = publicKycSection.querySelector('#public-kyc-employer-address');
+  publicKycOccupation = publicKycSection.querySelector('#public-kyc-occupation');
+  publicKycMonthlyIncome = publicKycSection.querySelector('#public-kyc-monthly-income');
+  publicKycBusinessName = publicKycSection.querySelector('#public-kyc-business-name');
+  publicKycBusinessAddress = publicKycSection.querySelector('#public-kyc-business-address');
+  publicKycGuarantorName = publicKycSection.querySelector('#public-kyc-guarantor-name');
+  publicKycGuarantorRelationship = publicKycSection.querySelector('#public-kyc-guarantor-relationship');
+  publicKycGuarantorMobile = publicKycSection.querySelector('#public-kyc-guarantor-mobile');
+  publicKycConsentDataProcessing = publicKycSection.querySelector('#public-kyc-consent-data');
+  publicKycConsentCreditChecks = publicKycSection.querySelector('#public-kyc-consent-credit');
+  publicKycCurrentAddressGroup = publicKycSection.querySelector('#public-kyc-current-address-group');
+  publicKycIncomeSalaried = publicKycSection.querySelector('#public-kyc-income-salaried');
+  publicKycIncomeSelfEmployed = publicKycSection.querySelector('#public-kyc-income-self');
+  publicKycIncomeOther = publicKycSection.querySelector('#public-kyc-income-other');
+  publicKycOtherIncomeLabel = publicKycSection.querySelector('#public-kyc-other-income-label');
 
   const clearFieldError = (field) => setPublicKycFieldError(field, '');
 
@@ -1190,6 +1591,26 @@ function ensurePublicKycSection() {
   publicKycFileNicBack?.addEventListener('change', () => clearFieldError('nic_back'));
   publicKycFileSelfie?.addEventListener('change', () => clearFieldError('selfie_nic'));
   publicKycFileAddressProof?.addEventListener('change', () => clearFieldError('address_proof'));
+
+  const toggleCurrentAddressVisibility = () => {
+    const isDifferent = !!publicKycCurrentDifferent?.checked;
+    publicKycState.currentAddressDifferent = isDifferent;
+    publicKycCurrentAddressGroup?.classList.toggle('hidden', !isDifferent);
+  };
+
+  const toggleIncomeSections = () => {
+    const type = publicKycCustomerType?.value || '';
+    publicKycState.customerType = type;
+    publicKycIncomeSalaried?.classList.toggle('hidden', type !== 'SALARIED');
+    publicKycIncomeSelfEmployed?.classList.toggle('hidden', type !== 'SELF_EMPLOYED');
+    publicKycIncomeOther?.classList.toggle('hidden', type !== 'OTHER');
+  };
+
+  publicKycCurrentDifferent?.addEventListener('change', toggleCurrentAddressVisibility);
+  publicKycCustomerType?.addEventListener('change', toggleIncomeSections);
+
+  toggleCurrentAddressVisibility();
+  toggleIncomeSections();
 
   publicKycForm?.addEventListener('submit', (event) => {
     event.preventDefault();
