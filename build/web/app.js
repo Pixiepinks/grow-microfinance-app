@@ -427,6 +427,27 @@ let publicLeadSourceInput;
 let publicLeadSubmit;
 let publicLeadSourceBadge;
 
+let publicKycSection;
+let publicKycForm;
+let publicKycStatus;
+let publicKycSummary;
+let publicKycLoading;
+let publicKycCodeInput;
+let publicKycNicInput;
+let publicKycFileNicFront;
+let publicKycFileNicBack;
+let publicKycFileSelfie;
+let publicKycFileAddressProof;
+let publicKycSubmit;
+let publicKycHelperText;
+let publicKycSuccess;
+let publicKycSavedList;
+const publicKycState = {
+  code: '',
+  customer: null,
+  submissionResult: null,
+};
+
 function getPublicLeadSource() {
   const params = new URLSearchParams(window.location.search || '');
   const source = (params.get('source') || '').trim();
@@ -568,6 +589,273 @@ function showPublicLeadPage() {
   logoutBtn?.classList.add('hidden');
   publicLeadSection?.classList.remove('hidden');
   window.scrollTo({ top: 0 });
+}
+
+function setPublicKycMessage(text = '', type = 'info') {
+  if (!publicKycStatus) return;
+  publicKycStatus.textContent = text;
+  publicKycStatus.className = 'alert ' + (type === 'error' ? 'error' : 'success');
+  publicKycStatus.classList.toggle('hidden', !text);
+}
+
+function setPublicKycFieldError(field, message = '') {
+  if (!publicKycSection) return;
+  const node = publicKycSection.querySelector(`[data-error-for="${field}"]`);
+  if (!node) return;
+  node.textContent = message || '';
+  node.classList.toggle('hidden', !message);
+}
+
+function setPublicKycLoading(isLoading) {
+  publicKycLoading?.classList.toggle('hidden', !isLoading);
+}
+
+function resetPublicKycState() {
+  setPublicKycMessage('');
+  publicKycSummary && (publicKycSummary.textContent = '');
+  publicKycSuccess?.classList.add('hidden');
+  publicKycHelperText?.classList.remove('hidden');
+  publicKycForm?.classList.add('hidden');
+  if (publicKycSavedList) publicKycSavedList.innerHTML = '';
+  publicKycState.customer = null;
+  publicKycState.submissionResult = null;
+  ['nic_front', 'nic_back', 'selfie_nic', 'address_proof'].forEach((field) =>
+    setPublicKycFieldError(field, '')
+  );
+}
+
+function getDocumentLabel(type) {
+  if (!type) return '';
+  const normalized = type.toLowerCase();
+  return documentLabels[normalized] || documentLabels[type] || type;
+}
+
+function getPublicKycDocumentUrl(data, type) {
+  if (!data || !type) return '';
+  const normalized = type.toLowerCase();
+  const candidateKeys = [normalized, type, type.toUpperCase(), mapDocumentTypeToApi(type)];
+  const containers = [
+    data.document_previews,
+    data.documents,
+    data.files,
+    data.file_paths,
+    data.uploads,
+    data,
+  ];
+
+  for (const container of containers) {
+    if (!container || typeof container !== 'object') continue;
+    for (const key of candidateKeys) {
+      const value = container?.[key];
+      if (!value) continue;
+      if (typeof value === 'string') return value;
+      if (typeof value === 'object' && (value.url || value.file_path)) return value.url || value.file_path;
+    }
+  }
+
+  return '';
+}
+
+function renderPublicKycSuccess(result) {
+  publicKycForm?.classList.add('hidden');
+  publicKycHelperText?.classList.add('hidden');
+  publicKycSuccess?.classList.remove('hidden');
+  setPublicKycMessage('');
+
+  if (!publicKycSavedList) return;
+  publicKycSavedList.innerHTML = '';
+  const savedTypes = Array.isArray(result?.saved_types) ? result.saved_types : [];
+
+  if (!savedTypes.length) {
+    const li = document.createElement('li');
+    li.textContent = 'Documents uploaded successfully.';
+    publicKycSavedList.appendChild(li);
+    return;
+  }
+
+  savedTypes.forEach((type) => {
+    const label = getDocumentLabel(type);
+    const li = document.createElement('li');
+    const url = getPublicKycDocumentUrl(result, type);
+    li.textContent = `${label || type}`;
+    if (url) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.style.marginLeft = '8px';
+      link.textContent = 'View';
+      li.appendChild(document.createTextNode(' – '));
+      li.appendChild(link);
+    } else {
+      li.appendChild(document.createTextNode(' – uploaded'));
+    }
+    publicKycSavedList.appendChild(li);
+  });
+}
+
+async function fetchPublicCustomerByCode(code) {
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+  const url = `${baseUrl}/customers/by-code?customer_code=${encodeURIComponent(code)}`;
+  let response;
+  try {
+    response = await fetch(url, { headers: { Accept: 'application/json' } });
+  } catch (networkError) {
+    console.error('Network error while fetching customer by code', networkError);
+    throw new Error("Couldn't reach the server. Please check your connection.");
+  }
+
+  const { data, raw } = await parseResponse(response.clone());
+  if (!response.ok) {
+    const message = buildErrorMessage({ status: response.status, data, raw });
+    const error = new Error(message);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
+async function showPublicKycPage() {
+  ensurePublicKycSection();
+  resetPublicKycState();
+  hidePublicLeadPage();
+  publicKycSection?.classList.remove('hidden');
+  loginCard?.classList.add('hidden');
+  dashboards.classList.add('hidden');
+  userRoleChip?.classList.add('hidden');
+  logoutBtn?.classList.add('hidden');
+  window.scrollTo({ top: 0 });
+
+  const params = new URLSearchParams(window.location.search || '');
+  const code = (params.get('code') || '').trim();
+  publicKycState.code = code;
+  if (publicKycCodeInput) publicKycCodeInput.value = code;
+
+  if (!code) {
+    setPublicKycMessage(
+      'Invalid link. Customer code is missing. Please contact Grow Microfinance.',
+      'error'
+    );
+    return;
+  }
+
+  setPublicKycLoading(true);
+  if (publicKycSummary) publicKycSummary.textContent = 'Loading your KYC form...';
+
+  try {
+    const customer = await fetchPublicCustomerByCode(code);
+    publicKycState.customer = customer;
+    const customerName = customer?.full_name || customer?.name || 'Customer';
+    const customerCode = customer?.customer_code || code;
+    if (publicKycSummary)
+      publicKycSummary.textContent = `KYC form for: ${customerCode} – ${customerName}`;
+    setPublicKycMessage('');
+    publicKycForm?.classList.remove('hidden');
+  } catch (error) {
+    console.error('Failed to load public KYC form', error);
+    const message =
+      error?.status === 404
+        ? 'We could not find your customer record for this link. Please contact Grow Microfinance.'
+        :
+          'We could not find your customer record for this link. Please contact Grow Microfinance.';
+    setPublicKycMessage(message, 'error');
+  } finally {
+    setPublicKycLoading(false);
+  }
+}
+
+function hidePublicKycPage() {
+  publicKycSection?.classList.add('hidden');
+  const { role } = getSession();
+  togglePanels(role || null);
+}
+
+function validatePublicKycForm() {
+  let isValid = true;
+  ['nic_front', 'nic_back', 'selfie_nic', 'address_proof'].forEach((field) =>
+    setPublicKycFieldError(field, '')
+  );
+  const required = [
+    { field: 'nic_front', input: publicKycFileNicFront, label: 'NIC front' },
+    { field: 'nic_back', input: publicKycFileNicBack, label: 'NIC back' },
+    { field: 'selfie_nic', input: publicKycFileSelfie, label: 'Selfie holding NIC' },
+  ];
+
+  required.forEach(({ field, input, label }) => {
+    if (!input?.files?.length) {
+      isValid = false;
+      setPublicKycFieldError(field, `${label} is required.`);
+    }
+  });
+
+  return isValid;
+}
+
+async function handlePublicKycSubmit() {
+  if (!publicKycState.code || !publicKycState.customer) {
+    setPublicKycMessage(
+      'We could not find your customer record for this link. Please contact Grow Microfinance.',
+      'error'
+    );
+    return;
+  }
+
+  if (!validatePublicKycForm()) return;
+
+  const fileNicFront = publicKycFileNicFront?.files?.[0];
+  const fileNicBack = publicKycFileNicBack?.files?.[0];
+  const fileSelfieNic = publicKycFileSelfie?.files?.[0];
+  const fileAddressProof = publicKycFileAddressProof?.files?.[0];
+
+  const formData = new FormData();
+  formData.append('nic_front', fileNicFront);
+  formData.append('nic_back', fileNicBack);
+  formData.append('selfie_nic', fileSelfieNic);
+  if (fileAddressProof) {
+    formData.append('address_proof', fileAddressProof);
+  }
+
+  const nicNumber = (publicKycNicInput?.value || '').trim();
+  if (nicNumber) console.log('Public KYC NIC number provided for reference', nicNumber);
+
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+  const url = `${baseUrl}/public/customers/${encodeURIComponent(publicKycState.code)}/kyc-upload`;
+
+  setPublicKycMessage('');
+  if (publicKycSubmit) {
+    publicKycSubmit.disabled = true;
+    publicKycSubmit.textContent = 'Submitting...';
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      body: formData,
+    });
+
+    const { data, raw } = await parseResponse(response.clone());
+    if (!response.ok) {
+      const message = buildErrorMessage({ status: response.status, data, raw });
+      throw new Error(message || '');
+    }
+
+    publicKycState.submissionResult = data;
+    renderPublicKycSuccess(data || {});
+  } catch (error) {
+    console.error('Public KYC submission failed', error);
+    setPublicKycMessage(
+      "We couldn't submit your KYC documents. Please check your internet connection and try again. If the problem persists, contact Grow Microfinance.",
+      'error'
+    );
+  } finally {
+    if (publicKycSubmit) {
+      publicKycSubmit.disabled = false;
+      publicKycSubmit.textContent = 'Submit KYC documents';
+    }
+  }
 }
 
 function hidePublicLeadPage() {
@@ -809,6 +1097,103 @@ function formatDateTime(value) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+  });
+}
+
+function ensurePublicKycSection() {
+  if (publicKycSection || !appMain) return;
+
+  publicKycSection = document.createElement('section');
+  publicKycSection.id = 'public-kyc-section';
+  publicKycSection.className = 'card hidden';
+  publicKycSection.innerHTML = `
+    <div class="card-header">
+      <div>
+        <div class="eyebrow">Customer verification</div>
+        <h1>Grow Microfinance – KYC Upload</h1>
+        <p class="muted">Submit your identity documents securely.</p>
+      </div>
+    </div>
+    <div id="public-kyc-summary" class="muted" aria-live="polite"></div>
+    <div id="public-kyc-status" class="alert hidden" role="status"></div>
+    <div id="public-kyc-loading" class="loading-row hidden" aria-live="polite">
+      <span class="spinner"></span>
+      <span>Loading your KYC form...</span>
+    </div>
+    <form id="public-kyc-form" class="form-grid hidden" novalidate>
+      <label class="form-field">
+        <span>Customer code</span>
+        <input id="public-kyc-code" type="text" disabled />
+      </label>
+      <label class="form-field">
+        <span>NIC number (optional – for reference)</span>
+        <input id="public-kyc-nic" type="text" placeholder="Enter your NIC number" />
+      </label>
+      <label class="form-field">
+        <span>NIC front</span>
+        <input id="public-kyc-nic-front" type="file" accept="image/*" required />
+        <div class="muted hidden" data-error-for="nic_front" style="color: #b91c1c; font-weight: 600;"></div>
+      </label>
+      <label class="form-field">
+        <span>NIC back</span>
+        <input id="public-kyc-nic-back" type="file" accept="image/*" required />
+        <div class="muted hidden" data-error-for="nic_back" style="color: #b91c1c; font-weight: 600;"></div>
+      </label>
+      <label class="form-field">
+        <span>Selfie holding NIC</span>
+        <input id="public-kyc-selfie-nic" type="file" accept="image/*" required />
+        <div class="muted hidden" data-error-for="selfie_nic" style="color: #b91c1c; font-weight: 600;"></div>
+      </label>
+      <label class="form-field">
+        <span>Address proof (utility bill, bank statement, etc.)</span>
+        <input id="public-kyc-address-proof" type="file" accept="image/*" />
+        <div class="muted hidden" data-error-for="address_proof" style="color: #b91c1c; font-weight: 600;"></div>
+      </label>
+      <button type="submit" class="primary" id="public-kyc-submit">Submit KYC documents</button>
+    </form>
+    <p id="public-kyc-helper" class="muted">
+      Your documents are uploaded securely and stored using encrypted cloud storage. Our team will review and update your KYC status within 1–2 business days.
+    </p>
+    <div id="public-kyc-success" class="hidden">
+      <h2>✅ KYC submitted successfully</h2>
+      <p>
+        Thank you. Your documents have been uploaded. Our team will review them shortly and update your status.
+        You will be contacted if any additional information is required.
+      </p>
+      <div>
+        <h4>Uploaded documents</h4>
+        <ul id="public-kyc-saved-list"></ul>
+      </div>
+    </div>
+  `;
+
+  appMain.insertBefore(publicKycSection, appMain.firstChild);
+
+  publicKycForm = publicKycSection.querySelector('#public-kyc-form');
+  publicKycStatus = publicKycSection.querySelector('#public-kyc-status');
+  publicKycSummary = publicKycSection.querySelector('#public-kyc-summary');
+  publicKycLoading = publicKycSection.querySelector('#public-kyc-loading');
+  publicKycCodeInput = publicKycSection.querySelector('#public-kyc-code');
+  publicKycNicInput = publicKycSection.querySelector('#public-kyc-nic');
+  publicKycFileNicFront = publicKycSection.querySelector('#public-kyc-nic-front');
+  publicKycFileNicBack = publicKycSection.querySelector('#public-kyc-nic-back');
+  publicKycFileSelfie = publicKycSection.querySelector('#public-kyc-selfie-nic');
+  publicKycFileAddressProof = publicKycSection.querySelector('#public-kyc-address-proof');
+  publicKycSubmit = publicKycSection.querySelector('#public-kyc-submit');
+  publicKycHelperText = publicKycSection.querySelector('#public-kyc-helper');
+  publicKycSuccess = publicKycSection.querySelector('#public-kyc-success');
+  publicKycSavedList = publicKycSection.querySelector('#public-kyc-saved-list');
+
+  const clearFieldError = (field) => setPublicKycFieldError(field, '');
+
+  publicKycFileNicFront?.addEventListener('change', () => clearFieldError('nic_front'));
+  publicKycFileNicBack?.addEventListener('change', () => clearFieldError('nic_back'));
+  publicKycFileSelfie?.addEventListener('change', () => clearFieldError('selfie_nic'));
+  publicKycFileAddressProof?.addEventListener('change', () => clearFieldError('address_proof'));
+
+  publicKycForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    handlePublicKycSubmit();
   });
 }
 
@@ -4514,6 +4899,11 @@ async function bootstrap() {
     return;
   }
 
+  if (window.location.pathname === '/kyc') {
+    showPublicKycPage();
+    return;
+  }
+
   renderLoanTypeOptions();
   selectLoanType(selectedLoanType);
   updateTypeSpecificVisibility();
@@ -4682,7 +5072,13 @@ window.addEventListener('popstate', () => {
     return;
   }
 
+  if (path === '/kyc') {
+    showPublicKycPage();
+    return;
+  }
+
   hidePublicLeadPage();
+  hidePublicKycPage();
 
   if (customerRoutes[path] || path.startsWith(customerRouteHomePath)) handleCustomerRoute(path);
   else if (staffRoutes[path]) renderStaffRoute(path);
@@ -4696,6 +5092,8 @@ window.addEventListener('popstate', () => {
 
 if (window.location.pathname === '/lead') {
   showPublicLeadPage();
+} else if (window.location.pathname === '/kyc') {
+  showPublicKycPage();
 } else if (
   customerRoutes[window.location.pathname] ||
   window.location.pathname.startsWith(customerRouteHomePath)
