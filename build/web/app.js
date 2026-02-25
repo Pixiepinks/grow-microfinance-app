@@ -3577,13 +3577,14 @@ function renderCustomerDetailContent() {
     return label;
   };
 
-  const createInputField = (label, key, { type = 'text', placeholder } = {}) => {
+  const createInputField = (label, key, { type = 'text', placeholder, id } = {}) => {
     const field = document.createElement('label');
     field.className = 'form-field';
     field.appendChild(createFieldLabel(label));
 
     const input = document.createElement('input');
     input.type = type;
+    if (id) input.id = id;
     if (placeholder) input.placeholder = placeholder;
 
     const setter = customerKycProfileSetters[key];
@@ -3598,12 +3599,13 @@ function renderCustomerDetailContent() {
     return field;
   };
 
-  const createSelectField = (label, key, options = []) => {
+  const createSelectField = (label, key, options = [], { id } = {}) => {
     const field = document.createElement('label');
     field.className = 'form-field';
     field.appendChild(createFieldLabel(label));
 
     const select = document.createElement('select');
+    if (id) select.id = id;
     options.forEach(({ value, text }) => {
       const option = document.createElement('option');
       option.value = value;
@@ -3618,12 +3620,13 @@ function renderCustomerDetailContent() {
     return field;
   };
 
-  const createCheckboxField = (label, key) => {
+  const createCheckboxField = (label, key, { id } = {}) => {
     const field = document.createElement('label');
     field.className = 'form-field';
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
+    if (id) checkbox.id = id;
     const setter = customerKycProfileSetters[key];
     checkbox.addEventListener('change', (event) => setter?.(event.target.checked));
     registerCustomerKycInput(key, checkbox);
@@ -3650,38 +3653,38 @@ function renderCustomerDetailContent() {
   };
 
   appendSection('Personal', [
-    createInputField('Date of birth', 'dateOfBirth', { type: 'date' }),
+    createInputField('Date of birth', 'dateOfBirth', { type: 'date', id: 'dob' }),
     createSelectField('Civil status', 'civilStatus', [
       { value: '', text: 'Select status' },
       { value: 'SINGLE', text: 'Single' },
       { value: 'MARRIED', text: 'Married' },
       { value: 'WIDOWED', text: 'Widowed' },
       { value: 'DIVORCED', text: 'Divorced' },
-    ]),
+    ], { id: 'civil_status' }),
   ]);
 
   appendSection('Permanent address', [
-    createInputField('Address line 1', 'permanentAddressLine1'),
-    createInputField('Address line 2', 'permanentAddressLine2'),
-    createInputField('City', 'permanentCity'),
-    createInputField('District', 'permanentDistrict'),
-    createInputField('Province', 'permanentProvince'),
-    createInputField('Postal code', 'permanentPostalCode'),
+    createInputField('Address line 1', 'permanentAddressLine1', { id: 'perm_line1' }),
+    createInputField('Address line 2', 'permanentAddressLine2', { id: 'perm_line2' }),
+    createInputField('City', 'permanentCity', { id: 'perm_city' }),
+    createInputField('District', 'permanentDistrict', { id: 'perm_district' }),
+    createInputField('Province', 'permanentProvince', { id: 'perm_province' }),
+    createInputField('Postal code', 'permanentPostalCode', { id: 'perm_postal' }),
   ]);
 
   appendSection('Current address', [
-    createInputField('Address line 1', 'currentAddressLine1'),
-    createInputField('Address line 2', 'currentAddressLine2'),
-    createInputField('City', 'currentCity'),
-    createInputField('District', 'currentDistrict'),
-    createInputField('Province', 'currentProvince'),
-    createInputField('Postal code', 'currentPostalCode'),
-    createInputField('Living here since', 'currentAddressSince', { type: 'month' }),
+    createInputField('Address line 1', 'currentAddressLine1', { id: 'curr_line1' }),
+    createInputField('Address line 2', 'currentAddressLine2', { id: 'curr_line2' }),
+    createInputField('City', 'currentCity', { id: 'curr_city' }),
+    createInputField('District', 'currentDistrict', { id: 'curr_district' }),
+    createInputField('Province', 'currentProvince', { id: 'curr_province' }),
+    createInputField('Postal code', 'currentPostalCode', { id: 'curr_postal' }),
+    createInputField('Living here since', 'currentAddressSince', { type: 'month', id: 'curr_since' }),
   ]);
 
   appendSection('Household', [
-    createInputField('Household size', 'householdSize', { type: 'number' }),
-    createInputField('Number of dependents', 'dependentsCount', { type: 'number' }),
+    createInputField('Household size', 'householdSize', { type: 'number', id: 'household_size' }),
+    createInputField('Number of dependents', 'dependentsCount', { type: 'number', id: 'dependents_count' }),
   ]);
 
   appendSection('Customer type & income', [
@@ -3690,26 +3693,27 @@ function renderCustomerDetailContent() {
       { value: 'SALARIED', text: 'Salaried' },
       { value: 'SELF_EMPLOYED', text: 'Self-employed' },
       { value: 'OTHER', text: 'Other' },
-    ]),
-    createInputField('Employer name', 'employerName'),
-    createInputField('Employer address', 'employerAddress'),
-    createInputField('Occupation', 'occupation'),
-    createInputField('Monthly income', 'monthlyIncome', { type: 'number' }),
-    createInputField('Business name', 'businessName'),
-    createInputField('Business address', 'businessAddress'),
+    ], { id: 'customer_type' }),
+    createInputField('Employer name', 'employerName', { id: 'employer_name' }),
+    createInputField('Employer address', 'employerAddress', { id: 'employer_address' }),
+    createInputField('Occupation', 'occupation', { id: 'occupation' }),
+    createInputField('Monthly income', 'monthlyIncome', { type: 'number', id: 'monthly_income' }),
+    createInputField('Business name', 'businessName', { id: 'business_name' }),
+    createInputField('Business address', 'businessAddress', { id: 'business_address' }),
   ]);
 
   appendSection('Guarantor / emergency contact', [
-    createInputField('Guarantor name', 'guarantorName'),
-    createInputField('Relationship', 'guarantorRelationship'),
-    createInputField('Mobile', 'guarantorMobile'),
+    createInputField('Guarantor name', 'guarantorName', { id: 'guarantor_name' }),
+    createInputField('Relationship', 'guarantorRelationship', { id: 'guarantor_relationship' }),
+    createInputField('Mobile', 'guarantorMobile', { id: 'guarantor_mobile' }),
   ]);
 
   appendSection('Consents', [
-    createCheckboxField('I confirm the above information is accurate and true.', 'consentDataProcessing'),
+    createCheckboxField('I confirm the above information is accurate and true.', 'consentDataProcessing', { id: 'consent_confirm' }),
     createCheckboxField(
       'I authorize Grow Microfinance to verify this information with banks/employers if necessary.',
       'consentCreditChecks',
+      { id: 'consent_authorize' },
     ),
   ]);
 
@@ -3717,10 +3721,82 @@ function renderCustomerDetailContent() {
 
   const saveKycProfileBtn = document.createElement('button');
   saveKycProfileBtn.type = 'button';
+  saveKycProfileBtn.id = 'save-kyc-btn';
   saveKycProfileBtn.className = 'primary';
   saveKycProfileBtn.textContent = 'Save KYC profile';
-  saveKycProfileBtn.addEventListener('click', () => {
-    if (customerId) saveCustomerKycProfile(customerId, saveKycProfileBtn);
+  saveKycProfileBtn.addEventListener('click', async function (e) {
+    e.preventDefault();
+
+    const customerId = window.location.pathname.split('/').pop();
+
+    const payload = {
+      date_of_birth: document.getElementById('dob').value || null,
+      civil_status: document.getElementById('civil_status').value || null,
+      household_size: parseInt(document.getElementById('household_size').value, 10) || 0,
+      dependents_count: parseInt(document.getElementById('dependents_count').value, 10) || 0,
+      customer_type: document.getElementById('customer_type').value || null,
+
+      permanent_address: {
+        line1: document.getElementById('perm_line1').value,
+        line2: document.getElementById('perm_line2').value,
+        city: document.getElementById('perm_city').value,
+        district: document.getElementById('perm_district').value,
+        province: document.getElementById('perm_province').value,
+        postal_code: document.getElementById('perm_postal').value,
+      },
+
+      current_address: {
+        line1: document.getElementById('curr_line1').value,
+        line2: document.getElementById('curr_line2').value,
+        city: document.getElementById('curr_city').value,
+        district: document.getElementById('curr_district').value,
+        province: document.getElementById('curr_province').value,
+        postal_code: document.getElementById('curr_postal').value,
+        since: document.getElementById('curr_since').value,
+      },
+
+      employment: {
+        employer_name: document.getElementById('employer_name').value,
+        employer_address: document.getElementById('employer_address').value,
+        occupation: document.getElementById('occupation').value,
+        monthly_income: parseInt(document.getElementById('monthly_income').value, 10) || 0,
+      },
+
+      business: {
+        business_name: document.getElementById('business_name').value,
+        business_address: document.getElementById('business_address').value,
+      },
+
+      guarantor: {
+        name: document.getElementById('guarantor_name').value,
+        relationship: document.getElementById('guarantor_relationship').value,
+        mobile: document.getElementById('guarantor_mobile').value,
+      },
+
+      consents: {
+        confirm_accuracy: document.getElementById('consent_confirm').checked,
+        authorize_verification: document.getElementById('consent_authorize').checked,
+      },
+    };
+
+    try {
+      const res = await fetch(`/api/customers/${customerId}/kyc-profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Error: ${err.error}`);
+        return;
+      }
+
+      alert('Extended KYC saved successfully.');
+    } catch (error) {
+      console.error(error);
+      alert('Failed to save KYC.');
+    }
   });
 
   extendedKycSection.appendChild(saveKycProfileBtn);
