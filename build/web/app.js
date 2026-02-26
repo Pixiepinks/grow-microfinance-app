@@ -364,6 +364,44 @@ function populateCustomerKycProfileFromCustomer(customer = {}) {
   setConsentDataProcessing(!!customer.consent_data_processing);
   setConsentCreditChecks(!!customer.consent_credit_checks);
 }
+
+function getCustomerKycProfileForDisplay() {
+  if (customerKycProfile && typeof customerKycProfile === 'object') {
+    return customerKycProfile;
+  }
+
+  return {
+    date_of_birth: customerKycProfileState.dateOfBirth,
+    civil_status: customerKycProfileState.civilStatus,
+    permanent_address_line1: customerKycProfileState.permanentAddressLine1,
+    permanent_address_line2: customerKycProfileState.permanentAddressLine2,
+    permanent_city: customerKycProfileState.permanentCity,
+    permanent_district: customerKycProfileState.permanentDistrict,
+    permanent_province: customerKycProfileState.permanentProvince,
+    permanent_postal_code: customerKycProfileState.permanentPostalCode,
+    current_address_line1: customerKycProfileState.currentAddressLine1,
+    current_address_line2: customerKycProfileState.currentAddressLine2,
+    current_city: customerKycProfileState.currentCity,
+    current_district: customerKycProfileState.currentDistrict,
+    current_province: customerKycProfileState.currentProvince,
+    current_postal_code: customerKycProfileState.currentPostalCode,
+    current_address_since: customerKycProfileState.currentAddressSince,
+    household_size: customerKycProfileState.householdSize,
+    dependents_count: customerKycProfileState.dependentsCount,
+    customer_type: customerKycProfileState.customerType,
+    employer_name: customerKycProfileState.employerName,
+    employer_address: customerKycProfileState.employerAddress,
+    occupation: customerKycProfileState.occupation,
+    monthly_income: customerKycProfileState.monthlyIncome,
+    business_name: customerKycProfileState.businessName,
+    business_address: customerKycProfileState.businessAddress,
+    guarantor_name: customerKycProfileState.guarantorName,
+    guarantor_relationship: customerKycProfileState.guarantorRelationship,
+    guarantor_mobile: customerKycProfileState.guarantorMobile,
+    consent_data_processing: !!customerKycProfileState.consentDataProcessing,
+    consent_credit_checks: !!customerKycProfileState.consentCreditChecks,
+  };
+}
 const adminDocumentsSection = document.querySelector(
   '.admin-content .admin-section[data-section="documents"]'
 );
@@ -3510,7 +3548,7 @@ function renderExtendedKycCard(container, customerId) {
   header.className = 'section-header';
 
   const title = document.createElement('h3');
-  title.textContent = 'Extended KYC Profile';
+  title.textContent = 'KYC Profile';
   header.appendChild(title);
 
   const actions = document.createElement('div');
@@ -3748,7 +3786,7 @@ function renderExtendedKycCard(container, customerId) {
 
       kycCard.appendChild(extendedForm);
     } else {
-      const profile = customerKycProfile || {};
+      const profile = getCustomerKycProfileForDisplay();
       const hasData = Object.values(profile).some((value) => value !== null && value !== undefined && value !== '');
       const summaryGrid = document.createElement('div');
       summaryGrid.className = 'detail-grid';
@@ -3947,6 +3985,35 @@ function renderCustomerDetailContent() {
     'status',
     'eligibility_status',
     'eligibilityStatus',
+    'date_of_birth',
+    'civil_status',
+    'permanent_address_line1',
+    'permanent_address_line2',
+    'permanent_city',
+    'permanent_district',
+    'permanent_province',
+    'permanent_postal_code',
+    'current_address_line1',
+    'current_address_line2',
+    'current_city',
+    'current_district',
+    'current_province',
+    'current_postal_code',
+    'current_address_since',
+    'household_size',
+    'dependents_count',
+    'customer_type',
+    'employer_name',
+    'employer_address',
+    'occupation',
+    'monthly_income',
+    'business_name',
+    'business_address',
+    'guarantor_name',
+    'guarantor_relationship',
+    'guarantor_mobile',
+    'consent_data_processing',
+    'consent_credit_checks',
   ]);
 
   customerDetailBody.innerHTML = '';
