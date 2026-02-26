@@ -191,6 +191,9 @@ const customerKycProfileState = {
 };
 
 const customerKycProfileInputs = {};
+let kycExtendedViewCollapsed = false;
+let kycExtendedEditMode = false;
+let customerKycProfile = null;
 
 function registerCustomerKycInput(key, input) {
   if (!key || !input) return;
@@ -3330,6 +3333,9 @@ function resetCustomerDetailState() {
   customerDetailState.documents = [];
   customerDetailState.documentsLoading = false;
   customerDetailState.documentsError = null;
+  kycExtendedViewCollapsed = false;
+  kycExtendedEditMode = false;
+  customerKycProfile = null;
   resetCustomerKycProfileState();
   if (customerDetailBody) customerDetailBody.innerHTML = '';
   setInlineAlert(customerDetailMessage, '');
@@ -3417,22 +3423,401 @@ async function saveCustomerKycProfile(customerId, trigger) {
   };
 
   try {
-    showToast('Calling API... (debug)', 'info');
     await apiRequest(`/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     });
-    showToast('KYC profile saved.');
-    await loadCustomerDetail(customerId);
   } catch (error) {
     console.error('Failed to save KYC profile', error);
     showToast('Failed to save KYC profile.', 'error');
+    throw error;
   } finally {
     if (button) {
       button.disabled = false;
       button.textContent = originalText || 'Save KYC profile';
     }
   }
+}
+
+async function loadCustomerKycProfile(customerId) {
+  if (!customerId) return null;
+
+  try {
+    const response = await apiRequest(`/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
+      method: 'GET',
+    });
+
+    if (!response) return null;
+    return response?.data || response?.profile || response;
+  } catch (error) {
+    if (/404/.test(error?.message || '')) return null;
+    console.error('Failed to load customer KYC profile', error);
+    return null;
+  }
+}
+
+function renderExtendedKycCard(container, customerId) {
+  const kycCard = document.createElement('div');
+  kycCard.className = 'customer-kyc-actions';
+
+  const header = document.createElement('div');
+  header.className = 'section-header';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Extended KYC Profile';
+  header.appendChild(title);
+
+  const actions = document.createElement('div');
+  actions.className = 'action-row';
+
+  const collapseBtn = document.createElement('button');
+  collapseBtn.type = 'button';
+  collapseBtn.className = 'ghost small';
+  collapseBtn.textContent = kycExtendedViewCollapsed ? 'Expand' : 'Collapse';
+  collapseBtn.addEventListener('click', () => {
+    kycExtendedViewCollapsed = !kycExtendedViewCollapsed;
+    renderCustomerDetailContent();
+  });
+  actions.appendChild(collapseBtn);
+
+  if (kycExtendedEditMode) {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => {
+      kycExtendedEditMode = false;
+      if (customerKycProfile) populateCustomerKycProfileFromCustomer(customerKycProfile);
+      renderCustomerDetailContent();
+    });
+    actions.appendChild(cancelBtn);
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'primary';
+    saveBtn.textContent = 'Save KYC profile';
+    saveBtn.addEventListener('click', async () => {
+      if (!customerId) {
+        showToast('Customer ID is missing.', 'error');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        await saveCustomerKycProfile(customerId);
+        customerKycProfile = await loadCustomerKycProfile(customerId);
+        if (customerKycProfile) populateCustomerKycProfileFromCustomer(customerKycProfile);
+        kycExtendedEditMode = false;
+        showToast('KYC profile saved', 'success');
+        renderCustomerDetailContent();
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save KYC profile';
+      }
+    });
+    actions.appendChild(saveBtn);
+  } else {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'primary';
+    editBtn.textContent = 'Edit KYC';
+    editBtn.addEventListener('click', () => {
+      kycExtendedEditMode = true;
+      if (customerKycProfile) populateCustomerKycProfileFromCustomer(customerKycProfile);
+      renderCustomerDetailContent();
+    });
+    actions.appendChild(editBtn);
+  }
+
+  header.appendChild(actions);
+  kycCard.appendChild(header);
+
+  if (!kycExtendedViewCollapsed) {
+    if (kycExtendedEditMode) {
+      const extendedForm = document.createElement('div');
+      extendedForm.className = 'form-grid';
+
+      const createFieldLabel = (text) => {
+        const label = document.createElement('span');
+        label.textContent = text;
+        return label;
+      };
+
+      const createInputField = (label, key, { type = 'text', placeholder, id } = {}) => {
+        const field = document.createElement('label');
+        field.className = 'form-field';
+        field.appendChild(createFieldLabel(label));
+
+        const input = document.createElement('input');
+        input.type = type;
+        if (id) input.id = id;
+        if (placeholder) input.placeholder = placeholder;
+
+        const setter = customerKycProfileSetters[key];
+        const eventName = input.type === 'checkbox' ? 'change' : 'input';
+        input.addEventListener(eventName, (event) => {
+          const value = input.type === 'checkbox' ? event.target.checked : event.target.value;
+          if (setter) setter(value);
+        });
+
+        registerCustomerKycInput(key, input);
+        field.appendChild(input);
+        return field;
+      };
+
+      const createSelectField = (label, key, options = [], { id } = {}) => {
+        const field = document.createElement('label');
+        field.className = 'form-field';
+        field.appendChild(createFieldLabel(label));
+
+        const select = document.createElement('select');
+        if (id) select.id = id;
+        options.forEach(({ value, text }) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = text;
+          select.appendChild(option);
+        });
+
+        const setter = customerKycProfileSetters[key];
+        select.addEventListener('change', (event) => setter?.(event.target.value));
+        registerCustomerKycInput(key, select);
+        field.appendChild(select);
+        return field;
+      };
+
+      const createCheckboxField = (label, key, { id } = {}) => {
+        const field = document.createElement('label');
+        field.className = 'form-field';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        if (id) checkbox.id = id;
+        const setter = customerKycProfileSetters[key];
+        checkbox.addEventListener('change', (event) => setter?.(event.target.checked));
+        registerCustomerKycInput(key, checkbox);
+
+        const labelText = document.createElement('span');
+        labelText.textContent = label;
+
+        labelText.prepend(checkbox);
+        field.appendChild(labelText);
+        return field;
+      };
+
+      const appendSection = (titleText, fields = []) => {
+        const section = document.createElement('div');
+        section.className = 'form-section';
+        if (titleText) {
+          const heading = document.createElement('h4');
+          heading.textContent = titleText;
+          section.appendChild(heading);
+        }
+
+        fields.forEach((field) => section.appendChild(field));
+        extendedForm.appendChild(section);
+      };
+
+      appendSection('Personal', [
+        createInputField('Date of birth', 'dateOfBirth', { type: 'date', id: 'dob' }),
+        createSelectField(
+          'Civil status',
+          'civilStatus',
+          [
+            { value: '', text: 'Select status' },
+            { value: 'SINGLE', text: 'Single' },
+            { value: 'MARRIED', text: 'Married' },
+            { value: 'WIDOWED', text: 'Widowed' },
+            { value: 'DIVORCED', text: 'Divorced' },
+          ],
+          { id: 'civil_status' },
+        ),
+      ]);
+
+      appendSection('Permanent address', [
+        createInputField('Address line 1', 'permanentAddressLine1', { id: 'perm_line1' }),
+        createInputField('Address line 2', 'permanentAddressLine2', { id: 'perm_line2' }),
+        createInputField('City', 'permanentCity', { id: 'perm_city' }),
+        createInputField('District', 'permanentDistrict', { id: 'perm_district' }),
+        createInputField('Province', 'permanentProvince', { id: 'perm_province' }),
+        createInputField('Postal code', 'permanentPostalCode', { id: 'perm_postal' }),
+      ]);
+
+      appendSection('Current address', [
+        createInputField('Address line 1', 'currentAddressLine1', { id: 'curr_line1' }),
+        createInputField('Address line 2', 'currentAddressLine2', { id: 'curr_line2' }),
+        createInputField('City', 'currentCity', { id: 'curr_city' }),
+        createInputField('District', 'currentDistrict', { id: 'curr_district' }),
+        createInputField('Province', 'currentProvince', { id: 'curr_province' }),
+        createInputField('Postal code', 'currentPostalCode', { id: 'curr_postal' }),
+        createInputField('Living here since', 'currentAddressSince', { type: 'month', id: 'curr_since' }),
+      ]);
+
+      appendSection('Household', [
+        createInputField('Household size', 'householdSize', { type: 'number', id: 'household_size' }),
+        createInputField('Number of dependents', 'dependentsCount', {
+          type: 'number',
+          id: 'dependents_count',
+        }),
+      ]);
+
+      appendSection('Customer type & income', [
+        createSelectField(
+          'Customer type',
+          'customerType',
+          [
+            { value: '', text: 'Select type' },
+            { value: 'SALARIED', text: 'Salaried' },
+            { value: 'SELF_EMPLOYED', text: 'Self-employed' },
+            { value: 'OTHER', text: 'Other' },
+          ],
+          { id: 'customer_type' },
+        ),
+        createInputField('Employer name', 'employerName', { id: 'employer_name' }),
+        createInputField('Employer address', 'employerAddress', { id: 'employer_address' }),
+        createInputField('Occupation', 'occupation', { id: 'occupation' }),
+        createInputField('Monthly income', 'monthlyIncome', { type: 'number', id: 'monthly_income' }),
+        createInputField('Business name', 'businessName', { id: 'business_name' }),
+        createInputField('Business address', 'businessAddress', { id: 'business_address' }),
+      ]);
+
+      appendSection('Guarantor / emergency contact', [
+        createInputField('Guarantor name', 'guarantorName', { id: 'guarantor_name' }),
+        createInputField('Relationship', 'guarantorRelationship', { id: 'guarantor_relationship' }),
+        createInputField('Mobile', 'guarantorMobile', { id: 'guarantor_mobile' }),
+      ]);
+
+      appendSection('Consents', [
+        createCheckboxField('I confirm the above information is accurate and true.', 'consentDataProcessing', {
+          id: 'consent_confirm',
+        }),
+        createCheckboxField(
+          'I authorize Grow Microfinance to verify this information with banks/employers if necessary.',
+          'consentCreditChecks',
+          { id: 'consent_authorize' },
+        ),
+      ]);
+
+      kycCard.appendChild(extendedForm);
+    } else {
+      const profile = customerKycProfile || {};
+      const hasData = Object.values(profile).some((value) => value !== null && value !== undefined && value !== '');
+      const summaryGrid = document.createElement('div');
+      summaryGrid.className = 'detail-grid';
+
+      const fallback = (value) => {
+        if (value === null || value === undefined || value === '') return '—';
+        return value;
+      };
+
+      const consentDisplay = (value) => (value ? '✅' : '✖️');
+
+      const summaryGroups = [
+        {
+          heading: 'Personal',
+          items: [
+            ['Date of birth', fallback(profile.date_of_birth)],
+            ['Civil status', fallback(profile.civil_status)],
+            ['Customer type', fallback(profile.customer_type)],
+          ],
+        },
+        {
+          heading: 'Permanent address',
+          items: [
+            ['Line 1', fallback(profile.permanent_address_line1)],
+            ['Line 2', fallback(profile.permanent_address_line2)],
+            ['City', fallback(profile.permanent_city)],
+            ['District', fallback(profile.permanent_district)],
+            ['Province', fallback(profile.permanent_province)],
+            ['Postal code', fallback(profile.permanent_postal_code)],
+          ],
+        },
+        {
+          heading: 'Current address',
+          items: [
+            ['Line 1', fallback(profile.current_address_line1)],
+            ['Line 2', fallback(profile.current_address_line2)],
+            ['City', fallback(profile.current_city)],
+            ['District', fallback(profile.current_district)],
+            ['Province', fallback(profile.current_province)],
+            ['Postal code', fallback(profile.current_postal_code)],
+            ['Living since', fallback(profile.current_address_since)],
+          ],
+        },
+        {
+          heading: 'Household',
+          items: [
+            ['Household size', fallback(profile.household_size)],
+            ['Dependents', fallback(profile.dependents_count)],
+          ],
+        },
+        {
+          heading: 'Employment',
+          items: [
+            ['Employer name', fallback(profile.employer_name)],
+            ['Employer address', fallback(profile.employer_address)],
+            ['Occupation', fallback(profile.occupation)],
+            ['Monthly income', fallback(profile.monthly_income)],
+          ],
+        },
+        {
+          heading: 'Business',
+          items: [
+            ['Business name', fallback(profile.business_name)],
+            ['Business address', fallback(profile.business_address)],
+          ],
+        },
+        {
+          heading: 'Guarantor',
+          items: [
+            ['Name', fallback(profile.guarantor_name)],
+            ['Relationship', fallback(profile.guarantor_relationship)],
+            ['Mobile', fallback(profile.guarantor_mobile)],
+          ],
+        },
+        {
+          heading: 'Consents',
+          items: [
+            ['Data processing', consentDisplay(!!profile.consent_data_processing)],
+            ['Credit checks', consentDisplay(!!profile.consent_credit_checks)],
+          ],
+        },
+      ];
+
+      if (!hasData) {
+        const emptyState = document.createElement('p');
+        emptyState.className = 'muted';
+        emptyState.textContent = 'No extended KYC saved yet.';
+        kycCard.appendChild(emptyState);
+      } else {
+        summaryGroups.forEach((group) => {
+          const groupCard = document.createElement('div');
+          groupCard.className = 'detail-row';
+          const heading = document.createElement('p');
+          heading.className = 'muted';
+          heading.textContent = group.heading;
+          groupCard.appendChild(heading);
+
+          const values = document.createElement('div');
+          values.className = 'detail-value';
+          group.items.forEach(([label, value]) => {
+            const line = document.createElement('p');
+            line.textContent = `${label}: ${value}`;
+            values.appendChild(line);
+          });
+
+          groupCard.appendChild(values);
+          summaryGrid.appendChild(groupCard);
+        });
+
+        kycCard.appendChild(summaryGrid);
+      }
+    }
+  }
+
+  container.appendChild(kycCard);
 }
 
 function renderCustomerDetailContent() {
@@ -3561,194 +3946,7 @@ function renderCustomerDetailContent() {
     customerDetailBody.appendChild(kycSection);
   }
 
-  const extendedKycSection = document.createElement('div');
-  extendedKycSection.className = 'customer-kyc-actions';
-
-  const extendedHeader = document.createElement('div');
-  extendedHeader.className = 'section-header';
-  const extendedTitle = document.createElement('h3');
-  extendedTitle.textContent = 'Extended KYC profile';
-  extendedHeader.appendChild(extendedTitle);
-  extendedKycSection.appendChild(extendedHeader);
-
-  const extendedForm = document.createElement('div');
-  extendedForm.className = 'form-grid';
-
-  const createFieldLabel = (text) => {
-    const label = document.createElement('span');
-    label.textContent = text;
-    return label;
-  };
-
-  const createInputField = (label, key, { type = 'text', placeholder, id } = {}) => {
-    const field = document.createElement('label');
-    field.className = 'form-field';
-    field.appendChild(createFieldLabel(label));
-
-    const input = document.createElement('input');
-    input.type = type;
-    if (id) input.id = id;
-    if (placeholder) input.placeholder = placeholder;
-
-    const setter = customerKycProfileSetters[key];
-    const eventName = input.type === 'checkbox' ? 'change' : 'input';
-    input.addEventListener(eventName, (event) => {
-      const value = input.type === 'checkbox' ? event.target.checked : event.target.value;
-      if (setter) setter(value);
-    });
-
-    registerCustomerKycInput(key, input);
-    field.appendChild(input);
-    return field;
-  };
-
-  const createSelectField = (label, key, options = [], { id } = {}) => {
-    const field = document.createElement('label');
-    field.className = 'form-field';
-    field.appendChild(createFieldLabel(label));
-
-    const select = document.createElement('select');
-    if (id) select.id = id;
-    options.forEach(({ value, text }) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = text;
-      select.appendChild(option);
-    });
-
-    const setter = customerKycProfileSetters[key];
-    select.addEventListener('change', (event) => setter?.(event.target.value));
-    registerCustomerKycInput(key, select);
-    field.appendChild(select);
-    return field;
-  };
-
-  const createCheckboxField = (label, key, { id } = {}) => {
-    const field = document.createElement('label');
-    field.className = 'form-field';
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    if (id) checkbox.id = id;
-    const setter = customerKycProfileSetters[key];
-    checkbox.addEventListener('change', (event) => setter?.(event.target.checked));
-    registerCustomerKycInput(key, checkbox);
-
-    const labelText = document.createElement('span');
-    labelText.textContent = label;
-
-    labelText.prepend(checkbox);
-    field.appendChild(labelText);
-    return field;
-  };
-
-  const appendSection = (titleText, fields = []) => {
-    const section = document.createElement('div');
-    section.className = 'form-section';
-    if (titleText) {
-      const heading = document.createElement('h4');
-      heading.textContent = titleText;
-      section.appendChild(heading);
-    }
-
-    fields.forEach((field) => section.appendChild(field));
-    extendedForm.appendChild(section);
-  };
-
-  appendSection('Personal', [
-    createInputField('Date of birth', 'dateOfBirth', { type: 'date', id: 'dob' }),
-    createSelectField('Civil status', 'civilStatus', [
-      { value: '', text: 'Select status' },
-      { value: 'SINGLE', text: 'Single' },
-      { value: 'MARRIED', text: 'Married' },
-      { value: 'WIDOWED', text: 'Widowed' },
-      { value: 'DIVORCED', text: 'Divorced' },
-    ], { id: 'civil_status' }),
-  ]);
-
-  appendSection('Permanent address', [
-    createInputField('Address line 1', 'permanentAddressLine1', { id: 'perm_line1' }),
-    createInputField('Address line 2', 'permanentAddressLine2', { id: 'perm_line2' }),
-    createInputField('City', 'permanentCity', { id: 'perm_city' }),
-    createInputField('District', 'permanentDistrict', { id: 'perm_district' }),
-    createInputField('Province', 'permanentProvince', { id: 'perm_province' }),
-    createInputField('Postal code', 'permanentPostalCode', { id: 'perm_postal' }),
-  ]);
-
-  appendSection('Current address', [
-    createInputField('Address line 1', 'currentAddressLine1', { id: 'curr_line1' }),
-    createInputField('Address line 2', 'currentAddressLine2', { id: 'curr_line2' }),
-    createInputField('City', 'currentCity', { id: 'curr_city' }),
-    createInputField('District', 'currentDistrict', { id: 'curr_district' }),
-    createInputField('Province', 'currentProvince', { id: 'curr_province' }),
-    createInputField('Postal code', 'currentPostalCode', { id: 'curr_postal' }),
-    createInputField('Living here since', 'currentAddressSince', { type: 'month', id: 'curr_since' }),
-  ]);
-
-  appendSection('Household', [
-    createInputField('Household size', 'householdSize', { type: 'number', id: 'household_size' }),
-    createInputField('Number of dependents', 'dependentsCount', { type: 'number', id: 'dependents_count' }),
-  ]);
-
-  appendSection('Customer type & income', [
-    createSelectField('Customer type', 'customerType', [
-      { value: '', text: 'Select type' },
-      { value: 'SALARIED', text: 'Salaried' },
-      { value: 'SELF_EMPLOYED', text: 'Self-employed' },
-      { value: 'OTHER', text: 'Other' },
-    ], { id: 'customer_type' }),
-    createInputField('Employer name', 'employerName', { id: 'employer_name' }),
-    createInputField('Employer address', 'employerAddress', { id: 'employer_address' }),
-    createInputField('Occupation', 'occupation', { id: 'occupation' }),
-    createInputField('Monthly income', 'monthlyIncome', { type: 'number', id: 'monthly_income' }),
-    createInputField('Business name', 'businessName', { id: 'business_name' }),
-    createInputField('Business address', 'businessAddress', { id: 'business_address' }),
-  ]);
-
-  appendSection('Guarantor / emergency contact', [
-    createInputField('Guarantor name', 'guarantorName', { id: 'guarantor_name' }),
-    createInputField('Relationship', 'guarantorRelationship', { id: 'guarantor_relationship' }),
-    createInputField('Mobile', 'guarantorMobile', { id: 'guarantor_mobile' }),
-  ]);
-
-  appendSection('Consents', [
-    createCheckboxField('I confirm the above information is accurate and true.', 'consentDataProcessing', { id: 'consent_confirm' }),
-    createCheckboxField(
-      'I authorize Grow Microfinance to verify this information with banks/employers if necessary.',
-      'consentCreditChecks',
-      { id: 'consent_authorize' },
-    ),
-  ]);
-
-  extendedKycSection.appendChild(extendedForm);
-
-  const saveKycProfileBtn = document.createElement('button');
-  saveKycProfileBtn.type = 'button';
-  saveKycProfileBtn.className = 'primary';
-  saveKycProfileBtn.textContent = 'Save KYC profile';
-  saveKycProfileBtn.id = 'save-kyc-profile-btn';
-
-  const existingSaveKycProfileBtn = document.getElementById('save-kyc-profile-btn');
-  if (existingSaveKycProfileBtn) existingSaveKycProfileBtn.remove();
-
-  saveKycProfileBtn.addEventListener('click', async () => {
-    console.log('[KYC] Save button clicked', { customerId });
-    showToast('Saving KYC... (debug)', 'info');
-    try {
-      if (customerId) await saveCustomerKycProfile(customerId, saveKycProfileBtn);
-      else {
-        console.warn('[KYC] Missing customerId in click handler');
-        showToast('Customer ID missing (debug).', 'error');
-      }
-    } catch (e) {
-      console.error('[KYC] Click handler failed', e);
-      showToast(`Save failed (debug): ${e.message || e}`, 'error');
-    }
-  });
-
-  extendedKycSection.appendChild(saveKycProfileBtn);
-
-  customerDetailBody.appendChild(extendedKycSection);
+  renderExtendedKycCard(customerDetailBody, customerId);
 
   const documentsSection = document.createElement('div');
   documentsSection.className = 'customer-kyc-actions';
@@ -3937,7 +4135,8 @@ async function loadCustomerDetail(customerId) {
     const response = await api.get(path);
     const customer = response?.customer || response?.data || response;
     customerDetailState.customer = customer;
-    populateCustomerKycProfileFromCustomer(customer);
+    customerKycProfile = await loadCustomerKycProfile(normalizedId);
+    populateCustomerKycProfileFromCustomer(customerKycProfile || customer);
     await loadCustomerDocuments(normalizedId);
   } catch (error) {
     console.error('Failed to load customer detail', error);
