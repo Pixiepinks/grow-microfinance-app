@@ -141,45 +141,89 @@
                     <div>
                       <div class="eyebrow">Workflows</div>
                       <h2>Loan Applications</h2>
-                      <p class="muted">View and manage all loan applications.</p>
+                      <p class="muted">Review applications and start a new loan request workflow.</p>
                     </div>
-                    <button id="admin-refresh-loan-applications" class="ghost" type="button">
-                      Refresh
-                    </button>
                   </div>
-                  <div id="admin-loan-applications-message" class="alert hidden"></div>
-                  <div class="subcard">
-                    <div class="table-actions">
-                      <div class="filters">
-                        <label for="admin-loan-status-filter" class="muted">Status</label>
-                        <select id="admin-loan-status-filter">
-                          <option value="ALL" selected>All</option>
-                          <option value="DRAFT">Draft</option>
-                          <option value="SUBMITTED">Submitted</option>
-                          <option value="UNDER_REVIEW">Under Review</option>
-                          <option value="STAFF_APPROVED">Staff Approved</option>
-                          <option value="APPROVED">Approved</option>
-                          <option value="REJECTED">Rejected</option>
-                        </select>
+
+                  <div id="loan-app-route-grid" class="subcard-grid">
+                    <div class="subcard" data-loan-route="/admin/loan-applications/all">
+                      <div class="card-header">
+                        <div>
+                          <h3>All loan applications</h3>
+                          <p class="muted">View and manage all loan application records.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Open</button>
                       </div>
                     </div>
-                    <div class="loan-table-wrapper">
-                      <table
-                        id="admin-loan-applications-table"
-                        class="placeholder-table loan-table"
-                      >
-                        <thead>
-                          <tr>
-                            <th>Application No</th>
-                            <th>Customer</th>
-                            <th>Loan Type</th>
-                            <th>Status</th>
-                            <th>Applied Amount</th>
-                            <th>Submitted On</th>
-                          </tr>
-                        </thead>
-                        <tbody id="loan-applications-body"></tbody>
-                      </table>
+
+                    <div class="subcard" data-loan-action="open-apply-modal">
+                      <div class="card-header">
+                        <div>
+                          <h3>Apply loan</h3>
+                          <p class="muted">Launch the loan application wizard in a popup modal.</p>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <button class="primary" type="button">Start wizard</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div id="loan-app-route-placeholder" class="subcard hidden">
+                    <div class="card-header">
+                      <div>
+                        <h3 id="loan-app-route-title"></h3>
+                        <p class="muted" id="loan-app-route-description"></p>
+                      </div>
+                    </div>
+                    <div class="action-row">
+                      <button id="loan-app-route-back" class="ghost" type="button">Back to Loan Applications</button>
+                    </div>
+                    <div id="admin-loan-applications-message" class="alert hidden"></div>
+                    <div class="subcard customers-table-card">
+                      <div class="card-header">
+                        <div>
+                          <h3>All loan applications</h3>
+                          <p class="muted">View and manage all loan applications.</p>
+                        </div>
+                        <button id="admin-refresh-loan-applications" class="ghost" type="button">
+                          Refresh
+                        </button>
+                      </div>
+                      <div class="table-actions">
+                        <div class="filters">
+                          <label for="admin-loan-status-filter" class="muted">Status</label>
+                          <select id="admin-loan-status-filter">
+                            <option value="ALL" selected>All</option>
+                            <option value="DRAFT">Draft</option>
+                            <option value="SUBMITTED">Submitted</option>
+                            <option value="UNDER_REVIEW">Under Review</option>
+                            <option value="STAFF_APPROVED">Staff Approved</option>
+                            <option value="APPROVED">Approved</option>
+                            <option value="REJECTED">Rejected</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="loan-table-wrapper">
+                        <table
+                          id="admin-loan-applications-table"
+                          class="placeholder-table loan-table"
+                        >
+                          <thead>
+                            <tr>
+                              <th>Application No</th>
+                              <th>Customer</th>
+                              <th>Loan Type</th>
+                              <th>Status</th>
+                              <th>Applied Amount</th>
+                              <th>Submitted On</th>
+                            </tr>
+                          </thead>
+                          <tbody id="loan-applications-body"></tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -1201,6 +1245,20 @@
       </form>
       <div id="payment-message" class="alert hidden"></div>
     </div>
+
+    <div id="apply-loan-modal" class="app-modal hidden" aria-hidden="true">
+      <div class="app-modal-backdrop" data-modal-close="true"></div>
+      <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="apply-loan-modal-title">
+        <div class="app-modal-header">
+          <h4 id="apply-loan-modal-title">Apply Loan</h4>
+          <button id="close-apply-loan-modal" class="ghost" type="button" aria-label="Close">✕</button>
+        </div>
+        <div class="app-modal-content">
+          <iframe id="apply-loan-modal-iframe" title="Apply Loan Wizard" src="about:blank" loading="lazy"></iframe>
+        </div>
+      </div>
+    </div>
+
 
     <script src="app.js"></script>
   </body>
