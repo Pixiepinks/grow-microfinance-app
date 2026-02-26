@@ -2848,6 +2848,52 @@ function getCustomerId(customer = {}) {
   return customer.id || customer.customer_id || customer.customerId || customer.customer_code || customer.customerCode;
 }
 
+function formatCustomerFieldLabel(key = '') {
+  return key
+    .toString()
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatCustomerFieldValue(value) {
+  if (value === null || value === undefined || value === '') return '—';
+
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (_) {
+      return String(value);
+    }
+  }
+
+  return String(value);
+}
+
+function createCustomerDetailRow(label, value, { isHtml = false, asCode = false } = {}) {
+  const row = document.createElement('div');
+  row.className = 'detail-row';
+
+  const labelNode = document.createElement('p');
+  labelNode.className = 'muted';
+  labelNode.textContent = label;
+
+  const valueNode = asCode ? document.createElement('pre') : document.createElement('div');
+  valueNode.className = 'detail-value';
+
+  if (isHtml) {
+    valueNode.innerHTML = value || '—';
+  } else {
+    valueNode.textContent = value || '—';
+  }
+
+  row.appendChild(labelNode);
+  row.appendChild(valueNode);
+  return row;
+}
+
 function setActiveCustomerId(customerId) {
   activeCustomerId = customerId || null;
   if (loanApplicationForm) loanApplicationForm.dataset.customerId = activeCustomerId || '';
@@ -3869,21 +3915,66 @@ function renderCustomerDetailContent() {
     { label: 'KYC status', value: renderCustomerStatusBadge(kycStatus) },
     { label: 'Eligibility status', value: renderCustomerStatusBadge(eligibilityStatus) },
   ];
+  const primaryFieldKeys = new Set([
+    'id',
+    'customer_id',
+    'customerId',
+    'customer_code',
+    'customerCode',
+    'code',
+    'full_name',
+    'fullName',
+    'name',
+    'first_name',
+    'last_name',
+    'nic_number',
+    'nic',
+    'nicNumber',
+    'nic_no',
+    'mobile',
+    'mobile_number',
+    'phone',
+    'contact',
+    'address',
+    'address_line',
+    'addressLine',
+    'location',
+    'business_type',
+    'businessType',
+    'segment',
+    'kyc_status',
+    'kycStatus',
+    'status',
+    'eligibility_status',
+    'eligibilityStatus',
+  ]);
 
-  customerDetailBody.innerHTML = `
-    <div class="detail-grid">
-      ${detailFields
-        .map(
-          ({ label, value }) => `
-            <div class="detail-row">
-              <p class="muted">${label}</p>
-              <div class="detail-value">${value || '—'}</div>
-            </div>
-          `,
-        )
-        .join('')}
-    </div>
-  `;
+  customerDetailBody.innerHTML = '';
+  const detailGrid = document.createElement('div');
+  detailGrid.className = 'detail-grid';
+
+  detailFields.forEach(({ label, value }) => {
+    const isStatusField = label === 'KYC status' || label === 'Eligibility status';
+    detailGrid.appendChild(
+      createCustomerDetailRow(label, value, {
+        isHtml: isStatusField,
+      }),
+    );
+  });
+
+  Object.entries(customer)
+    .filter(([key]) => !primaryFieldKeys.has(key))
+    .forEach(([key, value]) => {
+      const normalizedValue = formatCustomerFieldValue(value);
+      const asCode = typeof value === 'object' && value !== null;
+      detailGrid.appendChild(
+        createCustomerDetailRow(formatCustomerFieldLabel(key), normalizedValue, {
+          asCode,
+        }),
+      );
+    });
+
+  customerDetailBody.appendChild(detailGrid);
 
   const kycSection = document.createElement('div');
   kycSection.className = 'customer-kyc-actions';
