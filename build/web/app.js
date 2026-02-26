@@ -573,6 +573,12 @@ const loanPurposeSelect = document.querySelector('#loan-purpose-select');
 const documentUploads = document.querySelector('#document-uploads');
 const reviewSummary = document.querySelector('#review-summary');
 const reviewAlert = document.querySelector('#review-alert');
+const customerSearchNicInput = document.querySelector('#customer-search-nic');
+const customerSearchMobileInput = document.querySelector('#customer-search-mobile');
+const customerSearchBtn = document.querySelector('#customer-search-btn');
+const customerSearchResultsEl = document.querySelector('#customer-search-results');
+const customerSearchMessageEl = document.querySelector('#customer-search-message');
+const customerSearchSelectionEl = document.querySelector('#customer-search-selection');
 const typeSpecificFields = document.querySelectorAll('.type-specific');
 const applicationModal = document.querySelector('#application-modal');
 const applicationModalTitle = document.querySelector('#application-modal-title');
@@ -679,6 +685,11 @@ let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
 let currentLoanForPayment = null;
 const selectedDocuments = new Map();
+let customerSearchResults = [];
+let selectedCustomer = null;
+let selectedCustomerId = null;
+let customerSearchLoading = false;
+let customerSearchDebounceTimer = null;
 let publicLeadSection;
 let publicLeadForm;
 let publicLeadMessage;
@@ -5773,6 +5784,224 @@ function validateWizardAndJump() {
   return true;
 }
 
+
+function getCustomerDisplayName(customer = {}) {
+  return (
+    customer.full_name ||
+    customer.fullName ||
+    customer.name ||
+    [customer.first_name, customer.last_name].filter(Boolean).join(' ') ||
+    '—'
+  );
+}
+
+function getCustomerField(customer = {}, keys = []) {
+  for (const key of keys) {
+    const value = customer?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  }
+  return '';
+}
+
+function normalizeCustomerSearchResults(response) {
+  if (!response) return [];
+  if (Array.isArray(response)) return response;
+  const list = normalizeCustomersResponse(response);
+  if (Array.isArray(list) && list.length) return list;
+  if (typeof response === 'object') {
+    const customerId = getCustomerId(response);
+    if (customerId) return [response];
+  }
+  return [];
+}
+
+function setCustomerSearchMessage(message = '', type = 'error') {
+  if (!customerSearchMessageEl) return;
+  if (!message) {
+    customerSearchMessageEl.textContent = '';
+    customerSearchMessageEl.className = 'inline-alert hidden';
+    return;
+  }
+  customerSearchMessageEl.textContent = message;
+  customerSearchMessageEl.className = `inline-alert ${type}`;
+}
+
+function fillApplicantFieldsFromCustomer(customer = {}) {
+  if (!loanApplicationForm) return;
+  const fieldMap = {
+    full_name: getCustomerDisplayName(customer),
+    nic_number: getCustomerField(customer, ['nic_number', 'nic', 'nicNumber', 'nic_no']),
+    mobile_number: getCustomerField(customer, ['mobile', 'mobile_number', 'phone', 'contact']),
+    email: getCustomerField(customer, ['email', 'email_address']),
+    address_line1: getCustomerField(customer, ['address_line1', 'address', 'address_line', 'addressLine']),
+    address_line2: getCustomerField(customer, ['address_line2']),
+    city: getCustomerField(customer, ['city', 'current_city', 'permanent_city']),
+    district: getCustomerField(customer, ['district', 'current_district', 'permanent_district']),
+    province: getCustomerField(customer, ['province', 'current_province', 'permanent_province']),
+    date_of_birth: getCustomerField(customer, ['date_of_birth', 'dob']),
+  };
+
+  Object.entries(fieldMap).forEach(([name, value]) => {
+    const input = loanApplicationForm.querySelector(`[name="${name}"]`);
+    if (input && value !== undefined && value !== null) input.value = String(value);
+  });
+}
+
+function renderSelectedCustomerChip() {
+  if (!customerSearchSelectionEl) return;
+  if (!selectedCustomerId || !selectedCustomer) {
+    customerSearchSelectionEl.classList.add('hidden');
+    customerSearchSelectionEl.innerHTML = '';
+    return;
+  }
+
+  customerSearchSelectionEl.classList.remove('hidden');
+  customerSearchSelectionEl.innerHTML = `
+    <span><strong>Selected Customer:</strong> ${selectedCustomerId} - ${getCustomerDisplayName(selectedCustomer)}</span>
+    <button type="button" id="clear-selected-customer" class="ghost">Clear selection</button>
+  `;
+
+  customerSearchSelectionEl
+    .querySelector('#clear-selected-customer')
+    ?.addEventListener('click', () => clearSelectedCustomer());
+}
+
+function clearSelectedCustomer() {
+  selectedCustomer = null;
+  selectedCustomerId = null;
+  renderSelectedCustomerChip();
+}
+
+function selectCustomerForApplication(customer) {
+  const customerId = getCustomerId(customer);
+  if (!customerId) {
+    setCustomerSearchMessage('Selected customer does not have a valid ID.', 'error');
+    return;
+  }
+
+  selectedCustomer = customer;
+  selectedCustomerId = customerId;
+  setActiveCustomerId(customerId);
+  fillApplicantFieldsFromCustomer(customer);
+  setCustomerSearchMessage('', 'success');
+  renderSelectedCustomerChip();
+}
+
+function renderCustomerSearchResults() {
+  if (!customerSearchResultsEl) return;
+
+  if (!customerSearchResults.length) {
+    customerSearchResultsEl.classList.add('hidden');
+    customerSearchResultsEl.innerHTML = '';
+    return;
+  }
+
+  customerSearchResultsEl.classList.remove('hidden');
+  const rows = customerSearchResults
+    .slice(0, 10)
+    .map((customer, index) => {
+      const id = getCustomerId(customer) || '—';
+      const name = getCustomerDisplayName(customer);
+      const nic = getCustomerField(customer, ['nic_number', 'nic', 'nicNumber', 'nic_no']) || '—';
+      const mobile = getCustomerField(customer, ['mobile', 'mobile_number', 'phone', 'contact']) || '—';
+      const address = getCustomerField(customer, ['address', 'address_line1', 'address_line', 'addressLine']) || '—';
+      return `
+        <tr data-customer-index="${index}">
+          <td>${id}</td>
+          <td>${name}</td>
+          <td>${nic}</td>
+          <td>${mobile}</td>
+          <td>${address}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  customerSearchResultsEl.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Customer ID</th>
+          <th>Full Name</th>
+          <th>NIC</th>
+          <th>Mobile</th>
+          <th>Address</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+
+  customerSearchResultsEl.querySelectorAll('tbody tr').forEach((row) => {
+    row.addEventListener('click', () => {
+      const index = Number(row.dataset.customerIndex);
+      const customer = customerSearchResults[index];
+      if (customer) selectCustomerForApplication(customer);
+    });
+  });
+}
+
+async function searchCustomersForApplication({ nic = '', mobile = '' } = {}) {
+  const normalizedNic = (nic || '').trim();
+  const normalizedMobile = (mobile || '').trim();
+
+  if (!normalizedNic && !normalizedMobile) {
+    setCustomerSearchMessage('Enter NIC or mobile number to search.', 'error');
+    return;
+  }
+
+  customerSearchLoading = true;
+  customerSearchBtn && (customerSearchBtn.disabled = true);
+  setCustomerSearchMessage('Searching customers...', 'success');
+
+  try {
+    const basePath = endpoint('customers') || '/customers';
+    const query = new URLSearchParams();
+    if (normalizedNic) {
+      query.set('nic_number', normalizedNic);
+      query.set('nic', normalizedNic);
+    }
+    if (normalizedMobile) {
+      query.set('mobile', normalizedMobile);
+      query.set('mobile_number', normalizedMobile);
+    }
+
+    const response = await api.get(`${basePath}?${query.toString()}`);
+    customerSearchResults = normalizeCustomerSearchResults(response).slice(0, 10);
+    renderCustomerSearchResults();
+
+    if (!customerSearchResults.length) {
+      setCustomerSearchMessage('No customers found for given NIC/Mobile.', 'error');
+      return;
+    }
+
+    setCustomerSearchMessage(`Found ${customerSearchResults.length} customer(s). Select one from the list.`, 'success');
+  } catch (error) {
+    console.error('Customer search failed', error);
+    if (error?.status === 401) {
+      setCustomerSearchMessage('Session expired. Please sign in again.', 'error');
+    } else {
+      setCustomerSearchMessage(error?.message || 'Customer search failed.', 'error');
+    }
+    customerSearchResults = [];
+    renderCustomerSearchResults();
+  } finally {
+    customerSearchLoading = false;
+    customerSearchBtn && (customerSearchBtn.disabled = false);
+  }
+}
+
+function scheduleCustomerSearch() {
+  if (customerSearchDebounceTimer) window.clearTimeout(customerSearchDebounceTimer);
+  customerSearchDebounceTimer = window.setTimeout(() => {
+    const nic = customerSearchNicInput?.value || '';
+    const mobile = customerSearchMobileInput?.value || '';
+    if (nic.trim().length >= 5 || mobile.trim().length >= 7) {
+      searchCustomersForApplication({ nic, mobile });
+    }
+  }, 500);
+}
+
 function buildApplicationPayload() {
   const formData = new FormData(loanApplicationForm);
   const values = Object.fromEntries(formData.entries());
@@ -5803,6 +6032,7 @@ function buildApplicationPayload() {
 
   const typeSpecific = {};
   const payload = {
+    customer_id: selectedCustomerId || null,
     loan_type: mapLoanTypeToApi(selectedLoanType),
     loan_purpose: values.loan_purpose || '',
     loan_details: loanDetails,
@@ -6176,8 +6406,21 @@ async function submitApplication() {
     }
 
     if (!validateWizardAndJump()) return;
+
+    if (!selectedCustomerId) {
+      setInlineAlert(
+        applicationFormMessage,
+        'Please search and select a customer (NIC/Mobile)',
+        'error'
+      );
+      currentStep = 1;
+      updateStepperUI();
+      return;
+    }
+
     const payload = normalizeApplicationPayload(buildApplicationPayload());
     payload.status = 'SUBMITTED';
+    payload.customer_id = selectedCustomerId || payload.customer_id || null;
     setInlineAlert(applicationFormMessage, 'Saving application...', 'success');
     const endpointPath = currentDraftId
       ? `${endpoint('loanApplications')}/${currentDraftId}`
@@ -6224,6 +6467,10 @@ function resetApplicationForm() {
   currentDraftId = null;
   selectedLoanType = loanTypes[0];
   selectedDocuments.clear();
+  customerSearchResults = [];
+  clearSelectedCustomer();
+  setCustomerSearchMessage('');
+  renderCustomerSearchResults();
   loanApplicationForm.reset();
   selectLoanType(selectedLoanType);
   updateStepperUI();
@@ -6322,6 +6569,9 @@ newApplicationBtn?.addEventListener('click', async () => {
   if (!eligibleCustomer) return;
 
   resetApplicationForm();
+  if (eligibleCustomer) {
+    selectCustomerForApplication(eligibleCustomer);
+  }
   applicationFormCard.classList.remove('hidden');
   loanApplicationForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
@@ -6329,6 +6579,16 @@ newApplicationBtn?.addEventListener('click', async () => {
 closeApplicationForm?.addEventListener('click', () => {
   applicationFormCard.classList.add('hidden');
 });
+
+customerSearchBtn?.addEventListener('click', () => {
+  searchCustomersForApplication({
+    nic: customerSearchNicInput?.value || '',
+    mobile: customerSearchMobileInput?.value || '',
+  });
+});
+
+customerSearchNicInput?.addEventListener('input', scheduleCustomerSearch);
+customerSearchMobileInput?.addEventListener('input', scheduleCustomerSearch);
 
 refreshApplicationsBtn?.addEventListener('click', async () => {
   try {

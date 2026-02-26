@@ -875,6 +875,28 @@
 
                     <div class="form-step" data-step="1">
                       <div class="form-grid two-col">
+                        <div class="customer-search-panel full-width" id="customer-search-panel">
+                          <div class="customer-search-header">
+                            <strong>Customer Search</strong>
+                            <span class="muted">Find by NIC or mobile and select the correct customer profile.</span>
+                          </div>
+                          <div class="customer-search-controls">
+                            <label class="form-field">
+                              <span>NIC</span>
+                              <input type="text" id="customer-search-nic" placeholder="e.g. 199012345678" />
+                            </label>
+                            <label class="form-field">
+                              <span>Mobile</span>
+                              <input type="tel" id="customer-search-mobile" placeholder="0712345678" />
+                            </label>
+                            <div class="customer-search-actions">
+                              <button type="button" id="customer-search-btn" class="primary">Search</button>
+                            </div>
+                          </div>
+                          <div id="customer-search-selection" class="customer-selection hidden"></div>
+                          <p id="customer-search-message" class="inline-alert hidden"></p>
+                          <div id="customer-search-results" class="customer-search-results hidden"></div>
+                        </div>
                         <label class="form-field">
                           <span>Full name</span>
                           <input type="text" name="full_name" autocomplete="name" required />
