@@ -3380,7 +3380,7 @@ async function saveCustomerKycProfile(customerId, trigger) {
     button.textContent = 'Saving...';
   }
 
-  const body = {
+  const payload = {
     date_of_birth: customerKycProfileState.dateOfBirth || null,
     civil_status: customerKycProfileState.civilStatus || null,
     permanent_address_line1: customerKycProfileState.permanentAddressLine1 || null,
@@ -3416,17 +3416,18 @@ async function saveCustomerKycProfile(customerId, trigger) {
     consent_credit_checks: !!customerKycProfileState.consentCreditChecks,
   };
 
+  console.log('[KYC] Payload', payload);
+
   try {
-    showToast('Calling API... (debug)', 'info');
     await apiRequest(`/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
       method: 'PATCH',
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
-    showToast('KYC profile saved.');
+    showToast('KYC profile saved');
     await loadCustomerDetail(customerId);
   } catch (error) {
     console.error('Failed to save KYC profile', error);
-    showToast('Failed to save KYC profile.', 'error');
+    throw error;
   } finally {
     if (button) {
       button.disabled = false;
@@ -3732,17 +3733,16 @@ function renderCustomerDetailContent() {
   if (existingSaveKycProfileBtn) existingSaveKycProfileBtn.remove();
 
   saveKycProfileBtn.addEventListener('click', async () => {
-    console.log('[KYC] Save button clicked', { customerId });
-    showToast('Saving KYC... (debug)', 'info');
+    console.log('[KYC] Save clicked', { customerId });
     try {
       if (customerId) await saveCustomerKycProfile(customerId, saveKycProfileBtn);
       else {
         console.warn('[KYC] Missing customerId in click handler');
-        showToast('Customer ID missing (debug).', 'error');
+        showToast('Customer ID is missing.', 'error');
       }
     } catch (e) {
       console.error('[KYC] Click handler failed', e);
-      showToast(`Save failed (debug): ${e.message || e}`, 'error');
+      showToast(e?.message || 'Failed to save KYC profile.', 'error');
     }
   });
 
