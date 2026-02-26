@@ -1014,3 +1014,30 @@ body {
 body.modal-open {
   overflow: hidden;
 }
+
+body.embed-loan-wizard-mode .app-header,
+body.embed-loan-wizard-mode #login-card,
+body.embed-loan-wizard-mode #admin-panel,
+body.embed-loan-wizard-mode #staff-panel,
+body.embed-loan-wizard-mode #public-lead-section,
+body.embed-loan-wizard-mode #public-kyc-section {
+  display: none !important;
+}
+
+body.embed-loan-wizard-mode .app-shell {
+  padding: 0;
+}
+
+body.embed-loan-wizard-mode #dashboards,
+body.embed-loan-wizard-mode #customer-panel,
+body.embed-loan-wizard-mode #application-form-card {
+  display: block !important;
+}
+
+body.embed-loan-wizard-mode #customer-panel > .card-header,
+body.embed-loan-wizard-mode #customer-panel > .stack > .subcard:not(:nth-child(2)),
+body.embed-loan-wizard-mode #customer-panel .subcard > .card-header,
+body.embed-loan-wizard-mode #customer-applications,
+body.embed-loan-wizard-mode #close-application-form {
+  display: none !important;
+}

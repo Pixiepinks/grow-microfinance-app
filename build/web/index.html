@@ -6,20 +6,20 @@
     <title>Grow Microfinance</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="icon" type="image/png" href="assets/LOGO-GROW.png" />
-    <link rel="apple-touch-icon" href="assets/LOGO-GROW.png" />
+    <link rel="icon" type="image/png" href="/assets/LOGO-GROW.png" />
+    <link rel="apple-touch-icon" href="/assets/LOGO-GROW.png" />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="app-header">
         <div class="brand">
             <img
-            src="assets/LOGO-GROW.png"
+            src="/assets/LOGO-GROW.png"
             alt="Grow Microfinance logo"
             class="brand-mark"
           />
@@ -881,11 +881,11 @@
                         </label>
                         <label class="form-field">
                           <span>NIC</span>
-                          <input type="text" name="nic" required />
+                          <input type="text" name="nic_number" required />
                         </label>
                         <label class="form-field">
                           <span>Mobile</span>
-                          <input type="tel" name="mobile" placeholder="0712345678" required />
+                          <input type="tel" name="mobile_number" placeholder="0712345678" required />
                         </label>
                         <label class="form-field">
                           <span>Email</span>
@@ -913,7 +913,7 @@
                         </label>
                         <label class="form-field">
                           <span>Date of birth</span>
-                          <input type="date" name="date_of_birth" />
+                          <input type="date" name="date_of_birth" required />
                         </label>
                         <label class="form-field">
                           <span>Monthly income (LKR)</span>
@@ -973,17 +973,29 @@
                     <div class="form-step" data-step="3">
                       <div class="form-grid two-col">
                         <div class="form-field type-specific" data-type="Grow Online Business Loan">
-                          <span>Store URL</span>
-                          <input type="url" name="store_url" placeholder="https://yourstore.com" />
+                          <span>Online store name</span>
+                          <input type="text" name="online_store_name" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Online Business Loan">
-                          <span>Selling platform / app</span>
-                          <input type="text" name="store_platform" placeholder="Daraz, social, etc." />
+                          <span>Online store link</span>
+                          <input type="url" name="online_store_link" data-required="true" placeholder="https://yourstore.com" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Online Business Loan">
+                          <span>Platform</span>
+                          <input type="text" name="platform" placeholder="Daraz, social, etc." />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Online Business Loan">
+                          <span>Average monthly revenue last 3 months (LKR)</span>
+                          <input type="number" name="average_monthly_revenue_last_3_months" min="0" step="0.01" data-required="true" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Online Business Loan">
+                          <span>Main product category</span>
+                          <input type="text" name="main_product_category" data-required="true" />
                         </div>
 
                         <div class="form-field type-specific" data-type="Grow Business Loan">
                           <span>Business name / location</span>
-                          <input type="text" name="business_name" />
+                          <input type="text" name="business_name" data-required="true" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Business Loan">
                           <span>Business registration</span>
@@ -991,24 +1003,20 @@
                         </div>
                         <div class="form-field type-specific" data-type="Grow Business Loan">
                           <span>Business address</span>
-                          <input type="text" name="business_address" />
+                          <input type="text" name="business_address" data-required="true" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Business Loan">
                           <span>Business type</span>
-                          <input type="text" name="business_type" />
+                          <input type="text" name="business_type" data-required="true" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Business Loan">
                           <span>Average monthly sales (LKR)</span>
-                          <input type="number" name="monthly_sales" inputmode="decimal" min="0" step="0.01" />
+                          <input type="number" name="monthly_sales" inputmode="decimal" min="0" step="0.01" data-required="true" />
                         </div>
 
                         <div class="form-field type-specific" data-type="Grow Personal Loan">
-                          <span>Employment status</span>
-                          <input type="text" name="employment_status" />
-                        </div>
-                        <div class="form-field type-specific" data-type="Grow Personal Loan">
                           <span>Employment type</span>
-                          <input type="text" name="employment_type" />
+                          <input type="text" name="employment_type" data-required="true" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Personal Loan">
                           <span>Employer</span>
@@ -1016,26 +1024,28 @@
                         </div>
                         <div class="form-field type-specific" data-type="Grow Personal Loan">
                           <span>Net monthly salary (LKR)</span>
-                          <input
-                            type="number"
-                            name="net_monthly_salary"
-                            inputmode="decimal"
-                            min="0"
-                            step="0.01"
-                          />
+                          <input type="number" name="net_monthly_salary" inputmode="decimal" min="0" step="0.01" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Personal Loan">
                           <span>Guarantor name</span>
                           <input type="text" name="guarantor_name" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Personal Loan">
-                          <span>Guarantor contact number</span>
-                          <input type="text" name="guarantor_contact" />
+                          <span>Guarantor NIC</span>
+                          <input type="text" name="guarantor_nic" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Personal Loan">
+                          <span>Guarantor mobile</span>
+                          <input type="text" name="guarantor_mobile" />
+                        </div>
+                        <div class="form-field type-specific" data-type="Grow Personal Loan">
+                          <span>Guarantor relationship</span>
+                          <input type="text" name="guarantor_relationship" />
                         </div>
 
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Group name</span>
-                          <input type="text" name="group_name" required />
+                          <input type="text" name="group_name" data-required="true" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Number of members</span>
@@ -1044,35 +1054,24 @@
                             name="number_of_members"
                             min="1"
                             step="1"
-                            required
+                            data-required="true"
                           />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Team leader name</span>
-                          <input type="text" name="team_leader_name" required />
+                          <input type="text" name="team_leader_name" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Team leader NIC</span>
-                          <input type="text" name="team_leader_nic" required />
+                          <input type="text" name="team_leader_nic" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Team leader mobile</span>
-                          <input type="tel" name="team_leader_mobile" required />
-                        </div>
-                        <div class="form-field type-specific" data-type="Grow Team Loan">
-                          <span>Group savings amount (LKR)</span>
-                          <input
-                            type="number"
-                            name="group_savings_amount"
-                            inputmode="decimal"
-                            min="0"
-                            step="0.01"
-                            required
-                          />
+                          <input type="tel" name="team_leader_mobile" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Group business activity</span>
-                          <input type="text" name="group_business_activity" required />
+                          <input type="text" name="group_business_activity" />
                         </div>
                         <div class="form-field type-specific" data-type="Grow Team Loan">
                           <span>Meeting location / time</span>
@@ -1108,8 +1107,8 @@
                         <button type="button" id="next-step" class="primary">Next</button>
                       </div>
                       <div class="footer-actions">
-                        <button type="button" id="save-draft" class="ghost">Save draft</button>
-                        <button type="button" id="submit-application" class="primary">Submit application</button>
+                        <button type="button" id="save-draft" class="ghost">Save as Draft</button>
+                        <button type="button" id="submit-application" class="primary">Submit Application</button>
                       </div>
                     </div>
                   </form>
@@ -1260,6 +1259,6 @@
     </div>
 
 
-    <script src="app.js"></script>
+    <script src="/app.js"></script>
   </body>
 </html>

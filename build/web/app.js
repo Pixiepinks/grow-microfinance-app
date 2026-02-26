@@ -499,7 +499,7 @@ const loanApplicationsRoutes = {
     description: 'View and manage all loan applications from one place.',
   },
 };
-const loanApplyWizardRoutePath = '/customer/loan-application-form';
+const loanApplyWizardRoutePath = '/admin/loan-applications/apply';
 const staffRouteHomePath = staffRoutes[window.location.pathname] ? '/' : window.location.pathname || '/';
 const leadsRouteBase = '/admin/leads';
 const leadsRoutes = {
@@ -4506,6 +4506,7 @@ function renderLoanApplicationsRoute(path = loanApplicationsRouteHomePath) {
 }
 
 function handleLoanApplicationsRoute(path = loanApplicationsRouteHomePath, { pushState = false } = {}) {
+  if (path === loanApplyWizardRoutePath) return false;
   if (!path.startsWith(loanApplicationsRouteHomePath)) return false;
   const normalizedPath = path.replace(/\/+$/, '') || loanApplicationsRouteHomePath;
 
@@ -4521,7 +4522,7 @@ function openApplyLoanModal() {
   if (!applyLoanModal || !applyLoanModalIframe) return;
   applyLoanModal.classList.remove('hidden');
   applyLoanModal.setAttribute('aria-hidden', 'false');
-  applyLoanModalIframe.src = loanApplyWizardRoutePath;
+  applyLoanModalIframe.src = `${loanApplyWizardRoutePath}?embed=1`;
   document.body.classList.add('modal-open');
 }
 
@@ -5706,9 +5707,21 @@ function updateTypeSpecificVisibility() {
     field.classList.toggle('visible', shouldShow);
     const input = field.querySelector('input');
     if (input) {
-      input.required = shouldShow;
+      input.required = shouldShow && input.dataset.required === 'true';
     }
   });
+}
+
+function getStepFirstInvalidField(stepIndex) {
+  const step = formSteps[stepIndex];
+  if (!step) return null;
+  const requiredFields = step.querySelectorAll('input[required], select[required], textarea[required]');
+  for (const field of requiredFields) {
+    if (field.closest('.type-specific') && !field.closest('.type-specific').classList.contains('visible')) continue;
+    if (field.type === 'file' && !(field.files?.length)) return field;
+    if (field.type !== 'file' && !field.value) return field;
+  }
+  return null;
 }
 
 function renderDocumentUploads() {
@@ -5739,16 +5752,21 @@ function renderDocumentUploads() {
 }
 
 function validateStep(stepIndex) {
-  const step = formSteps[stepIndex];
-  if (!step) return true;
-  const requiredFields = step.querySelectorAll('input[required], select[required], textarea[required]');
-  for (const field of requiredFields) {
-    if (field.type === 'file' && !(field.files?.length)) {
-      field.reportValidity();
-      return false;
-    }
-    if (field.type !== 'file' && !field.value) {
-      field.reportValidity();
+  const invalidField = getStepFirstInvalidField(stepIndex);
+  if (invalidField) {
+    invalidField.reportValidity();
+    return false;
+  }
+  return true;
+}
+
+function validateWizardAndJump() {
+  for (let i = 0; i < formSteps.length - 1; i += 1) {
+    const invalidField = getStepFirstInvalidField(i);
+    if (invalidField) {
+      currentStep = i;
+      updateStepperUI();
+      invalidField.reportValidity();
       return false;
     }
   }
@@ -5762,8 +5780,8 @@ function buildApplicationPayload() {
 
   const applicantDetails = {
     full_name: values.full_name || cachedProfile?.name || '',
-    nic: values.nic || '',
-    mobile: values.mobile || cachedProfile?.mobile || cachedProfile?.phone || '',
+    nic_number: values.nic_number || '',
+    mobile_number: values.mobile_number || cachedProfile?.mobile || cachedProfile?.phone || '',
     email: values.email || cachedProfile?.email || '',
     address_line1: values.address_line1 || '',
     address_line2: values.address_line2 || '',
@@ -5785,7 +5803,7 @@ function buildApplicationPayload() {
 
   const typeSpecific = {};
   const payload = {
-    loan_type: selectedLoanType,
+    loan_type: mapLoanTypeToApi(selectedLoanType),
     loan_purpose: values.loan_purpose || '',
     loan_details: loanDetails,
     applicant_details: applicantDetails,
@@ -5793,50 +5811,46 @@ function buildApplicationPayload() {
   };
   switch (selectedLoanType) {
     case 'Grow Online Business Loan':
-      typeSpecific.store_url = values.store_url || '';
-      typeSpecific.store_platform = values.store_platform || '';
+      typeSpecific.online_store_name = values.online_store_name || '';
+      typeSpecific.online_store_link = values.online_store_link || '';
+      typeSpecific.platform = values.platform || '';
+      typeSpecific.average_monthly_revenue_last_3_months = Number(values.average_monthly_revenue_last_3_months) || 0;
+      typeSpecific.main_product_category = values.main_product_category || '';
+      typeSpecific.store_platform = 'WEB';
       break;
     case 'Grow Business Loan':
       typeSpecific.business_name = values.business_name || '';
       typeSpecific.business_registration = values.business_registration || '';
+      typeSpecific.business_reg_number = values.business_registration || '';
       typeSpecific.business_address = values.business_address || '';
       typeSpecific.business_type = values.business_type || '';
       typeSpecific.monthly_sales = Number(values.monthly_sales) || 0;
+      typeSpecific.store_platform = 'WEB';
       break;
     case 'Grow Personal Loan':
-      typeSpecific.employment_status = values.employment_status || '';
       typeSpecific.employment_type = values.employment_type || '';
       typeSpecific.employer_name = values.employer_name || '';
-      typeSpecific.net_monthly_salary = Number(values.net_monthly_salary) || 0;
+      typeSpecific.net_monthly_salary = Number(values.net_monthly_salary || values.monthly_income) || 0;
       typeSpecific.guarantor_name = values.guarantor_name || '';
-      typeSpecific.guarantor_contact = values.guarantor_contact || '';
+      typeSpecific.guarantor_nic = values.guarantor_nic || values.nic_number || '';
+      typeSpecific.guarantor_mobile = values.guarantor_mobile || '';
+      typeSpecific.guarantor_relationship = values.guarantor_relationship || '';
+      typeSpecific.store_platform = 'WEB';
       break;
     case 'Grow Team Loan':
-      typeSpecific.group_name = values.group_name || values.team_name || '';
-      typeSpecific.number_of_members =
-        Number(values.number_of_members ?? values.member_count) || 0;
-      typeSpecific.team_leader_name = values.team_leader_name || '';
-      typeSpecific.team_leader_nic = values.team_leader_nic || '';
-      typeSpecific.team_leader_mobile = values.team_leader_mobile || '';
-      typeSpecific.group_savings_amount = Number(values.group_savings_amount) || 0;
-      typeSpecific.group_business_activity = values.group_business_activity || '';
-      typeSpecific.meeting_location = values.meeting_location || '';
-      payload.group_name = typeSpecific.group_name;
-      payload.number_of_members = typeSpecific.number_of_members;
-      payload.team_leader_name = typeSpecific.team_leader_name;
-      payload.team_leader_nic = typeSpecific.team_leader_nic;
-      payload.team_leader_mobile = typeSpecific.team_leader_mobile;
-      payload.group_savings_amount = typeSpecific.group_savings_amount;
-      payload.group_business_activity = typeSpecific.group_business_activity;
-      payload.meeting_location = typeSpecific.meeting_location;
-      payload.team_name = values.team_name || typeSpecific.group_name;
-      payload.member_count = values.member_count || typeSpecific.number_of_members;
+      typeSpecific.group_name = values.group_name || '';
+      typeSpecific.number_of_members = Number(values.number_of_members) || 0;
+      typeSpecific.team_leader_name = values.full_name || '';
+      typeSpecific.team_leader_nic = values.nic_number || '';
+      typeSpecific.team_leader_mobile = values.mobile_number || '';
+      typeSpecific.group_business_activity = values.meeting_location || '';
+      typeSpecific.store_platform = 'WEB';
       break;
     default:
       break;
   }
 
-  return payload;
+  return { ...payload, ...applicantDetails, ...loanDetails, ...typeSpecific };
 }
 
 function hasValue(value) {
@@ -6043,8 +6057,8 @@ function updateReviewSummary() {
     ['Applied amount', formatCurrency(data.loan_details.applied_amount)],
     ['Tenure', `${data.loan_details.tenure_months} months`],
     ['Full name', data.applicant_details.full_name],
-    ['NIC', data.applicant_details.nic],
-    ['Mobile', data.applicant_details.mobile],
+    ['NIC', data.applicant_details.nic_number],
+    ['Mobile', data.applicant_details.mobile_number],
     ['Email', data.applicant_details.email || '—'],
     [
       'Address',
@@ -6071,9 +6085,7 @@ function updateReviewSummary() {
       ['Team leader name', data.type_specific.team_leader_name || '—'],
       ['Team leader NIC', data.type_specific.team_leader_nic || '—'],
       ['Team leader mobile', data.type_specific.team_leader_mobile || '—'],
-      ['Group savings amount', formatCurrency(data.type_specific.group_savings_amount)],
-      ['Group business activity', data.type_specific.group_business_activity || '—'],
-      ['Meeting location', data.type_specific.meeting_location || '—']
+      ['Group business activity', data.type_specific.group_business_activity || '—']
     );
   }
 
@@ -6096,6 +6108,7 @@ function updateReviewSummary() {
 
 async function saveDraft(showMessage = true) {
   const payload = normalizeApplicationPayload(buildApplicationPayload());
+  payload.status = 'DRAFT';
   try {
     setInlineAlert(applicationFormMessage, 'Saving draft...', 'success');
     const endpointPath = currentDraftId
@@ -6162,8 +6175,16 @@ async function submitApplication() {
       submitApplicationBtn.textContent = 'Submitting...';
     }
 
-    if (!validateStep(currentStep)) return;
-    await saveDraft(false);
+    if (!validateWizardAndJump()) return;
+    const payload = normalizeApplicationPayload(buildApplicationPayload());
+    payload.status = 'SUBMITTED';
+    setInlineAlert(applicationFormMessage, 'Saving application...', 'success');
+    const endpointPath = currentDraftId
+      ? `${endpoint('loanApplications')}/${currentDraftId}`
+      : endpoint('loanApplications');
+    const method = currentDraftId ? 'PUT' : 'POST';
+    const app = await api(endpointPath, { method, body: payload });
+    currentDraftId = resolveApplicationId(app) ?? currentDraftId;
 
     const requiredDocs = documentsByLoanType[selectedLoanType] || [];
     const missingDocs = requiredDocs.filter((doc) => !selectedDocuments.has(doc));
@@ -6237,6 +6258,15 @@ async function bootstrap() {
   if (window.location.pathname === '/kyc') {
     showPublicKycPage();
     return;
+  }
+
+  const isApplyWizardRoute = window.location.pathname === loanApplyWizardRoutePath;
+  const isEmbedMode = new URLSearchParams(window.location.search).get('embed') === '1';
+  if (isApplyWizardRoute) {
+    if (isEmbedMode) document.body.classList.add('embed-loan-wizard-mode');
+    dashboards?.classList.remove('hidden');
+    customerPanel?.classList.remove('hidden');
+    applicationFormCard?.classList.remove('hidden');
   }
 
   renderLoanTypeOptions();
