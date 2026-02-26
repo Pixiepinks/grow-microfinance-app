@@ -1462,6 +1462,7 @@ async function apiRequest(path, { method = 'GET', body } = {}) {
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  console.log('[API] request', { url: `${apiConfig.baseUrl}${path}`, method, hasBody: body !== undefined });
   const response = await fetch(`${apiConfig.baseUrl}${path}`, { method, headers, body });
   const { data, raw } = await parseResponse(response.clone());
 
@@ -3365,6 +3366,7 @@ async function updateCustomerStatus(endpoint, trigger) {
 }
 
 async function saveCustomerKycProfile(customerId, trigger) {
+  console.log('[KYC] saveCustomerKycProfile called', { customerId, state: customerKycProfileState });
   if (!customerId) {
     showToast('Customer ID is missing.', 'error');
     return;
@@ -3415,6 +3417,7 @@ async function saveCustomerKycProfile(customerId, trigger) {
   };
 
   try {
+    showToast('Calling API... (debug)', 'info');
     await apiRequest(`/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -3721,81 +3724,25 @@ function renderCustomerDetailContent() {
 
   const saveKycProfileBtn = document.createElement('button');
   saveKycProfileBtn.type = 'button';
-  saveKycProfileBtn.id = 'save-kyc-btn';
   saveKycProfileBtn.className = 'primary';
   saveKycProfileBtn.textContent = 'Save KYC profile';
-  saveKycProfileBtn.addEventListener('click', async function (e) {
-    e.preventDefault();
+  saveKycProfileBtn.id = 'save-kyc-profile-btn';
 
-    const customerId = window.location.pathname.split('/').pop();
+  const existingSaveKycProfileBtn = document.getElementById('save-kyc-profile-btn');
+  if (existingSaveKycProfileBtn) existingSaveKycProfileBtn.remove();
 
-    const payload = {
-      date_of_birth: document.getElementById('dob').value || null,
-      civil_status: document.getElementById('civil_status').value || null,
-      household_size: parseInt(document.getElementById('household_size').value, 10) || 0,
-      dependents_count: parseInt(document.getElementById('dependents_count').value, 10) || 0,
-      customer_type: document.getElementById('customer_type').value || null,
-
-      permanent_address: {
-        line1: document.getElementById('perm_line1').value,
-        line2: document.getElementById('perm_line2').value,
-        city: document.getElementById('perm_city').value,
-        district: document.getElementById('perm_district').value,
-        province: document.getElementById('perm_province').value,
-        postal_code: document.getElementById('perm_postal').value,
-      },
-
-      current_address: {
-        line1: document.getElementById('curr_line1').value,
-        line2: document.getElementById('curr_line2').value,
-        city: document.getElementById('curr_city').value,
-        district: document.getElementById('curr_district').value,
-        province: document.getElementById('curr_province').value,
-        postal_code: document.getElementById('curr_postal').value,
-        since: document.getElementById('curr_since').value,
-      },
-
-      employment: {
-        employer_name: document.getElementById('employer_name').value,
-        employer_address: document.getElementById('employer_address').value,
-        occupation: document.getElementById('occupation').value,
-        monthly_income: parseInt(document.getElementById('monthly_income').value, 10) || 0,
-      },
-
-      business: {
-        business_name: document.getElementById('business_name').value,
-        business_address: document.getElementById('business_address').value,
-      },
-
-      guarantor: {
-        name: document.getElementById('guarantor_name').value,
-        relationship: document.getElementById('guarantor_relationship').value,
-        mobile: document.getElementById('guarantor_mobile').value,
-      },
-
-      consents: {
-        confirm_accuracy: document.getElementById('consent_confirm').checked,
-        authorize_verification: document.getElementById('consent_authorize').checked,
-      },
-    };
-
+  saveKycProfileBtn.addEventListener('click', async () => {
+    console.log('[KYC] Save button clicked', { customerId });
+    showToast('Saving KYC... (debug)', 'info');
     try {
-      const res = await fetch(`/api/customers/${customerId}/kyc-profile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        alert(`Error: ${err.error}`);
-        return;
+      if (customerId) await saveCustomerKycProfile(customerId, saveKycProfileBtn);
+      else {
+        console.warn('[KYC] Missing customerId in click handler');
+        showToast('Customer ID missing (debug).', 'error');
       }
-
-      alert('Extended KYC saved successfully.');
-    } catch (error) {
-      console.error(error);
-      alert('Failed to save KYC.');
+    } catch (e) {
+      console.error('[KYC] Click handler failed', e);
+      showToast(`Save failed (debug): ${e.message || e}`, 'error');
     }
   });
 
