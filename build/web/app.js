@@ -111,6 +111,11 @@ const adminApplicationsMessage = document.querySelector('#admin-applications-mes
 const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
+const loanAppRoutePlaceholder = document.querySelector('#loan-app-route-placeholder');
+const loanAppRouteTitle = document.querySelector('#loan-app-route-title');
+const loanAppRouteDescription = document.querySelector('#loan-app-route-description');
+const loanAppRouteBack = document.querySelector('#loan-app-route-back');
+const loanAppRouteGrid = document.querySelector('#loan-app-route-grid');
 const adminCustomersMessage = document.querySelector('#admin-customers-message');
 const adminCustomersTableBody = document.querySelector('#admin-customers-table-body');
 const adminCustomersTableWrapper = document.querySelector('#admin-customers-table-wrapper');
@@ -142,6 +147,10 @@ const customerRouteGrid = document.querySelector(
   '.admin-section[data-section="customers"] .subcard-grid'
 );
 const customerRouteContent = document.querySelector('#customer-route-content');
+const applyLoanModal = document.querySelector('#apply-loan-modal');
+const applyLoanModalClose = document.querySelector('#close-apply-loan-modal');
+const applyLoanModalIframe = document.querySelector('#apply-loan-modal-iframe');
+const applyLoanModalDialog = document.querySelector('#apply-loan-modal .app-modal-dialog');
 let customerRouteViews = document.querySelectorAll('[data-customer-view]');
 let customerDetailView;
 let customerDetailMessage;
@@ -483,6 +492,14 @@ const staffRoutes = {
 };
 
 const customerRouteHomePath = '/admin/customers';
+const loanApplicationsRouteHomePath = '/admin/loan-applications';
+const loanApplicationsRoutes = {
+  '/admin/loan-applications/all': {
+    title: 'All loan applications',
+    description: 'View and manage all loan applications from one place.',
+  },
+};
+const loanApplyWizardRoutePath = '/customer/loan-application-form';
 const staffRouteHomePath = staffRoutes[window.location.pathname] ? '/' : window.location.pathname || '/';
 const leadsRouteBase = '/admin/leads';
 const leadsRoutes = {
@@ -4463,6 +4480,59 @@ function navigateCustomerRoute(path) {
   renderCustomerRoute(routeConfig);
 }
 
+function clearLoanApplicationsRouteView() {
+  loanAppRouteGrid?.classList.remove('hidden');
+  loanAppRoutePlaceholder?.classList.add('hidden');
+  if (loanAppRouteTitle) loanAppRouteTitle.textContent = '';
+  if (loanAppRouteDescription) loanAppRouteDescription.textContent = '';
+}
+
+function renderLoanApplicationsRoute(path = loanApplicationsRouteHomePath) {
+  showAdminSection('loan-applications');
+  const route = loanApplicationsRoutes[path];
+  if (!route) {
+    clearLoanApplicationsRouteView();
+    return;
+  }
+
+  loanAppRouteGrid?.classList.add('hidden');
+  loanAppRoutePlaceholder?.classList.remove('hidden');
+  if (loanAppRouteTitle) loanAppRouteTitle.textContent = route.title;
+  if (loanAppRouteDescription) loanAppRouteDescription.textContent = route.description;
+
+  ensureAdminLoanApplicationsUI();
+  renderAdminLoanApplications();
+  loadAdminLoanApplicationsAll();
+}
+
+function handleLoanApplicationsRoute(path = loanApplicationsRouteHomePath, { pushState = false } = {}) {
+  if (!path.startsWith(loanApplicationsRouteHomePath)) return false;
+  const normalizedPath = path.replace(/\/+$/, '') || loanApplicationsRouteHomePath;
+
+  if (pushState && window.location.pathname !== normalizedPath) {
+    history.pushState({ loanApplicationRoute: normalizedPath }, '', normalizedPath);
+  }
+
+  renderLoanApplicationsRoute(normalizedPath);
+  return true;
+}
+
+function openApplyLoanModal() {
+  if (!applyLoanModal || !applyLoanModalIframe) return;
+  applyLoanModal.classList.remove('hidden');
+  applyLoanModal.setAttribute('aria-hidden', 'false');
+  applyLoanModalIframe.src = loanApplyWizardRoutePath;
+  document.body.classList.add('modal-open');
+}
+
+function closeApplyLoanModal() {
+  if (!applyLoanModal || !applyLoanModalIframe) return;
+  applyLoanModal.classList.add('hidden');
+  applyLoanModal.setAttribute('aria-hidden', 'true');
+  applyLoanModalIframe.src = 'about:blank';
+  document.body.classList.remove('modal-open');
+}
+
 function createDocumentTile({ title, description, buttonLabel, key, path }) {
   const card = document.createElement('div');
   card.className = 'subcard';
@@ -4921,11 +4991,7 @@ function showAdminSection(section = 'dashboard') {
     item.setAttribute('aria-selected', isActive ? 'true' : 'false');
   });
 
-  if (target === 'loan-applications') {
-    ensureAdminLoanApplicationsUI();
-    renderAdminLoanApplications();
-    loadAdminLoanApplicationsAll();
-  } else if (target === 'documents') {
+  if (target === 'documents') {
     loadAdminDocuments();
   } else if (target === 'leads') {
     ensureAdminLeadsUI();
@@ -6249,7 +6315,9 @@ adminMenuItems.forEach((item) => {
     const target = item.dataset.section || 'dashboard';
     if (target === 'documents') handleDocumentRoute(documentRouteBase, { pushState: true });
     else if (target === 'customers') handleCustomerRoute(customerRouteHomePath, { pushState: true });
-    else if (target === 'leads') handleLeadsRoute(leadsRouteBase, { pushState: true });
+    else if (target === 'loan-applications') {
+      handleLoanApplicationsRoute(loanApplicationsRouteHomePath, { pushState: true });
+    } else if (target === 'leads') handleLeadsRoute(leadsRouteBase, { pushState: true });
     else showAdminSection(target);
   });
 });
@@ -6276,6 +6344,22 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   const target = routeTarget.dataset.customerRoute;
   navigateCustomerRoute(target);
+});
+
+document.addEventListener('click', (event) => {
+  const routeTarget = event.target.closest('[data-loan-route]');
+  if (!routeTarget) return;
+  event.preventDefault();
+  const target = routeTarget.dataset.loanRoute;
+  handleLoanApplicationsRoute(target, { pushState: true });
+});
+
+document.addEventListener('click', (event) => {
+  const actionTarget = event.target.closest('[data-loan-action]');
+  if (!actionTarget) return;
+  event.preventDefault();
+  const action = actionTarget.dataset.loanAction;
+  if (action === 'open-apply-modal') openApplyLoanModal();
 });
 
 refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
@@ -6330,6 +6414,25 @@ customerRouteBack?.addEventListener('click', () => {
   clearCustomerRouteView();
 });
 
+loanAppRouteBack?.addEventListener('click', () => {
+  handleLoanApplicationsRoute(loanApplicationsRouteHomePath, { pushState: true });
+});
+
+applyLoanModalClose?.addEventListener('click', closeApplyLoanModal);
+applyLoanModal?.addEventListener('click', (event) => {
+  if (event.target.closest('[data-modal-close="true"]')) closeApplyLoanModal();
+});
+
+applyLoanModalDialog?.addEventListener('click', (event) => {
+  event.stopPropagation();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && applyLoanModal && !applyLoanModal.classList.contains('hidden')) {
+    closeApplyLoanModal();
+  }
+});
+
 leadsRouteBack?.addEventListener('click', () => {
   handleLeadsRoute(leadsRouteBase, { pushState: true });
 });
@@ -6350,11 +6453,13 @@ window.addEventListener('popstate', () => {
   hidePublicKycPage();
 
   if (customerRoutes[path] || path.startsWith(customerRouteHomePath)) handleCustomerRoute(path);
+  else if (path.startsWith(loanApplicationsRouteHomePath)) handleLoanApplicationsRoute(path);
   else if (staffRoutes[path]) renderStaffRoute(path);
   else if (handleLeadsRoute(path)) {
     // handled
   } else if (!handleDocumentRoute(path)) {
     clearCustomerRouteView();
+    clearLoanApplicationsRouteView();
     clearStaffRouteView();
   }
 });
@@ -6368,6 +6473,8 @@ if (window.location.pathname === '/lead') {
   window.location.pathname.startsWith(customerRouteHomePath)
 ) {
   handleCustomerRoute(window.location.pathname);
+} else if (window.location.pathname.startsWith(loanApplicationsRouteHomePath)) {
+  handleLoanApplicationsRoute(window.location.pathname);
 } else if (staffRoutes[window.location.pathname]) {
   renderStaffRoute(window.location.pathname);
 } else if (handleDocumentRoute(window.location.pathname)) {
