@@ -166,6 +166,15 @@ const customerDetailState = {
   documentsLoading: false,
   documentsError: null,
 };
+const customerDetailEditState = {
+  isEditing: false,
+  isSaving: false,
+  values: {
+    nic_number: '',
+    address: '',
+    business_type: '',
+  },
+};
 
 const customerKycProfileState = {
   dateOfBirth: '',
@@ -3445,6 +3454,13 @@ function resetCustomerDetailState() {
   customerDetailState.documents = [];
   customerDetailState.documentsLoading = false;
   customerDetailState.documentsError = null;
+  customerDetailEditState.isEditing = false;
+  customerDetailEditState.isSaving = false;
+  customerDetailEditState.values = {
+    nic_number: '',
+    address: '',
+    business_type: '',
+  };
   kycExtendedViewCollapsed = false;
   kycExtendedEditMode = false;
   customerKycProfile = null;
@@ -3452,6 +3468,89 @@ function resetCustomerDetailState() {
   if (customerDetailBody) customerDetailBody.innerHTML = '';
   setInlineAlert(customerDetailMessage, '');
   customerDetailLoading?.classList.add('hidden');
+}
+
+function normalizeEditableCustomerField(value) {
+  if (value === null || value === undefined) return '';
+  const normalized = String(value).trim();
+  if (!normalized || normalized === '—' || normalized.toLowerCase() === 'null') return '';
+  return normalized;
+}
+
+function getEditableCustomerValues(customer = {}) {
+  return {
+    nic_number: normalizeEditableCustomerField(
+      customer.nic_number || customer.nic || customer.nicNumber || customer.nic_no,
+    ),
+    address: normalizeEditableCustomerField(
+      customer.address || customer.address_line || customer.addressLine || customer.location,
+    ),
+    business_type: normalizeEditableCustomerField(
+      customer.business_type || customer.businessType || customer.segment,
+    ),
+  };
+}
+
+function beginCustomerDetailEdit() {
+  customerDetailEditState.isEditing = true;
+  customerDetailEditState.isSaving = false;
+  customerDetailEditState.values = getEditableCustomerValues(customerDetailState.customer || {});
+  renderCustomerDetailContent();
+}
+
+function cancelCustomerDetailEdit() {
+  customerDetailEditState.isEditing = false;
+  customerDetailEditState.isSaving = false;
+  customerDetailEditState.values = getEditableCustomerValues(customerDetailState.customer || {});
+  setInlineAlert(customerDetailMessage, '');
+  renderCustomerDetailContent();
+}
+
+function setCustomerDetailEditValue(key, value) {
+  if (!Object.prototype.hasOwnProperty.call(customerDetailEditState.values, key)) return;
+  customerDetailEditState.values[key] = value;
+}
+
+async function saveCustomerDetailEdits(customerId) {
+  if (!customerId || customerDetailEditState.isSaving) return;
+
+  const payload = {
+    nic_number: (customerDetailEditState.values.nic_number || '').trim(),
+    address: (customerDetailEditState.values.address || '').trim(),
+    business_type: (customerDetailEditState.values.business_type || '').trim(),
+  };
+
+  customerDetailEditState.isSaving = true;
+  setInlineAlert(customerDetailMessage, '');
+  renderCustomerDetailContent();
+
+  try {
+    const basePath = endpoint('customers', { id: customerId }) || '/customers';
+    const normalizedBase = basePath.replace(/\/+$/, '');
+    const path = normalizedBase.endsWith(`/${customerId}`)
+      ? normalizedBase
+      : `${normalizedBase}/${encodeURIComponent(customerId)}`;
+
+    try {
+      await api(path, { method: 'PATCH', body: payload });
+    } catch (error) {
+      if (error?.status === 404 || error?.status === 405) {
+        await api(path, { method: 'PUT', body: payload });
+      } else {
+        throw error;
+      }
+    }
+
+    customerDetailEditState.isEditing = false;
+    customerDetailEditState.isSaving = false;
+    showToast('Customer updated successfully.');
+    await loadCustomerDetail(customerId);
+  } catch (error) {
+    customerDetailEditState.isSaving = false;
+    const message = error?.message || 'Failed to update customer details. Please try again.';
+    setInlineAlert(customerDetailMessage, message, 'error');
+    renderCustomerDetailContent();
+  }
 }
 
 async function updateCustomerStatus(endpoint, trigger) {
@@ -3970,14 +4069,16 @@ function renderCustomerDetailContent() {
   const customerDocuments = customerDetailState.documents || [];
   const customerDocumentsLoading = customerDetailState.documentsLoading;
   const customerDocumentsError = customerDetailState.documentsError;
+  const isEditing = customerDetailEditState.isEditing;
+  const isSaving = customerDetailEditState.isSaving;
 
   const detailFields = [
     { label: 'Customer code', value: code },
     { label: 'Full name', value: name },
-    { label: 'NIC', value: nic },
+    { label: 'NIC', value: nic, key: 'nic_number' },
     { label: 'Mobile', value: mobile },
-    { label: 'Address', value: address },
-    { label: 'Business type', value: businessType },
+    { label: 'Address', value: address, key: 'address' },
+    { label: 'Business type', value: businessType, key: 'business_type' },
     { label: 'KYC status', value: renderCustomerStatusBadge(kycStatus) },
     { label: 'Eligibility status', value: renderCustomerStatusBadge(eligibilityStatus) },
   ];
@@ -4045,11 +4146,78 @@ function renderCustomerDetailContent() {
   ]);
 
   customerDetailBody.innerHTML = '';
+
+  const detailActions = document.createElement('div');
+  detailActions.className = 'action-row';
+
+  if (isEditing) {
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'primary';
+    saveBtn.textContent = isSaving ? 'Saving...' : 'Save';
+    saveBtn.disabled = isSaving;
+    saveBtn.addEventListener('click', () => {
+      if (customerId) saveCustomerDetailEdits(customerId);
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.disabled = isSaving;
+    cancelBtn.addEventListener('click', () => {
+      cancelCustomerDetailEdit();
+    });
+
+    detailActions.appendChild(saveBtn);
+    detailActions.appendChild(cancelBtn);
+  } else {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'secondary';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => {
+      beginCustomerDetailEdit();
+    });
+    detailActions.appendChild(editBtn);
+  }
+
+  customerDetailBody.appendChild(detailActions);
+
   const detailGrid = document.createElement('div');
   detailGrid.className = 'detail-grid';
 
-  detailFields.forEach(({ label, value }) => {
+  detailFields.forEach(({ label, value, key }) => {
     const isStatusField = label === 'KYC status' || label === 'Eligibility status';
+
+    if (isEditing && key && Object.prototype.hasOwnProperty.call(customerDetailEditState.values, key)) {
+      const row = document.createElement('div');
+      row.className = 'detail-row';
+
+      const labelNode = document.createElement('p');
+      labelNode.className = 'muted';
+      labelNode.textContent = label;
+
+      const fieldWrapper = document.createElement('div');
+      fieldWrapper.className = 'detail-value form-field';
+
+      const input = key === 'address' ? document.createElement('textarea') : document.createElement('input');
+      if (key !== 'address') input.type = 'text';
+      if (key === 'address') input.rows = 3;
+      input.value = customerDetailEditState.values[key] || '';
+      input.placeholder = `Enter ${label.toLowerCase()}`;
+      input.disabled = isSaving;
+      input.addEventListener('input', (event) => {
+        setCustomerDetailEditValue(key, event.target.value);
+      });
+
+      fieldWrapper.appendChild(input);
+      row.appendChild(labelNode);
+      row.appendChild(fieldWrapper);
+      detailGrid.appendChild(row);
+      return;
+    }
+
     detailGrid.appendChild(
       createCustomerDetailRow(label, value, {
         isHtml: isStatusField,
