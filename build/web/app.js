@@ -3659,7 +3659,19 @@ async function loadCustomerKycProfile(customerId) {
     });
 
     if (!response) return null;
-    return response?.data || response?.profile || response;
+
+    const payload = response?.data || response?.profile || response;
+    if (!payload || typeof payload !== 'object') return payload || null;
+
+    const extractedKyc = payload?.kyc_profile || payload?.data?.kyc_profile || null;
+    if (extractedKyc && typeof extractedKyc === 'object') {
+      return {
+        ...payload,
+        ...extractedKyc,
+      };
+    }
+
+    return payload;
   } catch (error) {
     if (/404/.test(error?.message || '')) return null;
     console.error('Failed to load customer KYC profile', error);
