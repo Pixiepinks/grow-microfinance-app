@@ -4488,9 +4488,20 @@ async function loadCustomerDetail(customerId) {
 
     const response = await api.get(path);
     const customer = response?.customer || response?.data || response;
-    customerDetailState.customer = customer;
     customerKycProfile = await loadCustomerKycProfile(normalizedId);
-    populateCustomerKycProfileFromCustomer(customerKycProfile || customer);
+
+    const extractedKyc =
+      customerKycProfile?.kyc_profile ||
+      customerKycProfile?.data?.kyc_profile ||
+      customerKycProfile ||
+      {};
+
+    customerDetailState.customer = {
+      ...customer,
+      ...extractedKyc,
+    };
+
+    populateCustomerKycProfileFromCustomer(customerDetailState.customer);
     await loadCustomerDocuments(normalizedId);
   } catch (error) {
     console.error('Failed to load customer detail', error);
