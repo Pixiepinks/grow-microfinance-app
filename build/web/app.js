@@ -3634,7 +3634,7 @@ async function saveCustomerKycProfile(customerId, trigger) {
   };
 
   try {
-    await apiRequest(`/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
+    await apiRequest(`/api/admin/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     });
@@ -3654,7 +3654,7 @@ async function loadCustomerKycProfile(customerId) {
   if (!customerId) return null;
 
   try {
-    const response = await apiRequest(`/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
+    const response = await apiRequest(`/api/admin/customers/${encodeURIComponent(customerId)}/kyc-profile`, {
       method: 'GET',
     });
 
