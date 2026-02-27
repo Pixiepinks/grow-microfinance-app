@@ -1930,9 +1930,10 @@ function buildDocumentUrl(filePath) {
   if (!filePath) return '#';
   if (/^https?:\/\//i.test(filePath) || filePath.startsWith('data:')) return filePath;
 
-  const base = getApiBaseUrl().replace(/\/+$/, '');
-  if (filePath.startsWith('/')) return `${base}${filePath}`;
-  return `${base}/${filePath}`;
+  const SUPABASE_URL = 'https://qhelviapplgqmtofucae.supabase.co';
+  const SUPABASE_BUCKET = 'grow-documents';
+  const normalizedPath = filePath.replace(/^\/+/, '');
+  return `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${normalizedPath}`;
 }
 
 function getApiBaseUrl() {
