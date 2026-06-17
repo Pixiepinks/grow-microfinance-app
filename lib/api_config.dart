@@ -11,7 +11,7 @@ class ApiConfig {
     'login': '/auth/login',
     'adminDashboard': '/admin/dashboard',
     'adminLoanApplications': '/admin/loan-applications',
-    'adminLoanApplicationsAll': '/admin/loan-applications/all',
+    'adminLoanApplicationsAll': '/loan-applications',
     'adminLoanApplicationApprove': '/loan-applications/{id}/approve',
     'loanApplicationDisburse': '/loan-applications/{id}/disburse',
     'staffTodayCollections': '/staff/today-collections',
