@@ -23,7 +23,8 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Map<String, dynamic>? _data;
-  List<LoanApplication> _pendingFinalApproval = [];
+  List<LoanApplication> _applications = [];
+  String? _selectedStatus;
   bool _loading = true;
   bool _loadingApplications = true;
   String? _error;
@@ -57,8 +58,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _applicationsError = null;
     });
     try {
-      final apps = await widget.loanApplicationService.listAdminApplications();
-      setState(() => _pendingFinalApproval = apps);
+      final apps = await widget.loanApplicationService.listAdminApplications(
+        status: _selectedStatus,
+      );
+      setState(() => _applications = apps);
     } catch (e) {
       setState(() => _applicationsError = e.toString());
     } finally {
@@ -184,64 +187,97 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ],
                 )
-              : _pendingFinalApproval.isEmpty
-                  ? ListView(
-                      children: const [
-                        Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(
-                              child: Text(
-                                  'No applications waiting for final approval.')),
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: _applications.isEmpty ? 2 : _applications.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == 0) return _buildStatusFilter();
+
+                    if (_applications.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: Text('No loan applications found.')),
+                      );
+                    }
+
+                    final app = _applications[index - 1];
+                    return Card(
+                      child: ListTile(
+                        title: Text(
+                          app.applicationNumber.isNotEmpty
+                              ? 'Application #${app.applicationNumber}'
+                              : 'Application ${app.id}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                      ],
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: _pendingFinalApproval.length,
-                      itemBuilder: (context, index) {
-                        final app = _pendingFinalApproval[index];
-                        return Card(
-                          child: ListTile(
-                            title: Text(
-                              app.applicationNumber.isNotEmpty
-                                  ? 'Application #${app.applicationNumber}'
-                                  : 'Application ${app.id}',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(app.loanType),
+                            Text(
+                              'Amount: ${app.appliedAmount.toStringAsFixed(2)}',
                             ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(app.loanType),
-                                Text(
-                                    'Amount: ${app.appliedAmount.toStringAsFixed(2)}'),
-                                Text('Tenure: ${app.tenureMonths} months'),
-                                Text('Created: ${app.formattedDate}'),
-                              ],
-                            ),
-                            trailing: Chip(label: Text(app.status)),
-                            onTap: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => LoanApplicationDetailScreen(
-                                    applicationId: app.id,
-                                    service: widget.loanApplicationService,
-                                    initialApplication: app,
-                                    actionButtonsBuilder:
-                                        (application, refreshApplication) =>
-                                            _buildAdminActions(
-                                      application,
-                                      refreshApplication,
-                                    ),
-                                  ),
+                            Text('Tenure: ${app.tenureMonths} months'),
+                            Text('Created: ${app.formattedDate}'),
+                          ],
+                        ),
+                        trailing: Chip(label: Text(app.status)),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => LoanApplicationDetailScreen(
+                                applicationId: app.id,
+                                service: widget.loanApplicationService,
+                                initialApplication: app,
+                                actionButtonsBuilder:
+                                    (application, refreshApplication) =>
+                                        _buildAdminActions(
+                                  application,
+                                  refreshApplication,
                                 ),
-                              );
-                              _loadApplications();
-                            },
-                          ),
-                        );
-                      },
-                    ),
+                              ),
+                            ),
+                          );
+                          _loadApplications();
+                        },
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+
+  Widget _buildStatusFilter() {
+    const statuses = <String?>[
+      null,
+      'SUBMITTED',
+      'STAFF_APPROVED',
+      'APPROVED',
+      'REJECTED',
+      'DISBURSED',
+      'DRAFT',
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String?>(
+        value: _selectedStatus,
+        decoration: const InputDecoration(
+          labelText: 'Status',
+          border: OutlineInputBorder(),
+        ),
+        items: statuses
+            .map(
+              (status) => DropdownMenuItem<String?>(
+                value: status,
+                child: Text(status ?? 'All'),
+              ),
+            )
+            .toList(),
+        onChanged: (status) {
+          setState(() => _selectedStatus = status);
+          _loadApplications();
+        },
+      ),
     );
   }
 

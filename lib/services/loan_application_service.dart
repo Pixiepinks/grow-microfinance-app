@@ -98,13 +98,8 @@ class LoanApplicationService {
         .toList();
   }
 
-  Future<List<LoanApplication>> listAdminApplications() async {
-    final list = await _client.getJsonList(
-      ApiConfig.endpoint('adminLoanApplicationsAll'),
-    );
-    return list
-        .map((e) => LoanApplication.fromJson(e as Map<String, dynamic>))
-        .toList();
+  Future<List<LoanApplication>> listAdminApplications({String? status}) async {
+    return listApplications(status: status);
   }
 
   Future<List<LoanApplication>> listStaffSubmittedApplications() async {

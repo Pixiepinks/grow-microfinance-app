@@ -17,22 +17,30 @@ class ApiClient {
     _token = token;
   }
 
-  Future<Map<String, dynamic>> getJson(String path) async {
+  Future<dynamic> getJsonData(String path) async {
     final response = await _client.get(
       Uri.parse('$baseUrl$path'),
       headers: _headers(),
     );
     _throwIfNeeded(response);
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return jsonDecode(response.body);
+  }
+
+  Future<Map<String, dynamic>> getJson(String path) async {
+    final decoded = await getJsonData(path);
+    return decoded as Map<String, dynamic>;
   }
 
   Future<List<dynamic>> getJsonList(String path) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(),
-    );
-    _throwIfNeeded(response);
-    return jsonDecode(response.body) as List<dynamic>;
+    final decoded = await getJsonData(path);
+    if (decoded is List<dynamic>) return decoded;
+    if (decoded is Map<String, dynamic>) {
+      for (final key in ['applications', 'data', 'items', 'results']) {
+        final value = decoded[key];
+        if (value is List<dynamic>) return value;
+      }
+    }
+    return <dynamic>[];
   }
 
   Future<Map<String, dynamic>> postJson(
