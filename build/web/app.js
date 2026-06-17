@@ -4,7 +4,7 @@ const defaultApiConfig = {
     login: '/auth/login',
     adminDashboard: '/admin/dashboard',
     adminLoanApplications: '/admin/loan-applications',
-    adminLoanApplicationsAll: '/admin/loan-applications/all',
+    adminLoanApplicationsAll: '/loan-applications',
     adminLoanApplicationApprove: '/loan-applications/{id}/approve',
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
@@ -2193,6 +2193,50 @@ function renderAdminLoanApplications() {
   renderAdminLoanApplicationsTable(loanApplications);
 }
 
+function buildLoanApplicationsListPath(statusFilter = 'ALL') {
+  // The admin list must target the backend JSON list endpoint directly. Do not
+  // derive this from the current browser route because /admin/loan-applications/all
+  // is a frontend document route.
+  let path = endpoint('adminLoanApplicationsAll') || endpoint('loanApplications') || '/loan-applications';
+  path = path.replace(/([?&])status=[^&]*/gi, '').replace(/[?&]$/, '');
+
+  if (statusFilter && statusFilter !== 'ALL') {
+    const separator = path.includes('?') ? '&' : '?';
+    path += `${separator}status=${encodeURIComponent(statusFilter)}`;
+  }
+
+  return path;
+}
+
+async function fetchLoanApplicationsList(path) {
+  const response = await fetch(`${apiConfig.baseUrl}${path}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      ...(getSession().token ? { Authorization: `Bearer ${getSession().token}` } : {}),
+    },
+  });
+
+  const contentType = response.headers?.get?.('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    console.error('Loan applications list API returned non-JSON response', {
+      url: response.url || `${apiConfig.baseUrl}${path}`,
+      status: response.status,
+    });
+    throw new Error('Loan applications API returned an unexpected response.');
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    const message = buildErrorMessage({ status: response.status, data, raw: '' });
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
 async function loadAdminLoanApplicationsAll(force = false) {
   ensureAdminLoanApplicationsUI();
   if (!adminLoanApplicationsSection || adminLoanApplicationsState.loanApplicationsLoading) return;
@@ -2211,17 +2255,8 @@ async function loadAdminLoanApplicationsAll(force = false) {
 
   try {
     const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
-    // Some deployments include a default status filter in the endpoint config; strip it so "All"
-    // truly fetches every application unless a user-selected filter is applied.
-    let path = endpoint('adminLoanApplicationsAll') || endpoint('adminLoanApplications') || endpoint('loanApplications') || '/api/loan-applications';
-    path = path.replace(/([?&])status=[^&]*/gi, '').replace(/[?&]$/, '');
-
-    if (statusFilter && statusFilter !== 'ALL') {
-      const separator = path.includes('?') ? '&' : '?';
-      path += `${separator}status=${encodeURIComponent(statusFilter)}`;
-    }
-
-    const response = await api(path);
+    const path = buildLoanApplicationsListPath(statusFilter);
+    const response = await fetchLoanApplicationsList(path);
     const normalizedApplications = normalizeApplicationsResponse(response);
     const sortedApplications = [...normalizedApplications].sort((a, b) => {
       const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
