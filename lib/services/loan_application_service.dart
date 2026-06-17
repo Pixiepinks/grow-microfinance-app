@@ -165,7 +165,10 @@ class LoanApplicationService {
     await _client.postJson(
       ApiConfig.endpoint('loanApplicationReject', params: {'id': id}),
       body: {
-        if (reason != null && reason.isNotEmpty) 'reason': reason,
+        if (reason != null && reason.isNotEmpty) ...{
+          'reason': reason,
+          'reject_reason': reason,
+        },
       },
     );
   }

@@ -2210,7 +2210,7 @@ async function loadAdminLoanApplicationsAll(force = false) {
     const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
     // Some deployments include a default status filter in the endpoint config; strip it so "All"
     // truly fetches every application unless a user-selected filter is applied.
-    let path = endpoint('adminLoanApplications') || endpoint('loanApplications') || '/api/loan-applications';
+    let path = endpoint('adminLoanApplicationsAll') || endpoint('adminLoanApplications') || endpoint('loanApplications') || '/api/loan-applications';
     path = path.replace(/([?&])status=[^&]*/gi, '').replace(/[?&]$/, '');
 
     const separator = path.includes('?') ? '&' : '?';
@@ -5726,7 +5726,10 @@ async function openApplicationDetail(appSummary, role) {
   try {
     const app = appId ? await api(`${endpoint('loanApplications')}/${appId}`) : appSummary;
     renderApplicationDetails(app);
-    const status = (app.status || '').toUpperCase();
+    applicationModalStatus.textContent = app.status || appSummary.status || '';
+    const availableActions = Array.isArray(app?.available_actions ?? app?.availableActions)
+      ? (app.available_actions ?? app.availableActions).map((action) => String(action).toLowerCase())
+      : [];
     applicationModalActions.innerHTML = '';
 
     const addAction = (label, handler, variant = 'primary') => {
@@ -5769,12 +5772,14 @@ async function openApplicationDetail(appSummary, role) {
           body: { approved_amount: approvedAmount, approved_tenure: approvedTenure },
         });
         setInlineAlert(applicationModalMessage, 'Application approved.', 'success');
-        closeApplicationDetail();
+        if (appId) await openApplicationDetail({ ...appSummary, id: appId }, role);
         if (role === 'staff') await loadStaff();
-        if (role === 'admin') await loadAdmin();
+        if (role === 'admin') {
+          await Promise.all([loadAdmin(), loadAdminLoanApplicationsAll(true)]);
+        }
       } catch (err) {
-        console.error(err);
-        setInlineAlert(applicationModalMessage, err.message || 'Failed to approve', 'error');
+        console.error('Failed to approve loan application', err);
+        setInlineAlert(applicationModalMessage, err.message || 'Failed to approve application. Please try again.', 'error');
       }
     };
 
@@ -5784,24 +5789,45 @@ async function openApplicationDetail(appSummary, role) {
         setInlineAlert(applicationModalMessage, 'Submitting rejection...', 'success');
         await api(endpoint('loanApplicationReject', { id: appId }), {
           method: 'POST',
-          body: reason ? { reason } : {},
+          body: reason ? { reason, reject_reason: reason } : {},
         });
         setInlineAlert(applicationModalMessage, 'Application rejected.', 'success');
+        if (appId) await openApplicationDetail({ ...appSummary, id: appId }, role);
         if (role === 'staff') await loadStaff();
-        if (role === 'admin') await loadAdmin();
+        if (role === 'admin') {
+          await Promise.all([loadAdmin(), loadAdminLoanApplicationsAll(true)]);
+        }
       } catch (err) {
-        console.error(err);
-        setInlineAlert(applicationModalMessage, err.message || 'Failed to reject', 'error');
+        console.error('Failed to reject loan application', err);
+        setInlineAlert(applicationModalMessage, err.message || 'Failed to reject application. Please try again.', 'error');
       }
     };
 
-    if (role === 'staff' && status === 'SUBMITTED') {
+    const handleDisburse = async () => {
+      try {
+        setInlineAlert(applicationModalMessage, 'Submitting disbursement...', 'success');
+        await api(endpoint('loanApplicationDisburse', { id: appId }), { method: 'POST' });
+        setInlineAlert(applicationModalMessage, 'Loan disbursed.', 'success');
+        if (appId) await openApplicationDetail({ ...appSummary, id: appId }, role);
+        if (role === 'admin') {
+          await Promise.all([loadAdmin(), loadAdminLoanApplicationsAll(true)]);
+        }
+      } catch (err) {
+        console.error('Failed to disburse loan application', err);
+        setInlineAlert(applicationModalMessage, err.message || 'Failed to disburse loan. Please try again.', 'error');
+      }
+    };
+
+    if (availableActions.includes('reject')) {
       addAction('Reject', handleReject, 'ghost');
+    }
+    if (availableActions.includes('approve')) {
       addAction('Approve', handleApprove, 'primary');
-    } else if (role === 'admin' && status === 'STAFF_APPROVED') {
-      addAction('Reject', handleReject, 'ghost');
-      addAction('Approve', handleApprove, 'primary');
-    } else {
+    }
+    if (availableActions.includes('disburse')) {
+      addAction('Disburse Loan', handleDisburse, 'primary');
+    }
+    if (!availableActions.length) {
       const note = document.createElement('p');
       note.className = 'muted';
       note.textContent = 'No actions available for this application.';
