@@ -9,12 +9,17 @@ class LoanApplicationDetailScreen extends StatefulWidget {
     super.key,
     required this.applicationId,
     required this.service,
+    this.initialApplication,
     this.actionButtonsBuilder,
   });
 
   final String applicationId;
   final LoanApplicationService service;
-  final List<Widget> Function(LoanApplication app)? actionButtonsBuilder;
+  final LoanApplication? initialApplication;
+  final List<Widget> Function(
+    LoanApplication app,
+    Future<void> Function() refreshApplication,
+  )? actionButtonsBuilder;
 
   @override
   State<LoanApplicationDetailScreen> createState() =>
@@ -30,6 +35,7 @@ class _LoanApplicationDetailScreenState
   @override
   void initState() {
     super.initState();
+    _application = widget.initialApplication;
     _load();
   }
 
@@ -40,7 +46,12 @@ class _LoanApplicationDetailScreenState
     });
     try {
       final app = await widget.service.getById(widget.applicationId);
-      setState(() => _application = app);
+      final previousActions = _application?.availableActions ?? const <String>[];
+      setState(
+        () => _application = app.availableActions.isEmpty && previousActions.isNotEmpty
+            ? app.copyWith(availableActions: previousActions)
+            : app,
+      );
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -116,7 +127,7 @@ class _LoanApplicationDetailScreenState
                                         .titleMedium,
                                   ),
                                   const SizedBox(height: 8),
-                                  ...widget.actionButtonsBuilder!(app),
+                                  ...widget.actionButtonsBuilder!(app, _load),
                                 ],
                               ),
                             ),

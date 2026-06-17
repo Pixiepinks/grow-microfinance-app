@@ -57,8 +57,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _applicationsError = null;
     });
     try {
-      final apps = await widget.loanApplicationService
-          .listApplications(status: 'STAFF_APPROVED');
+      final apps = await widget.loanApplicationService.listAdminApplications();
       setState(() => _pendingFinalApproval = apps);
     } catch (e) {
       setState(() => _applicationsError = e.toString());
@@ -227,9 +226,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   builder: (_) => LoanApplicationDetailScreen(
                                     applicationId: app.id,
                                     service: widget.loanApplicationService,
+                                    initialApplication: app,
                                     actionButtonsBuilder:
-                                        (application) => _buildAdminActions(
+                                        (application, refreshApplication) =>
+                                            _buildAdminActions(
                                       application,
+                                      refreshApplication,
                                     ),
                                   ),
                                 ),
@@ -243,64 +245,104 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  List<Widget> _buildAdminActions(LoanApplication app) {
+  List<Widget> _buildAdminActions(
+    LoanApplication app,
+    Future<void> Function() refreshApplication,
+  ) {
+    final actions = app.availableActions.toSet();
+    final buttons = <Widget>[];
+
+    if (actions.contains('approve')) {
+      buttons.add(
+        Expanded(
+          child: FilledButton(
+            onPressed: () => _runApplicationAction(
+              action: () => widget.loanApplicationService.finalApprove(app.id),
+              refreshApplication: refreshApplication,
+              successMessage: 'Application approved',
+              errorMessage: 'Failed to approve application',
+            ),
+            child: const Text('Approve Application'),
+          ),
+        ),
+      );
+    }
+
+    if (actions.contains('reject')) {
+      buttons.add(
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () async {
+              final reason = await _promptReason();
+              if (!mounted || reason == null) return;
+              await _runApplicationAction(
+                action: () => widget.loanApplicationService.reject(
+                  app.id,
+                  reason: reason,
+                ),
+                refreshApplication: refreshApplication,
+                successMessage: 'Application rejected',
+                errorMessage: 'Failed to reject application',
+              );
+            },
+            child: const Text('Reject Application'),
+          ),
+        ),
+      );
+    }
+
+    if (actions.contains('disburse')) {
+      buttons.add(
+        Expanded(
+          child: FilledButton(
+            onPressed: () => _runApplicationAction(
+              action: () => widget.loanApplicationService.disburse(app.id),
+              refreshApplication: refreshApplication,
+              successMessage: 'Loan disbursed',
+              errorMessage: 'Failed to disburse loan',
+            ),
+            child: const Text('Disburse Loan'),
+          ),
+        ),
+      );
+    }
+
+    if (buttons.isEmpty) {
+      return const [Text('No actions available for this application.')];
+    }
+
     return [
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Expanded(
-            child: FilledButton(
-              onPressed: () async {
-                try {
-                  await widget.loanApplicationService.finalApprove(app.id);
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Application approved')), 
-                    );
-                    _loadApplications();
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to approve: $e')),
-                    );
-                  }
-                }
-              },
-              child: const Text('Approve'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () async {
-                final reason = await _promptReason();
-                if (!mounted || reason == null) return;
-                try {
-                  await widget.loanApplicationService
-                      .reject(app.id, reason: reason);
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Application rejected')), 
-                    );
-                    _loadApplications();
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to reject: $e')),
-                    );
-                  }
-                }
-              },
-              child: const Text('Reject'),
-            ),
-          ),
+          for (var i = 0; i < buttons.length; i++) ...[
+            if (i > 0) const SizedBox(width: 12),
+            buttons[i],
+          ],
         ],
       ),
     ];
+  }
+
+  Future<void> _runApplicationAction({
+    required Future<void> Function() action,
+    required Future<void> Function() refreshApplication,
+    required String successMessage,
+    required String errorMessage,
+  }) async {
+    try {
+      await action();
+      await Future.wait([refreshApplication(), _loadApplications()]);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(successMessage)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$errorMessage: $e')),
+      );
+    }
   }
 
   Future<String?> _promptReason() async {
