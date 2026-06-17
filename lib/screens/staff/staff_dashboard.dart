@@ -426,8 +426,10 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                                     applicationId: app.id,
                                     service: widget.loanApplicationService,
                                     actionButtonsBuilder:
-                                        (application) => _buildStaffActions(
+                                        (application, refreshApplication) =>
+                                            _buildStaffActions(
                                       application,
+                                      refreshApplication,
                                     ),
                                   ),
                                 ),
@@ -441,7 +443,10 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     );
   }
 
-  List<Widget> _buildStaffActions(LoanApplication app) {
+  List<Widget> _buildStaffActions(
+    LoanApplication app,
+    Future<void> Function() refreshApplication,
+  ) {
     return [
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,

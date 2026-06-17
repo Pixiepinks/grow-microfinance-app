@@ -14,6 +14,7 @@ class LoanApplication {
     required this.loanDetails,
     required this.typeSpecific,
     required this.documents,
+    required this.availableActions,
   });
 
   final String id;
@@ -28,6 +29,25 @@ class LoanApplication {
   final Map<String, dynamic> loanDetails;
   final Map<String, dynamic> typeSpecific;
   final List<Map<String, dynamic>> documents;
+  final List<String> availableActions;
+
+  LoanApplication copyWith({List<String>? availableActions}) {
+    return LoanApplication(
+      id: id,
+      applicationNumber: applicationNumber,
+      loanType: loanType,
+      status: status,
+      appliedAmount: appliedAmount,
+      tenureMonths: tenureMonths,
+      loanPurpose: loanPurpose,
+      createdAt: createdAt,
+      applicantDetails: applicantDetails,
+      loanDetails: loanDetails,
+      typeSpecific: typeSpecific,
+      documents: documents,
+      availableActions: availableActions ?? this.availableActions,
+    );
+  }
 
   factory LoanApplication.fromJson(Map<String, dynamic> json) {
     return LoanApplication(
@@ -48,6 +68,12 @@ class LoanApplication {
       documents: (json['documents'] as List<dynamic>? ?? const [])
           .map((e) => e as Map<String, dynamic>)
           .toList(),
+      availableActions:
+          (json['available_actions'] ?? json['availableActions'] ?? const []) is List
+              ? ((json['available_actions'] ?? json['availableActions']) as List)
+                  .map((action) => action.toString().toLowerCase())
+                  .toList()
+              : const [],
     );
   }
 

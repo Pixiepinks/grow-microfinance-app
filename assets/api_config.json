@@ -10,6 +10,13 @@
     "customerLoanPayments": "/customer/loans/{id}/payments",
     "loanApplications": "/loan-applications",
     "adminCustomers": "/api/admin/customers",
-    "customers": "/api/admin/customers"
+    "customers": "/api/admin/customers",
+    "adminLoanApplications": "/admin/loan-applications",
+    "adminLoanApplicationsAll": "/admin/loan-applications/all",
+    "adminLoanApplicationApprove": "/loan-applications/{id}/approve",
+    "loanApplicationReject": "/loan-applications/{id}/reject",
+    "loanApplicationDisburse": "/loan-applications/{id}/disburse",
+    "staffLoanApplications": "/loan-applications",
+    "staffLoanApplicationApprove": "/loan-applications/{id}/staff-approve"
   }
 }
