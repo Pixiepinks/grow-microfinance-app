@@ -3,7 +3,8 @@ const defaultApiConfig = {
   endpoints: {
     login: '/auth/login',
     adminDashboard: '/admin/dashboard',
-    adminLoanApplications: '/api/loan-applications',
+    adminLoanApplications: '/admin/loan-applications',
+    adminLoanApplicationsAll: '/admin/loan-applications/all',
     adminLoanApplicationApprove: '/loan-applications/{id}/approve',
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
@@ -15,7 +16,7 @@ const defaultApiConfig = {
     customerProfile: '/customer/me',
     customerLoans: '/customer/loans',
     customerLoanPayments: '/customer/loans/{id}/payments',
-    loanApplications: '/api/loan-applications',
+    loanApplications: '/loan-applications',
     adminCustomers: '/customers',
     customers: '/customers',
     leads: '/leads',
@@ -1471,6 +1472,8 @@ function normalizeApplicationsResponse(response) {
     response?.data?.content,
     response?.results,
     response?.data?.results,
+    resolveItemsList(response, 'applications'),
+    resolveItemsList(response?.data, 'applications'),
   ];
 
   for (const candidate of candidates) {
@@ -2213,12 +2216,12 @@ async function loadAdminLoanApplicationsAll(force = false) {
     let path = endpoint('adminLoanApplicationsAll') || endpoint('adminLoanApplications') || endpoint('loanApplications') || '/api/loan-applications';
     path = path.replace(/([?&])status=[^&]*/gi, '').replace(/[?&]$/, '');
 
-    const separator = path.includes('?') ? '&' : '?';
-    path += `${separator}status=${encodeURIComponent(statusFilter || 'ALL')}`;
+    if (statusFilter && statusFilter !== 'ALL') {
+      const separator = path.includes('?') ? '&' : '?';
+      path += `${separator}status=${encodeURIComponent(statusFilter)}`;
+    }
 
     const response = await api(path);
-    console.log('Admin loan applications (all statuses)', response);
-
     const normalizedApplications = normalizeApplicationsResponse(response);
     const sortedApplications = [...normalizedApplications].sort((a, b) => {
       const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
