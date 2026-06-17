@@ -2209,7 +2209,9 @@ function buildLoanApplicationsListPath(statusFilter = 'ALL') {
 }
 
 async function fetchLoanApplicationsList(path) {
-  const response = await fetch(`${apiConfig.baseUrl}${path}`, {
+  const url = `${apiConfig.baseUrl}${path}`;
+  console.log('Loan applications list API URL', url);
+  const response = await fetch(url, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
@@ -2220,10 +2222,11 @@ async function fetchLoanApplicationsList(path) {
   const contentType = response.headers?.get?.('content-type') || '';
   if (!contentType.toLowerCase().includes('application/json')) {
     console.error('Loan applications list API returned non-JSON response', {
-      url: response.url || `${apiConfig.baseUrl}${path}`,
+      url: response.url || url,
       status: response.status,
+      contentType,
     });
-    throw new Error('Loan applications API returned an unexpected response.');
+    throw new Error('Loan applications API returned HTML or another non-JSON response. Check the list API URL.');
   }
 
   const data = await response.json();
@@ -2256,8 +2259,12 @@ async function loadAdminLoanApplicationsAll(force = false) {
   try {
     const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
     const path = buildLoanApplicationsListPath(statusFilter);
+    console.log('Loading loan applications...');
+    console.log('list API URL', `${apiConfig.baseUrl}${path}`);
     const response = await fetchLoanApplicationsList(path);
+    console.log('raw response', response);
     const normalizedApplications = normalizeApplicationsResponse(response);
+    console.log('normalized applications array', normalizedApplications);
     const sortedApplications = [...normalizedApplications].sort((a, b) => {
       const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
       const bDate = new Date(b.submitted_at || b.created_at || 0).getTime();
@@ -6778,6 +6785,10 @@ async function bootstrap() {
   renderDocumentUploads();
   updateStepperUI();
   await hydrateFromSession();
+
+  if (window.location.pathname.startsWith(loanApplicationsRouteHomePath)) {
+    handleLoanApplicationsRoute(window.location.pathname);
+  }
 }
 
 loginForm?.addEventListener('submit', async (event) => {
