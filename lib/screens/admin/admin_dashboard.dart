@@ -249,7 +249,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     LoanApplication app,
     Future<void> Function() refreshApplication,
   ) {
-    final actions = app.availableActions.toSet();
+    final actions = app.availableActions
+        .map((action) => action.toLowerCase())
+        .toSet();
     final buttons = <Widget>[];
 
     if (actions.contains('approve')) {
@@ -338,9 +340,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         SnackBar(content: Text(successMessage)),
       );
     } catch (e) {
+      debugPrint('$errorMessage: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$errorMessage: $e')),
+        SnackBar(content: Text('$errorMessage. Please try again.')),
       );
     }
   }
