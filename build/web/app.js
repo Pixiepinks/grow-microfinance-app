@@ -1,3 +1,5 @@
+const adminLoanApplicationsListUrl = 'https://grow-microfinance-api-production.up.railway.app/loan-applications';
+
 const defaultApiConfig = {
   baseUrl: 'https://grow-microfinance-api-production.up.railway.app',
   endpoints: {
@@ -2151,7 +2153,7 @@ function renderAdminLoanApplicationsTable(applications) {
       app.applicant_name ||
       '-';
     const loanType = app.loan_type || app.loanType || app.loan_details?.loan_type || '-';
-    const status = app.status || app.application_status || '-';
+    const status = app.status || app.application_status || app.applicationStatus || '-';
     const appliedAmount =
       app.applied_amount ??
       app.appliedAmount ??
@@ -2196,20 +2198,18 @@ function renderAdminLoanApplications() {
 function buildLoanApplicationsListPath(statusFilter = 'ALL') {
   // The admin list must target the backend JSON list endpoint directly. Do not
   // derive this from the current browser route because /admin/loan-applications/all
-  // is a frontend document route.
-  let path = endpoint('adminLoanApplicationsAll') || endpoint('loanApplications') || '/loan-applications';
-  path = path.replace(/([?&])status=[^&]*/gi, '').replace(/[?&]$/, '');
-
+  // is a frontend document route. Keep the All view on the bare list endpoint so
+  // DRAFT and SUBMITTED records are both returned and rendered together.
   if (statusFilter && statusFilter !== 'ALL') {
-    const separator = path.includes('?') ? '&' : '?';
-    path += `${separator}status=${encodeURIComponent(statusFilter)}`;
+    const separator = adminLoanApplicationsListUrl.includes('?') ? '&' : '?';
+    return `${adminLoanApplicationsListUrl}${separator}status=${encodeURIComponent(statusFilter)}`;
   }
 
-  return path;
+  return adminLoanApplicationsListUrl;
 }
 
-async function fetchLoanApplicationsList(path) {
-  const url = `${apiConfig.baseUrl}${path}`;
+async function fetchLoanApplicationsList(pathOrUrl) {
+  const url = /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${apiConfig.baseUrl}${pathOrUrl}`;
   console.log('Loan applications list API URL', url);
   const response = await fetch(url, {
     method: 'GET',
@@ -2260,12 +2260,18 @@ async function loadAdminLoanApplicationsAll(force = false) {
     const statusFilter = (adminLoanApplicationsState.selectedStatus || 'ALL').toUpperCase();
     const path = buildLoanApplicationsListPath(statusFilter);
     console.log('Loading loan applications...');
-    console.log('list API URL', `${apiConfig.baseUrl}${path}`);
+    console.log('list API URL', /^https?:\/\//i.test(path) ? path : `${apiConfig.baseUrl}${path}`);
     const response = await fetchLoanApplicationsList(path);
     console.log('raw response', response);
     const normalizedApplications = normalizeApplicationsResponse(response);
     console.log('normalized applications array', normalizedApplications);
-    const sortedApplications = [...normalizedApplications].sort((a, b) => {
+    const visibleApplications = statusFilter === 'ALL'
+      ? normalizedApplications.filter((app) => {
+          const normalizedStatus = String(app?.status || app?.application_status || app?.applicationStatus || '').toUpperCase();
+          return !normalizedStatus || normalizedStatus === 'DRAFT' || normalizedStatus === 'SUBMITTED';
+        })
+      : normalizedApplications;
+    const sortedApplications = [...visibleApplications].sort((a, b) => {
       const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
       const bDate = new Date(b.submitted_at || b.created_at || 0).getTime();
       return bDate - aDate;
@@ -6788,6 +6794,9 @@ async function bootstrap() {
 
   if (window.location.pathname.startsWith(loanApplicationsRouteHomePath)) {
     handleLoanApplicationsRoute(window.location.pathname);
+    if (window.location.pathname === '/admin/loan-applications/all') {
+      loadAdminLoanApplicationsAll(true);
+    }
   }
 }
 
