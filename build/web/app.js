@@ -438,6 +438,13 @@ let adminLoanApplicationsStatusFilter;
 let adminLoansMessage;
 let adminLoansTableBody;
 let adminRefreshLoansBtn;
+let adminLoanDetailModal;
+let adminLoanDetailTitle;
+let adminLoanDetailStatus;
+let adminLoanDetailMessage;
+let adminLoanDetailTabs;
+let adminLoanDetailContent;
+let adminLoanDetailCloseBtn;
 let adminLoansInitialized = false;
 
 const staffPanel = document.querySelector('#staff-panel');
@@ -636,6 +643,13 @@ const adminLoansState = {
   loading: false,
   error: null,
   hasLoaded: false,
+  selectedLoan: null,
+  detailTab: 'details',
+  ledger: [],
+  ledgerTotals: null,
+  ledgerLoading: false,
+  ledgerError: null,
+  ledgerLoadedLoanId: null,
 };
 const adminCustomersState = {
   customers: [],
@@ -2054,6 +2068,13 @@ function resetAdminLoansState() {
   adminLoansState.error = null;
   adminLoansState.loading = false;
   adminLoansState.hasLoaded = false;
+  adminLoansState.selectedLoan = null;
+  adminLoansState.detailTab = 'details';
+  adminLoansState.ledger = [];
+  adminLoansState.ledgerTotals = null;
+  adminLoansState.ledgerLoading = false;
+  adminLoansState.ledgerError = null;
+  adminLoansState.ledgerLoadedLoanId = null;
 
   if (!adminLoansInitialized) return;
   setInlineAlert(adminLoansMessage, '');
@@ -2174,7 +2195,67 @@ function ensureAdminLoansUI() {
   adminRefreshLoansBtn = adminLoansSection.querySelector('#admin-refresh-loans');
 
   adminRefreshLoansBtn?.addEventListener('click', () => loadAdminLoans(true));
+
+  if (!document.querySelector('#admin-loan-ledger-style')) {
+    const style = document.createElement('style');
+    style.id = 'admin-loan-ledger-style';
+    style.textContent = `
+      .loan-detail-modal .app-modal-dialog { max-width: min(1180px, 96vw); width: 96vw; }
+      .loan-detail-tabs { display: flex; gap: 0.5rem; margin: 1rem 0; border-bottom: 1px solid rgba(148, 163, 184, 0.25); }
+      .loan-detail-tab { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 0.75rem 1rem; cursor: pointer; }
+      .loan-detail-tab.active { border-bottom-color: #16a34a; color: #166534; font-weight: 700; }
+      .loan-detail-grid, .ledger-totals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+      .loan-detail-stat { border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 0.85rem; padding: 0.75rem; background: rgba(248, 250, 252, 0.8); }
+      .loan-detail-stat span { display: block; color: #64748b; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+      .loan-detail-stat strong { display: block; margin-top: 0.25rem; }
+      .ledger-table-scroll { overflow-x: auto; }
+      .ledger-table-scroll table { min-width: 1500px; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  if (!adminLoanDetailModal) {
+    adminLoanDetailModal = document.createElement('div');
+    adminLoanDetailModal.id = 'admin-loan-detail-modal';
+    adminLoanDetailModal.className = 'app-modal loan-detail-modal hidden';
+    adminLoanDetailModal.innerHTML = `
+      <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-loan-detail-title">
+        <div class="modal-header">
+          <div>
+            <div class="eyebrow">Loan detail</div>
+            <h3 id="admin-loan-detail-title">Loan</h3>
+            <p id="admin-loan-detail-status" class="muted"></p>
+          </div>
+          <button type="button" class="ghost" id="close-admin-loan-detail" aria-label="Close loan detail">Close</button>
+        </div>
+        <p id="admin-loan-detail-message" class="alert hidden" aria-live="polite"></p>
+        <div id="admin-loan-detail-tabs" class="loan-detail-tabs" role="tablist">
+          <button type="button" class="loan-detail-tab active" data-admin-loan-tab="details">Details</button>
+          <button type="button" class="loan-detail-tab" data-admin-loan-tab="ledger">Ledger</button>
+        </div>
+        <div id="admin-loan-detail-content"></div>
+      </div>
+    `;
+    document.body.appendChild(adminLoanDetailModal);
+  }
+
+  adminLoanDetailTitle = adminLoanDetailModal.querySelector('#admin-loan-detail-title');
+  adminLoanDetailStatus = adminLoanDetailModal.querySelector('#admin-loan-detail-status');
+  adminLoanDetailMessage = adminLoanDetailModal.querySelector('#admin-loan-detail-message');
+  adminLoanDetailTabs = adminLoanDetailModal.querySelector('#admin-loan-detail-tabs');
+  adminLoanDetailContent = adminLoanDetailModal.querySelector('#admin-loan-detail-content');
+  adminLoanDetailCloseBtn = adminLoanDetailModal.querySelector('#close-admin-loan-detail');
+
+  adminLoanDetailCloseBtn?.addEventListener('click', closeAdminLoanDetail);
+  adminLoanDetailModal.addEventListener('click', (event) => {
+    if (event.target === adminLoanDetailModal) closeAdminLoanDetail();
+  });
+  adminLoanDetailTabs?.addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-admin-loan-tab]')?.dataset.adminLoanTab;
+    if (tab) switchAdminLoanDetailTab(tab);
+  });
 }
+
 
 function normalizeLoansResponse(response) {
   if (Array.isArray(response)) return response;
@@ -2213,6 +2294,218 @@ function getLoanField(loan, keys, fallback = '—') {
   return fallback;
 }
 
+
+function getLoanId(loan) {
+  return getLoanField(loan, ['id', 'loan_id', 'loanId', 'uuid', 'loan.uuid'], '');
+}
+
+function normalizeLedgerResponse(response) {
+  const entriesCandidates = [
+    response?.entries,
+    response?.ledger,
+    response?.data?.entries,
+    response?.data?.ledger,
+    response?.data,
+    response?.items,
+    response?.data?.items,
+    response,
+  ];
+  let entries = [];
+  for (const candidate of entriesCandidates) {
+    if (Array.isArray(candidate)) {
+      entries = candidate;
+      break;
+    }
+  }
+  const totals = response?.totals || response?.summary || response?.data?.totals || response?.data?.summary || null;
+  return { entries, totals };
+}
+
+function getLedgerField(entry, keys, fallback = '—') {
+  return getLoanField(entry, keys, fallback);
+}
+
+function calculateLedgerDisplayTotals(entries, backendTotals) {
+  if (backendTotals) {
+    return {
+      totalPrincipal: getLoanField(backendTotals, ['total_principal', 'totalPrincipal', 'principal'], 0),
+      totalInterest: getLoanField(backendTotals, ['total_interest', 'totalInterest', 'interest'], 0),
+      totalPayable: getLoanField(backendTotals, ['total_payable', 'totalPayable', 'payable'], 0),
+      totalPaid: getLoanField(backendTotals, ['total_paid', 'totalPaid', 'paid'], 0),
+      outstanding: getLoanField(backendTotals, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'balance'], 0),
+      totalDelayInterest: getLoanField(backendTotals, ['total_delay_interest', 'totalDelayInterest', 'delay_interest', 'delayInterest'], 0),
+    };
+  }
+
+  return {
+    totalPrincipal: adminLoansState.selectedLoan ? getLoanField(adminLoansState.selectedLoan, ['principal_amount', 'principalAmount', 'principal'], 0) : 0,
+    totalInterest: entries.reduce((sum, row) => sum + Number(getLedgerField(row, ['interest', 'interest_amount', 'interestAmount'], 0) || 0), 0),
+    totalPayable: entries.reduce((sum, row) => sum + Number(getLedgerField(row, ['installment_amount', 'installmentAmount', 'amount_due', 'amountDue'], 0) || 0), 0),
+    totalPaid: entries.reduce((sum, row) => sum + Number(getLedgerField(row, ['paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0) || 0), 0),
+    outstanding: adminLoansState.selectedLoan ? getLoanField(adminLoansState.selectedLoan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'balance'], 0) : 0,
+    totalDelayInterest: entries.reduce((sum, row) => sum + Number(getLedgerField(row, ['delay_interest', 'delayInterest', 'late_interest', 'lateInterest'], 0) || 0), 0),
+  };
+}
+
+function renderLoanDetailFields(loan) {
+  const fields = [
+    ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference', 'loan_id', 'loanId', 'id'])],
+    ['Customer ID', getLoanField(loan, ['customer_id', 'customerId', 'customer.id', 'borrower_id', 'borrowerId'])],
+    ['Principal Amount', formatCurrency(getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0))],
+    ['Total Payable', formatCurrency(getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0))],
+    ['Total Paid', formatCurrency(getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0))],
+    ['Outstanding', formatCurrency(getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0))],
+    ['Status', getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN')],
+    ['Created', formatDate(getLoanField(loan, ['created_at', 'createdAt', 'created'], '')) || '—'],
+  ];
+  adminLoanDetailContent.innerHTML = `<div class="loan-detail-grid">${fields
+    .map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+    .join('')}</div>`;
+}
+
+function renderLoanLedger() {
+  setInlineAlert(adminLoanDetailMessage, adminLoansState.ledgerError || '', 'error');
+  if (adminLoansState.ledgerLoading) {
+    adminLoanDetailContent.innerHTML = '<p class="muted">Loading repayment ledger...</p>';
+    return;
+  }
+  if (adminLoansState.ledgerError) {
+    adminLoanDetailContent.innerHTML = '<p class="muted">Unable to load repayment ledger.</p>';
+    return;
+  }
+  const entries = adminLoansState.ledger;
+  const totals = calculateLedgerDisplayTotals(entries, adminLoansState.ledgerTotals);
+  const totalsHtml = [
+    ['Total Principal', totals.totalPrincipal],
+    ['Total Interest', totals.totalInterest],
+    ['Total Payable', totals.totalPayable],
+    ['Total Paid', totals.totalPaid],
+    ['Outstanding', totals.outstanding],
+    ['Total Delay Interest', totals.totalDelayInterest],
+  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('');
+
+  if (!entries.length) {
+    adminLoanDetailContent.innerHTML = `<div class="ledger-totals-grid">${totalsHtml}</div><p class="muted">No ledger entries found for this loan.</p>`;
+    return;
+  }
+
+  const rows = entries.map((entry) => {
+    const status = String(getLedgerField(entry, ['status', 'payment_status', 'paymentStatus'], 'UNKNOWN'));
+    const entryId = getLedgerField(entry, ['id', 'entry_id', 'entryId', 'ledger_entry_id', 'ledgerEntryId'], '');
+    const normalizedStatus = status.toLowerCase();
+    const canRecordPayment = entryId && !['paid', 'settled', 'complete', 'completed'].includes(normalizedStatus);
+    return `<tr>
+      <td>${escapeHtml(getLedgerField(entry, ['installment_number', 'installmentNumber', 'installment_no', 'installmentNo', 'number']))}</td>
+      <td>${escapeHtml(formatDate(getLedgerField(entry, ['period_start', 'periodStart', 'start_date', 'startDate'], '')) || getLedgerField(entry, ['period_start', 'periodStart', 'start_date', 'startDate']))}</td>
+      <td>${escapeHtml(formatDate(getLedgerField(entry, ['due_date', 'dueDate'], '')) || getLedgerField(entry, ['due_date', 'dueDate']))}</td>
+      <td>${escapeHtml(getLedgerField(entry, ['days', 'period_days', 'periodDays'], '—'))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['opening_balance', 'openingBalance'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['interest', 'interest_amount', 'interestAmount'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['principal', 'principal_amount', 'principalAmount'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['installment_amount', 'installmentAmount', 'amount_due', 'amountDue'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['closing_balance', 'closingBalance'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0))}</td>
+      <td>${escapeHtml(formatDate(getLedgerField(entry, ['paid_date', 'paidDate', 'payment_date', 'paymentDate'], '')) || getLedgerField(entry, ['paid_date', 'paidDate', 'payment_date', 'paymentDate']))}</td>
+      <td>${escapeHtml(getLedgerField(entry, ['delay_days', 'delayDays', 'late_days', 'lateDays'], '—'))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['delay_interest', 'delayInterest', 'late_interest', 'lateInterest'], 0))}</td>
+      <td>${renderStatusBadge(status)}</td>
+      <td>${canRecordPayment ? `<button type="button" class="secondary" data-admin-ledger-payment="${escapeHtml(entryId)}">Record Payment</button>` : '<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  adminLoanDetailContent.innerHTML = `<div class="ledger-totals-grid">${totalsHtml}</div>
+    <div class="ledger-table-scroll"><table class="placeholder-table loan-table"><thead><tr>
+      <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Interest</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Status</th><th>Actions</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function renderAdminLoanDetail() {
+  const loan = adminLoansState.selectedLoan;
+  if (!loan || !adminLoanDetailModal) return;
+  const loanNumber = getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference', 'loan_id', 'loanId', 'id']);
+  const status = getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN');
+  adminLoanDetailTitle.textContent = `Loan ${loanNumber}`;
+  adminLoanDetailStatus.innerHTML = renderStatusBadge(status);
+  adminLoanDetailTabs.querySelectorAll('[data-admin-loan-tab]').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.adminLoanTab === adminLoansState.detailTab);
+  });
+  if (adminLoansState.detailTab === 'ledger') renderLoanLedger();
+  else {
+    setInlineAlert(adminLoanDetailMessage, '');
+    renderLoanDetailFields(loan);
+  }
+}
+
+function closeAdminLoanDetail() {
+  adminLoanDetailModal?.classList.add('hidden');
+}
+
+async function openAdminLoanDetail(loan) {
+  ensureAdminLoansUI();
+  adminLoansState.selectedLoan = loan;
+  adminLoansState.detailTab = 'details';
+  adminLoansState.ledger = [];
+  adminLoansState.ledgerTotals = null;
+  adminLoansState.ledgerError = null;
+  adminLoansState.ledgerLoadedLoanId = null;
+  adminLoanDetailModal.classList.remove('hidden');
+  renderAdminLoanDetail();
+}
+
+async function switchAdminLoanDetailTab(tab) {
+  adminLoansState.detailTab = tab;
+  renderAdminLoanDetail();
+  if (tab === 'ledger') await loadAdminLoanLedger();
+}
+
+async function loadAdminLoanLedger(force = false) {
+  const loan = adminLoansState.selectedLoan;
+  const loanId = getLoanId(loan);
+  if (!loanId || adminLoansState.ledgerLoading) return;
+  if (!force && adminLoansState.ledgerLoadedLoanId === loanId) {
+    renderAdminLoanDetail();
+    return;
+  }
+  adminLoansState.ledgerLoading = true;
+  adminLoansState.ledgerError = null;
+  renderAdminLoanDetail();
+  try {
+    const response = await api(`/admin/loans/${encodeURIComponent(loanId)}/ledger`);
+    const { entries, totals } = normalizeLedgerResponse(response);
+    adminLoansState.ledger = entries;
+    adminLoansState.ledgerTotals = totals;
+    adminLoansState.ledgerLoadedLoanId = loanId;
+  } catch (error) {
+    console.error('Failed to load loan ledger', error);
+    adminLoansState.ledgerError = error?.message || "Couldn't load loan ledger. Please try again.";
+  } finally {
+    adminLoansState.ledgerLoading = false;
+    renderAdminLoanDetail();
+  }
+}
+
+async function recordAdminLedgerPayment(entryId) {
+  const loanId = getLoanId(adminLoansState.selectedLoan);
+  if (!loanId || !entryId) return;
+  const amount = prompt('Paid amount');
+  if (amount === null) return;
+  const paidDate = prompt('Paid date (YYYY-MM-DD)', new Date().toISOString().slice(0, 10));
+  if (paidDate === null) return;
+  try {
+    setInlineAlert(adminLoanDetailMessage, 'Recording payment...', 'success');
+    await api(`/admin/loans/${encodeURIComponent(loanId)}/ledger/${encodeURIComponent(entryId)}/payment`, {
+      method: 'POST',
+      body: { paid_amount: Number(amount), amount: Number(amount), paid_date: paidDate, payment_date: paidDate },
+    });
+    setInlineAlert(adminLoanDetailMessage, 'Payment recorded successfully.', 'success');
+    await loadAdminLoanLedger(true);
+    await loadAdminLoans(true);
+  } catch (error) {
+    console.error('Failed to record ledger payment', error);
+    setInlineAlert(adminLoanDetailMessage, error?.message || 'Failed to record payment.', 'error');
+  }
+}
+
 function renderAdminLoansTable(loans) {
   if (!adminLoansTableBody) return;
   adminLoansTableBody.innerHTML = '';
@@ -2245,7 +2538,7 @@ function renderAdminLoansTable(loans) {
       <td>${formatCurrency(totalPaid)}</td>
       <td>${formatCurrency(outstanding)}</td>
       <td>${renderStatusBadge(status)}</td>
-      <td><button type="button" class="secondary" disabled>View</button></td>
+      <td><button type="button" class="secondary" data-admin-loan-view="${escapeHtml(getLoanId(loan))}">View</button></td>
     `;
     adminLoansTableBody.appendChild(tr);
   });
@@ -7142,6 +7435,23 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   const action = actionTarget.dataset.loanAction;
   if (action === 'open-apply-modal') openApplyLoanModal();
+});
+
+document.addEventListener('click', (event) => {
+  const viewBtn = event.target.closest('[data-admin-loan-view]');
+  if (viewBtn) {
+    event.preventDefault();
+    const loanId = viewBtn.dataset.adminLoanView;
+    const loan = adminLoansState.loans.find((item) => String(getLoanId(item)) === String(loanId));
+    if (loan) openAdminLoanDetail(loan);
+    return;
+  }
+
+  const paymentBtn = event.target.closest('[data-admin-ledger-payment]');
+  if (paymentBtn) {
+    event.preventDefault();
+    recordAdminLedgerPayment(paymentBtn.dataset.adminLedgerPayment);
+  }
 });
 
 refreshCustomersBtn?.addEventListener('click', () => loadAdminCustomers(true));
