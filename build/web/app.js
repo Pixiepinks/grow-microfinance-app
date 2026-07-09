@@ -7,6 +7,7 @@ const defaultApiConfig = {
     adminDashboard: '/admin/dashboard',
     adminLoanApplications: '/admin/loan-applications',
     adminLoanApplicationsAll: '/api/loan-applications',
+    adminLoans: '/admin/loans',
     adminLoanApplicationApprove: '/loan-applications/{id}/approve',
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
@@ -114,6 +115,7 @@ const adminApplicationsMessage = document.querySelector('#admin-applications-mes
 const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
+const adminLoansSection = document.querySelector('[data-section="loans"]');
 const loanAppRoutePlaceholder = document.querySelector('#loan-app-route-placeholder');
 const loanAppRouteTitle = document.querySelector('#loan-app-route-title');
 const loanAppRouteDescription = document.querySelector('#loan-app-route-description');
@@ -433,6 +435,10 @@ let adminLoanApplicationsTable;
 let adminRefreshLoanApplicationsBtn;
 let adminLoanApplicationsInitialized = false;
 let adminLoanApplicationsStatusFilter;
+let adminLoansMessage;
+let adminLoansTableBody;
+let adminRefreshLoansBtn;
+let adminLoansInitialized = false;
 
 const staffPanel = document.querySelector('#staff-panel');
 const staffCollections = document.querySelector('#staff-collections');
@@ -624,6 +630,12 @@ const adminLoanApplicationsState = {
   loanApplicationsError: null,
   hasLoaded: false,
   selectedStatus: 'ALL',
+};
+const adminLoansState = {
+  loans: [],
+  loading: false,
+  error: null,
+  hasLoaded: false,
 };
 const adminCustomersState = {
   customers: [],
@@ -1590,6 +1602,15 @@ function formatCurrency(value) {
   return amount ? `$${amount.toFixed(2)}` : '—';
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -2028,6 +2049,17 @@ function showToast(message, type = 'success') {
   }, 3200);
 }
 
+function resetAdminLoansState() {
+  adminLoansState.loans = [];
+  adminLoansState.error = null;
+  adminLoansState.loading = false;
+  adminLoansState.hasLoaded = false;
+
+  if (!adminLoansInitialized) return;
+  setInlineAlert(adminLoansMessage, '');
+  if (adminLoansTableBody) adminLoansTableBody.innerHTML = '';
+}
+
 function resetAdminLoanApplicationsState() {
   adminLoanApplicationsState.loanApplications = [];
   adminLoanApplicationsState.loanApplicationsError = null;
@@ -2083,6 +2115,187 @@ function resetAdminLeadsState() {
   adminLeadsEmptyState?.classList.add('hidden');
   adminLeadsTableWrapper?.classList.add('hidden');
   if (adminLeadsTableBody) adminLeadsTableBody.innerHTML = '';
+}
+
+function ensureAdminLoansUI() {
+  if (!adminLoansSection || adminLoansInitialized) return;
+  adminLoansInitialized = true;
+
+  const cardHeader = adminLoansSection.querySelector('.card-header');
+  if (cardHeader && !cardHeader.querySelector('#admin-refresh-loans')) {
+    const actions = document.createElement('div');
+    actions.className = 'table-actions';
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.id = 'admin-refresh-loans';
+    refreshBtn.className = 'secondary';
+    refreshBtn.textContent = 'Refresh';
+    actions.appendChild(refreshBtn);
+    cardHeader.appendChild(actions);
+  }
+
+  let loansCard = adminLoansSection.querySelector('#admin-loans-list-card');
+  if (!loansCard) {
+    loansCard = document.createElement('div');
+    loansCard.id = 'admin-loans-list-card';
+    loansCard.className = 'subcard';
+    loansCard.innerHTML = `
+      <div class="card-header">
+        <div>
+          <div class="eyebrow">Loan list</div>
+          <h3>All loans</h3>
+          <p class="muted">Live loan records from the admin loans API.</p>
+        </div>
+      </div>
+      <p id="admin-loans-message" class="alert hidden" aria-live="polite"></p>
+      <div class="loan-table-wrapper">
+        <table id="admin-loans-table" class="placeholder-table loan-table">
+          <thead>
+            <tr>
+              <th>Loan Number</th>
+              <th>Customer ID</th>
+              <th>Principal Amount</th>
+              <th>Total Payable</th>
+              <th>Total Paid</th>
+              <th>Outstanding</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="admin-loans-table-body"></tbody>
+        </table>
+      </div>
+    `;
+    adminLoansSection.appendChild(loansCard);
+  }
+
+  adminLoansMessage = adminLoansSection.querySelector('#admin-loans-message');
+  adminLoansTableBody = adminLoansSection.querySelector('#admin-loans-table-body');
+  adminRefreshLoansBtn = adminLoansSection.querySelector('#admin-refresh-loans');
+
+  adminRefreshLoansBtn?.addEventListener('click', () => loadAdminLoans(true));
+}
+
+function normalizeLoansResponse(response) {
+  if (Array.isArray(response)) return response;
+
+  const candidates = [
+    response?.loans,
+    response?.data?.loans,
+    response?.data,
+    response?.items,
+    response?.data?.items,
+    response?.content,
+    response?.data?.content,
+    response?.results,
+    response?.data?.results,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === 'object') {
+      if (Array.isArray(candidate.loans)) return candidate.loans;
+      if (Array.isArray(candidate.items)) return candidate.items;
+      if (Array.isArray(candidate.content)) return candidate.content;
+      if (Array.isArray(candidate.data)) return candidate.data;
+      if (Array.isArray(candidate.results)) return candidate.results;
+    }
+  }
+
+  return [];
+}
+
+function getLoanField(loan, keys, fallback = '—') {
+  for (const key of keys) {
+    const value = key.split('.').reduce((acc, part) => acc?.[part], loan);
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return fallback;
+}
+
+function renderAdminLoansTable(loans) {
+  if (!adminLoansTableBody) return;
+  adminLoansTableBody.innerHTML = '';
+
+  if (adminLoansState.loading) {
+    adminLoansTableBody.innerHTML = '<tr><td colspan="8" class="muted">Loading loans...</td></tr>';
+    return;
+  }
+
+  if (!loans.length) {
+    adminLoansTableBody.innerHTML = '<tr><td colspan="8" class="muted">No loans found</td></tr>';
+    return;
+  }
+
+  loans.forEach((loan) => {
+    const loanNumber = getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference', 'loan_id', 'loanId', 'id']);
+    const customerId = getLoanField(loan, ['customer_id', 'customerId', 'customer.id', 'borrower_id', 'borrowerId']);
+    const principal = getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0);
+    const totalPayable = getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0);
+    const totalPaid = getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0);
+    const outstanding = getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0);
+    const status = getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(loanNumber)}</td>
+      <td>${escapeHtml(customerId)}</td>
+      <td>${formatCurrency(principal)}</td>
+      <td>${formatCurrency(totalPayable)}</td>
+      <td>${formatCurrency(totalPaid)}</td>
+      <td>${formatCurrency(outstanding)}</td>
+      <td>${renderStatusBadge(status)}</td>
+      <td><button type="button" class="secondary" disabled>View</button></td>
+    `;
+    adminLoansTableBody.appendChild(tr);
+  });
+}
+
+function renderAdminLoans() {
+  if (!adminLoansInitialized) return;
+  setInlineAlert(adminLoansMessage, adminLoansState.error || '', 'error');
+
+  if (adminRefreshLoansBtn) {
+    adminRefreshLoansBtn.disabled = adminLoansState.loading;
+    adminRefreshLoansBtn.textContent = adminLoansState.loading ? 'Refreshing...' : 'Refresh';
+  }
+
+  if (adminLoansState.error) {
+    if (adminLoansTableBody) adminLoansTableBody.innerHTML = '';
+    return;
+  }
+
+  renderAdminLoansTable(adminLoansState.loans);
+}
+
+async function loadAdminLoans(force = false) {
+  ensureAdminLoansUI();
+  if (!adminLoansSection || adminLoansState.loading) return;
+
+  const { token } = getSession();
+  if (!token) return;
+
+  if (adminLoansState.hasLoaded && !force) {
+    renderAdminLoans();
+    return;
+  }
+
+  adminLoansState.loading = true;
+  adminLoansState.error = null;
+  renderAdminLoans();
+
+  try {
+    const response = await api(endpoint('adminLoans'));
+    adminLoansState.loans = normalizeLoansResponse(response);
+    adminLoansState.hasLoaded = true;
+  } catch (error) {
+    console.error('Failed to load admin loans', error);
+    adminLoansState.error = error?.message || "Couldn't load loans. Please try again.";
+    adminLoansState.hasLoaded = false;
+  } finally {
+    adminLoansState.loading = false;
+    renderAdminLoans();
+  }
 }
 
 function ensureAdminLoanApplicationsUI() {
@@ -5248,6 +5461,8 @@ function showAdminSection(section = 'dashboard') {
 
   if (target === 'documents') {
     loadAdminDocuments();
+  } else if (target === 'loans') {
+    loadAdminLoans();
   } else if (target === 'leads') {
     ensureAdminLeadsUI();
     clearLeadsRouteView();
@@ -5409,6 +5624,7 @@ function togglePanels(role) {
   if (role === 'admin') showAdminSection('dashboard');
   else {
     resetAdminLoanApplicationsState();
+    resetAdminLoansState();
     resetAdminCustomersState();
     resetAdminLeadsState();
   }
