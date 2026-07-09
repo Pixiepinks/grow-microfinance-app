@@ -1,4 +1,4 @@
-const adminLoanApplicationsListUrl = 'https://grow-microfinance-api-production.up.railway.app/loan-applications';
+const adminLoanApplicationsListUrl = 'https://grow-microfinance-api-production.up.railway.app/api/loan-applications';
 
 const defaultApiConfig = {
   baseUrl: 'https://grow-microfinance-api-production.up.railway.app',
@@ -6,7 +6,7 @@ const defaultApiConfig = {
     login: '/auth/login',
     adminDashboard: '/admin/dashboard',
     adminLoanApplications: '/admin/loan-applications',
-    adminLoanApplicationsAll: '/loan-applications',
+    adminLoanApplicationsAll: '/api/loan-applications',
     adminLoanApplicationApprove: '/loan-applications/{id}/approve',
     staffTodayCollections: '/staff/today-collections',
     staffPayments: '/staff/payments',
