@@ -115,7 +115,7 @@ const adminApplicationsMessage = document.querySelector('#admin-applications-mes
 const adminMenuItems = document.querySelectorAll('.admin-menu-item');
 const adminSections = document.querySelectorAll('.admin-section');
 const adminLoanApplicationsSection = document.querySelector('[data-section="loan-applications"]');
-const adminLoansSection = document.querySelector('[data-section="loans"]');
+const adminLoansSection = document.querySelector('.admin-section[data-section="loans"]');
 const loanAppRoutePlaceholder = document.querySelector('#loan-app-route-placeholder');
 const loanAppRouteTitle = document.querySelector('#loan-app-route-title');
 const loanAppRouteDescription = document.querySelector('#loan-app-route-description');
