@@ -95,6 +95,7 @@ let apiConfig = { ...defaultApiConfig };
 
 const storageKeys = { token: 'gm_jwt', role: 'gm_role' };
 
+const appShell = document.querySelector('.app-shell');
 const appMain = document.querySelector('.app-main');
 const loginCard = document.querySelector('#login-card');
 const loginForm = document.querySelector('#login-form');
@@ -5909,6 +5910,8 @@ function navigateStaffRoute(path) {
 
 function togglePanels(role) {
   dashboards.classList.toggle('hidden', !role);
+  appShell?.classList.toggle('admin-shell', role === 'admin');
+  dashboards?.classList.toggle('admin-dashboard-grid', role === 'admin');
   userRoleChip.classList.toggle('hidden', !role);
   logoutBtn.classList.toggle('hidden', !role);
   loginCard?.classList.toggle('hidden', !!role);
