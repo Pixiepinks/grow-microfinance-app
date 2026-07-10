@@ -150,9 +150,10 @@ class LoanApplicationService {
     );
   }
 
-  Future<void> disburse(String id) async {
-    await _client.postJson(
+  Future<Map<String, dynamic>> disburse(String id, {Map<String, dynamic>? body}) async {
+    return _client.postJson(
       ApiConfig.endpoint('loanApplicationDisburse', params: {'id': id}),
+      body: body,
     );
   }
 

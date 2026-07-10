@@ -182,7 +182,7 @@ class _AdminNavigationShellState extends State<_AdminNavigationShell> {
       case 'ledger': body=GeneralLedgerPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
       case 'reconciliation': body=ReconciliationPage(service:widget.accountingService); break;
       case 'reports': body=ReportsPage(openLedger:()=>open('ledger')); break;
-      case 'dashboard': body=AdminDashboardScreen(repository:widget.adminRepository,loanApplicationService:widget.loanApplicationService); break;
+      case 'dashboard': body=AdminDashboardScreen(repository:widget.adminRepository,loanApplicationService:widget.loanApplicationService,accountingService:widget.accountingService,openAdminPage:(p,{id})=>open(p,id:id)); break;
       default: body=Center(child: Text('${items.firstWhere((i)=>i.key==page).label} module'));
     }
     final nav = ListView(children: [const Padding(padding: EdgeInsets.all(16), child: Text('Admin Navigation', style: TextStyle(fontWeight: FontWeight.bold))), ...items.map((i)=>ListTile(leading:Icon(i.icon),title:Text(i.label),selected: page==i.key || (i.key=='accounting' && ['accounts','journals','journalNew','journalDetail','ledger','reconciliation'].contains(page)),onTap:(){open(i.key); if(MediaQuery.of(context).size.width<900) Navigator.maybePop(context);}))]);
