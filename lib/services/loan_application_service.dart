@@ -118,14 +118,14 @@ class LoanApplicationService {
     return LoanApplication.fromJson(json);
   }
 
-  Future<void> uploadDocument(
+  Future<Map<String, dynamic>> uploadDocument(
     String id,
     String documentType, {
     String? filePath,
     List<int>? bytes,
     required String fileName,
   }) async {
-    await _client.postMultipart(
+    return _client.postMultipart(
       '${ApiConfig.endpoint('loanApplications')}/$id/documents',
       filePath: filePath,
       bytes: bytes,

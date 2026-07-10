@@ -74,6 +74,10 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       TextEditingController();
 
   final Map<String, PlatformFile?> _documents = {};
+  final Map<String, String> _uploadedDocumentIds = {};
+  final Map<String, String> _documentUploadWarnings = {};
+  final Set<String> _skippedDocuments = {};
+  bool _skipDocumentsForNow = false;
 
   @override
   void initState() {
@@ -566,21 +570,76 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       children: [
         const Align(
           alignment: Alignment.centerLeft,
-          child: Text('Upload required documents'),
+          child: Text('Optional document uploads'),
         ),
         const SizedBox(height: 12),
-        ...docs.map(
-          (doc) => Card(
-            child: ListTile(
-              title: Text(documentsLabels[doc] ?? doc),
-              subtitle: Text(_documents[doc]?.name ?? 'No file selected'),
-              trailing: TextButton.icon(
-                icon: const Icon(Icons.upload_file),
-                label: const Text('Upload'),
-                onPressed: () => _pickDocument(doc),
-              ),
-            ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.skip_next),
+            label: const Text('Skip documents for now'),
+            onPressed: () {
+              setState(() {
+                _skipDocumentsForNow = true;
+                _skippedDocuments.addAll(docs);
+                _documentUploadWarnings.clear();
+              });
+            },
           ),
+        ),
+        const SizedBox(height: 8),
+        ...docs.map(
+          (doc) {
+            final selectedFile = _documents[doc];
+            final warning = _documentUploadWarnings[doc];
+            final uploaded = _uploadedDocumentIds.containsKey(doc);
+            final skipped =
+                _skipDocumentsForNow || _skippedDocuments.contains(doc);
+            return Card(
+              child: ListTile(
+                title: Text(documentsLabels[doc] ?? doc),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(selectedFile?.name ??
+                        (skipped ? 'Skipped for now' : 'No file selected')),
+                    if (uploaded)
+                      const Text(
+                        'Uploaded',
+                        style: TextStyle(color: Colors.green),
+                      ),
+                    if (warning != null)
+                      Text(
+                        warning,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                  ],
+                ),
+                trailing: Wrap(
+                  spacing: 8,
+                  children: [
+                    if (warning != null)
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _documentUploadWarnings.remove(doc);
+                            _skippedDocuments.add(doc);
+                          });
+                        },
+                        child: const Text('Skip'),
+                      ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.upload_file),
+                      label: Text(warning == null ? 'Upload' : 'Retry'),
+                      onPressed: () => _pickDocument(doc),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -685,7 +744,12 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     final result = await FilePicker.platform
         .pickFiles(type: FileType.any, withData: true);
     if (result != null && result.files.isNotEmpty) {
-      setState(() => _documents[type] = result.files.first);
+      setState(() {
+        _documents[type] = result.files.first;
+        _documentUploadWarnings.remove(type);
+        _skippedDocuments.remove(type);
+        _skipDocumentsForNow = false;
+      });
     }
   }
 
@@ -847,13 +911,6 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       );
       return;
     }
-    if (!draft && !_hasAllDocuments()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload all required documents.')),
-      );
-      return;
-    }
-
     setState(() => _saving = true);
     try {
       final payload = _buildPayload(draft: draft);
@@ -867,6 +924,7 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       }
 
       await _uploadDocumentsIfNeeded();
+      final hasUploadWarnings = _documentUploadWarnings.isNotEmpty;
 
       if (!draft) {
         await widget.service.submit(_applicationId!);
@@ -875,12 +933,19 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(draft
-                ? 'Draft saved successfully'
-                : 'Application submitted'),
+            backgroundColor: hasUploadWarnings && draft
+                ? Theme.of(context).colorScheme.secondary
+                : null,
+            content: Text(hasUploadWarnings && draft
+                ? 'Draft saved. Some optional document uploads failed; retry or skip them.'
+                : draft
+                    ? 'Draft saved successfully'
+                    : 'Application submitted'),
           ),
         );
-        Navigator.of(context).pop(application);
+        if (!(draft && hasUploadWarnings)) {
+          Navigator.of(context).pop(application);
+        }
       }
     } on LoanApplicationValidationException catch (e) {
       if (mounted) {
@@ -915,29 +980,56 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     }
   }
 
-  bool _hasAllDocuments() {
-    final requiredDocs = requiredDocuments(_selectedLoanType);
-    for (final doc in requiredDocs) {
-      if (_documents[doc] == null) return false;
-    }
-    return true;
-  }
-
   Future<void> _uploadDocumentsIfNeeded() async {
     if (_applicationId == null) return;
     for (final entry in _documents.entries) {
       final file = entry.value;
-      if (file == null) continue;
+      if (file == null ||
+          _skipDocumentsForNow ||
+          _skippedDocuments.contains(entry.key)) {
+        continue;
+      }
 
       final documentType = _mapDocumentTypeToApi(entry.key);
-      await widget.service.uploadDocument(
-        _applicationId!,
-        documentType,
-        filePath: file.path,
-        bytes: file.bytes,
-        fileName: file.name,
-      );
+      try {
+        final response = await widget.service.uploadDocument(
+          _applicationId!,
+          documentType,
+          filePath: file.path,
+          bytes: file.bytes,
+          fileName: file.name,
+        );
+        final uploadedId = _extractUploadedDocumentId(response);
+        setState(() {
+          if (uploadedId != null) {
+            _uploadedDocumentIds[entry.key] = uploadedId;
+          }
+          _documentUploadWarnings.remove(entry.key);
+          _skippedDocuments.remove(entry.key);
+        });
+      } catch (e) {
+        setState(() {
+          _uploadedDocumentIds.remove(entry.key);
+          _documentUploadWarnings[entry.key] =
+              'Upload failed. You can retry or skip this optional document.';
+        });
+      }
     }
+  }
+
+  String? _extractUploadedDocumentId(Map<String, dynamic> response) {
+    final candidates = [
+      response['id'],
+      response['document_id'],
+      response['documentId'],
+      if (response['document'] is Map<String, dynamic>)
+        (response['document'] as Map<String, dynamic>)['id'],
+    ];
+    for (final candidate in candidates) {
+      final value = candidate?.toString();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return null;
   }
 
   String _mapDocumentTypeToApi(String uiValue) {
