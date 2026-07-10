@@ -724,6 +724,10 @@ let currentDraftId = null;
 let selectedLoanType = loanTypes[0];
 let currentLoanForPayment = null;
 const selectedDocuments = new Map();
+const uploadedDocumentIds = new Map();
+const documentUploadWarnings = new Map();
+const skippedDocuments = new Set();
+let skipDocumentsForNow = false;
 let customerSearchResults = [];
 let selectedCustomer = null;
 let selectedCustomerId = null;
@@ -6520,23 +6524,53 @@ function renderDocumentUploads() {
   if (!documentUploads) return;
   documentUploads.innerHTML = '';
   const requiredDocs = documentsByLoanType[selectedLoanType] || [];
+  const skipButton = document.createElement('button');
+  skipButton.type = 'button';
+  skipButton.className = 'ghost';
+  skipButton.textContent = 'Skip documents for now';
+  skipButton.addEventListener('click', () => {
+    skipDocumentsForNow = true;
+    requiredDocs.forEach((doc) => skippedDocuments.add(doc));
+    documentUploadWarnings.clear();
+    renderDocumentUploads();
+    updateReviewSummary();
+  });
+  documentUploads.appendChild(skipButton);
+
   requiredDocs.forEach((doc) => {
     const card = document.createElement('div');
+    const warning = documentUploadWarnings.get(doc);
+    const selectedFile = selectedDocuments.get(doc);
+    const uploaded = uploadedDocumentIds.has(doc);
+    const skipped = skipDocumentsForNow || skippedDocuments.has(doc);
     card.className = 'document-card';
     card.dataset.docType = doc;
     card.innerHTML = `
       <h5>${documentLabels[doc] || doc}</h5>
-      <p class="muted">Upload ${documentLabels[doc] || doc}</p>
-      <input type="file" name="${doc}" data-doc-type="${doc}" accept="image/*,.pdf" required />
+      <p class="muted">${selectedFile ? selectedFile.name : skipped ? 'Skipped for now' : 'No file selected'}</p>
+      ${uploaded ? '<p class="success-text">Uploaded</p>' : ''}
+      ${warning ? `<p class="error-text">${warning}</p>` : ''}
+      <input type="file" name="${doc}" data-doc-type="${doc}" accept="image/*,.pdf" />
+      ${warning ? '<button type="button" class="ghost skip-doc">Skip</button>' : ''}
     `;
     const fileInput = card.querySelector('input[type="file"]');
     fileInput.addEventListener('change', (event) => {
       const file = event.target.files?.[0];
       if (file) {
         selectedDocuments.set(doc, file);
+        documentUploadWarnings.delete(doc);
+        skippedDocuments.delete(doc);
+        skipDocumentsForNow = false;
       } else {
         selectedDocuments.delete(doc);
       }
+      renderDocumentUploads();
+      updateReviewSummary();
+    });
+    card.querySelector('.skip-doc')?.addEventListener('click', () => {
+      documentUploadWarnings.delete(doc);
+      skippedDocuments.add(doc);
+      renderDocumentUploads();
       updateReviewSummary();
     });
     documentUploads.appendChild(card);
@@ -7108,13 +7142,12 @@ function updateReviewSummary() {
     reviewSummary.appendChild(row);
   });
 
-  const requiredDocs = documentsByLoanType[selectedLoanType] || [];
-  const missingDocs = requiredDocs.filter((doc) => !selectedDocuments.has(doc));
-  reviewAlert.textContent = missingDocs.length
-    ? `Missing documents: ${missingDocs.map((d) => documentLabels[d] || d).join(', ')}`
-    : '';
+  const warnings = Array.from(documentUploadWarnings.entries()).map(
+    ([doc]) => `${documentLabels[doc] || doc} upload failed; retry or skip it.`
+  );
+  reviewAlert.textContent = warnings.join(' ');
   reviewAlert.classList.toggle('hidden', !reviewAlert.textContent);
-  reviewAlert.classList.toggle('error', !!missingDocs.length);
+  reviewAlert.classList.toggle('error', !!warnings.length);
 }
 
 async function saveDraft(showMessage = true) {
@@ -7162,16 +7195,38 @@ async function saveDraft(showMessage = true) {
   }
 }
 
+function extractUploadedDocumentId(response) {
+  return (
+    response?.id ??
+    response?.document_id ??
+    response?.documentId ??
+    response?.document?.id ??
+    null
+  );
+}
+
 async function uploadDocumentsIfNeeded() {
   if (!currentDraftId || selectedDocuments.size === 0) return;
   for (const [docType, file] of selectedDocuments.entries()) {
+    if (!file || skipDocumentsForNow || skippedDocuments.has(docType)) continue;
     const formData = new FormData();
     formData.append('file', file);
     // Align document_type values with the backend's expected enums (same as mobile app)
     // so submitted applications aren't rejected for "missing" files.
     formData.append('document_type', mapDocumentTypeToApi(docType));
-    await apiMultipart(`${endpoint('loanApplications')}/${currentDraftId}/documents`, formData);
+    try {
+      const response = await apiMultipart(`${endpoint('loanApplications')}/${currentDraftId}/documents`, formData);
+      const uploadedId = extractUploadedDocumentId(response);
+      if (uploadedId) uploadedDocumentIds.set(docType, uploadedId);
+      documentUploadWarnings.delete(docType);
+      skippedDocuments.delete(docType);
+    } catch (error) {
+      uploadedDocumentIds.delete(docType);
+      documentUploadWarnings.set(docType, 'Upload failed. You can retry or skip this optional document.');
+    }
   }
+  renderDocumentUploads();
+  updateReviewSummary();
 }
 
 let isSubmitting = false;
@@ -7210,17 +7265,6 @@ async function submitApplication() {
     const app = await api(endpointPath, { method, body: payload });
     currentDraftId = resolveApplicationId(app) ?? currentDraftId;
 
-    const requiredDocs = documentsByLoanType[selectedLoanType] || [];
-    const missingDocs = requiredDocs.filter((doc) => !selectedDocuments.has(doc));
-    if (missingDocs.length) {
-      setInlineAlert(
-        applicationFormMessage,
-        `Please upload: ${missingDocs.map((d) => documentLabels[d] || d).join(', ')}`,
-        'error'
-      );
-      return;
-    }
-
     await uploadDocumentsIfNeeded();
     await api(`${endpoint('loanApplications')}/${currentDraftId}/submit`, { method: 'POST' });
     setInlineAlert(applicationFormMessage, 'Application submitted.', 'success');
@@ -7248,6 +7292,10 @@ function resetApplicationForm() {
   currentDraftId = null;
   selectedLoanType = loanTypes[0];
   selectedDocuments.clear();
+  uploadedDocumentIds.clear();
+  documentUploadWarnings.clear();
+  skippedDocuments.clear();
+  skipDocumentsForNow = false;
   customerSearchResults = [];
   clearSelectedCustomer();
   setCustomerSearchMessage('');
