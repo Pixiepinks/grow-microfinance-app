@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/loan_application.dart';
 import '../../services/loan_application_service.dart';
+import '../../utils/currency_formatter.dart';
 import 'loan_application_detail_screen.dart';
 import 'loan_application_form_screen.dart';
 
@@ -84,7 +85,9 @@ class _MyLoanApplicationsScreenState extends State<MyLoanApplicationsScreen> {
                                 children: [
                                   Text(app.loanType),
                                   const SizedBox(height: 4),
-                                  Text('Amount: ${app.appliedAmount.toStringAsFixed(2)}'),
+                                  Text(
+                                    'Amount: ${formatCurrency(app.appliedAmount)}',
+                                  ),
                                   Text('Created: ${app.formattedDate}'),
                                 ],
                               ),

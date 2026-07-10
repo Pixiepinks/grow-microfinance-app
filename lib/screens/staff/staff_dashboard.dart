@@ -7,6 +7,7 @@ import '../../models/loan_application.dart';
 import '../../services/loan_application_service.dart';
 import '../../services/api_client.dart';
 import '../../services/staff_repository.dart';
+import '../../utils/currency_formatter.dart';
 import '../../widgets/dashboard_card.dart';
 import '../customer_registration_screen.dart';
 import '../customer/loan_application_detail_screen.dart';
@@ -280,7 +281,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Amount: ${item['amount_collected']}'),
+                    Text('Amount: ${formatCurrency(item['amount_collected'])}'),
                     const SizedBox(height: 4),
                     Text('Method: ${item['payment_method'] ?? 'Cash'}'),
                     const SizedBox(height: 4),
@@ -323,9 +324,10 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                   children: [
                     Text('Customer: $customer'),
                     const SizedBox(height: 4),
-                    if (amount.isNotEmpty) Text('Amount: $amount'),
+                    if (amount.isNotEmpty)
+                      Text('Amount: ${formatCurrency(amount)}'),
                     if (outstanding.isNotEmpty)
-                      Text('Outstanding: $outstanding'),
+                      Text('Outstanding: ${formatCurrency(outstanding)}'),
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerLeft,
@@ -413,7 +415,8 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                               children: [
                                 Text(app.loanType),
                                 Text(
-                                    'Amount: ${app.appliedAmount.toStringAsFixed(2)}'),
+                                  'Amount: ${formatCurrency(app.appliedAmount)}',
+                                ),
                                 Text('Tenure: ${app.tenureMonths} months'),
                                 Text('Created: ${app.formattedDate}'),
                               ],

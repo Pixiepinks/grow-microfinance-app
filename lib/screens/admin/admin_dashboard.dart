@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/loan_application.dart';
 import '../../services/loan_application_service.dart';
 import '../../services/admin_repository.dart';
+import '../../utils/currency_formatter.dart';
 import '../../widgets/dashboard_card.dart';
 import '../customer_registration_screen.dart';
 import '../customer/loan_application_detail_screen.dart';
@@ -214,7 +215,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           children: [
                             Text(app.loanType),
                             Text(
-                              'Amount: ${app.appliedAmount.toStringAsFixed(2)}',
+                              'Amount: ${formatCurrency(app.appliedAmount)}',
                             ),
                             Text('Tenure: ${app.tenureMonths} months'),
                             Text('Created: ${app.formattedDate}'),
