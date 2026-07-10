@@ -43,6 +43,16 @@ class ApiClient {
     return <dynamic>[];
   }
 
+
+  Future<List<int>> getBytes(String path, {String accept = 'application/octet-stream'}) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl$path'),
+      headers: {..._headers(jsonContentType: false), 'Accept': accept},
+    );
+    _throwIfNeeded(response);
+    return response.bodyBytes;
+  }
+
   Future<Map<String, dynamic>> postJson(
     String path, {
     Map<String, dynamic>? body,

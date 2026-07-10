@@ -96,6 +96,11 @@
                   <button class="admin-menu-item" type="button" data-section="staff-roles">Staff &amp; Roles</button>
                   <button class="admin-menu-item" type="button" data-section="documents">Documents</button>
                   <button class="admin-menu-item" type="button" data-section="risk">Risk Management</button>
+                  <button class="admin-menu-item" type="button" data-section="accounting">Accounting</button>
+                  <button class="admin-menu-item accounting-child" type="button" data-section="accounting-accounts">Chart of Accounts</button>
+                  <button class="admin-menu-item accounting-child" type="button" data-section="accounting-journals">Journal Entries</button>
+                  <button class="admin-menu-item accounting-child" type="button" data-section="accounting-ledger">General Ledger</button>
+                  <button class="admin-menu-item accounting-child" type="button" data-section="accounting-reconciliation">Reconciliation</button>
                   <button class="admin-menu-item" type="button" data-section="reports">Reports</button>
                   <button class="admin-menu-item" type="button" data-section="settings">Settings</button>
                   <button class="admin-menu-item" type="button" data-section="audit">Audit Logs</button>
@@ -668,6 +673,14 @@
                   </div>
                 </section>
 
+
+                <section class="admin-section hidden" data-section="accounting"><div id="accounting-dashboard-root"></div></section>
+                <section class="admin-section hidden" data-section="accounting-accounts"><div id="accounting-accounts-root"></div></section>
+                <section class="admin-section hidden" data-section="accounting-journals"><div id="accounting-journals-root"></div></section>
+                <section class="admin-section hidden" data-section="accounting-journal-form"><div id="accounting-journal-form-root"></div></section>
+                <section class="admin-section hidden" data-section="accounting-journal-detail"><div id="accounting-journal-detail-root"></div></section>
+                <section class="admin-section hidden" data-section="accounting-ledger"><div id="accounting-ledger-root"></div></section>
+                <section class="admin-section hidden" data-section="accounting-reconciliation"><div id="accounting-reconciliation-root"></div></section>
                 <section class="admin-section hidden" data-section="reports">
                   <div class="card-header">
                     <div>
@@ -676,14 +689,16 @@
                       <p class="muted">Portfolio, collections, and performance reports.</p>
                     </div>
                   </div>
-                  <div class="subcard">
-                    <ul class="bullet-list">
-                      <li>Loan Portfolio Report</li>
-                      <li>Collections Report</li>
-                      <li>Delinquency Report</li>
-                      <li>Staff Performance Report</li>
-                    </ul>
+                  <div class="subcard-grid">
+                    <div class="subcard"><h3>Loan Portfolio Report</h3><p class="muted">Available operational report.</p></div>
+                    <div class="subcard"><h3>Collections Report</h3><p class="muted">Available operational report.</p></div>
+                    <div class="subcard"><h3>Delinquency Report</h3><p class="muted">Available operational report.</p></div>
+                    <div class="subcard"><h3>Staff Performance Report</h3><p class="muted">Available operational report.</p></div>
                   </div>
+                  <div class="subcard"><h3>Financial Reports</h3><div class="subcard-grid">
+                    <button class="secondary" type="button" data-section-link="accounting-ledger">General Ledger — Available under Accounting</button>
+                    <div class="disabled-card">Trial Balance — Phase 2</div><div class="disabled-card">Income Statement — Phase 2</div><div class="disabled-card">Statement of Financial Position — Phase 2</div><div class="disabled-card">Cash Flow Statement — Future Phase</div>
+                  </div></div>
                 </section>
 
                 <section class="admin-section hidden" data-section="settings">

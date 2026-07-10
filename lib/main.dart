@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'api_config.dart';
 import 'screens/admin/admin_dashboard.dart';
+import 'screens/admin/accounting/accounting_pages.dart';
+import 'screens/admin/reports/reports_page.dart';
+import 'services/accounting_service.dart';
 import 'screens/customer/customer_dashboard.dart';
 import 'screens/login_screen.dart';
 import 'screens/staff/staff_dashboard.dart';
@@ -34,6 +37,7 @@ class _GrowMicrofinanceAppState extends State<GrowMicrofinanceApp> {
   late final CustomerRepository _customerRepository = CustomerRepository(_apiClient);
   late final LoanApplicationService _loanApplicationService =
       LoanApplicationService(_apiClient);
+  late final AccountingService _accountingService = AccountingService(_apiClient);
 
   bool _loadingSession = true;
   String? _role;
@@ -82,6 +86,7 @@ class _GrowMicrofinanceAppState extends State<GrowMicrofinanceApp> {
                   staffRepository: _staffRepository,
                   customerRepository: _customerRepository,
                   loanApplicationService: _loanApplicationService,
+                  accountingService: _accountingService,
                 ),
     );
   }
@@ -95,6 +100,7 @@ class _HomeShell extends StatefulWidget {
     required this.staffRepository,
     required this.customerRepository,
     required this.loanApplicationService,
+    required this.accountingService,
   });
 
   final String role;
@@ -103,6 +109,7 @@ class _HomeShell extends StatefulWidget {
   final StaffRepository staffRepository;
   final CustomerRepository customerRepository;
   final LoanApplicationService loanApplicationService;
+  final AccountingService accountingService;
 
   @override
   State<_HomeShell> createState() => _HomeShellState();
@@ -115,9 +122,10 @@ class _HomeShellState extends State<_HomeShell> {
     Widget body;
     switch (widget.role.toLowerCase()) {
       case 'admin':
-        body = AdminDashboardScreen(
-          repository: widget.adminRepository,
+        body = _AdminNavigationShell(
+          adminRepository: widget.adminRepository,
           loanApplicationService: widget.loanApplicationService,
+          accountingService: widget.accountingService,
         );
         break;
       case 'staff':
@@ -148,5 +156,36 @@ class _HomeShellState extends State<_HomeShell> {
       ),
       body: body,
     );
+  }
+}
+
+class _AdminNavigationShell extends StatefulWidget {
+  const _AdminNavigationShell({required this.adminRepository, required this.loanApplicationService, required this.accountingService});
+  final AdminRepository adminRepository;
+  final LoanApplicationService loanApplicationService;
+  final AccountingService accountingService;
+  @override State<_AdminNavigationShell> createState() => _AdminNavigationShellState();
+}
+class _AdminNavigationShellState extends State<_AdminNavigationShell> {
+  String page = 'dashboard'; String? selectedId;
+  final perms = const AccountingPermissions(<String>{});
+  void open(String p,{String? id}) => setState(() { page=p; selectedId=id; });
+  @override Widget build(BuildContext context) {
+    final items = <({String key, IconData icon, String label})>[
+      (key:'dashboard',icon:Icons.dashboard,label:'Dashboard'),(key:'applications',icon:Icons.assignment,label:'Loan Applications'),(key:'customers',icon:Icons.people,label:'Customers'),(key:'leads',icon:Icons.person_search,label:'Leads'),(key:'loans',icon:Icons.account_balance_wallet,label:'Loans'),(key:'collections',icon:Icons.payments,label:'Collections'),(key:'payments',icon:Icons.credit_card,label:'Payments'),(key:'staff',icon:Icons.admin_panel_settings,label:'Staff & Roles'),(key:'documents',icon:Icons.folder,label:'Documents'),(key:'risk',icon:Icons.shield,label:'Risk Management'),(key:'accounting',icon:Icons.account_balance,label:'Accounting Dashboard'),(key:'accounts',icon:Icons.schema,label:'Chart of Accounts'),(key:'journals',icon:Icons.receipt_long,label:'Journal Entries'),(key:'ledger',icon:Icons.menu_book,label:'General Ledger'),(key:'reconciliation',icon:Icons.rule,label:'Reconciliation'),(key:'reports',icon:Icons.bar_chart,label:'Reports'),(key:'settings',icon:Icons.settings,label:'Settings'),(key:'audit',icon:Icons.history,label:'Audit Logs')];
+    Widget body; switch(page){
+      case 'accounting': body=AccountingDashboardPage(service:widget.accountingService,perms:perms,open:(p)=>open(p)); break;
+      case 'accounts': body=ChartOfAccountsPage(service:widget.accountingService,perms:perms); break;
+      case 'journals': body=JournalEntriesPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
+      case 'journalNew': body=JournalEntryFormPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
+      case 'journalDetail': body=JournalDetailPage(service:widget.accountingService,perms:perms,id:selectedId??'',open:(p,{id})=>open(p,id:id)); break;
+      case 'ledger': body=GeneralLedgerPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
+      case 'reconciliation': body=ReconciliationPage(service:widget.accountingService); break;
+      case 'reports': body=ReportsPage(openLedger:()=>open('ledger')); break;
+      case 'dashboard': body=AdminDashboardScreen(repository:widget.adminRepository,loanApplicationService:widget.loanApplicationService); break;
+      default: body=Center(child: Text('${items.firstWhere((i)=>i.key==page).label} module'));
+    }
+    final nav = ListView(children: [const Padding(padding: EdgeInsets.all(16), child: Text('Admin Navigation', style: TextStyle(fontWeight: FontWeight.bold))), ...items.map((i)=>ListTile(leading:Icon(i.icon),title:Text(i.label),selected: page==i.key || (i.key=='accounting' && ['accounts','journals','journalNew','journalDetail','ledger','reconciliation'].contains(page)),onTap:(){open(i.key); if(MediaQuery.of(context).size.width<900) Navigator.maybePop(context);}))]);
+    return LayoutBuilder(builder:(context,c){ if(c.maxWidth>=900){ return Row(children:[SizedBox(width:280,child:Material(color:Theme.of(context).colorScheme.surface,child:nav)), const VerticalDivider(width:1), Expanded(child:body)]);} return Scaffold(drawer:Drawer(child:nav), appBar:AppBar(title:Text(items.firstWhere((i)=>i.key==page,orElse:()=>items.first).label)), body:body);});
   }
 }

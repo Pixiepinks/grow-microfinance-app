@@ -1147,3 +1147,15 @@ body.embed-loan-wizard-mode #customer-applications,
 body.embed-loan-wizard-mode #close-application-form {
   display: none !important;
 }
+.accounting-child { padding-left: 28px; font-size: 13px; }
+.accounting-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+.accounting-filters { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; align-items:end; }
+.accounting-filters input,.accounting-filters select,.accounting-line-table input,.accounting-line-table select { min-width:140px; }
+.table-scroll { overflow-x:auto; width:100%; }
+.table-scroll table { min-width:960px; width:100%; border-collapse:collapse; }
+.table-scroll th { position:sticky; top:0; background:#f8fafc; }
+.table-scroll th,.table-scroll td { padding:10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+.money { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+.badge { display:inline-flex; padding:3px 8px; border-radius:999px; background:#e2e8f0; font-size:12px; font-weight:700; }
+.disabled-card { padding:12px; border:1px dashed var(--border); border-radius:12px; color:var(--muted); background:#f8fafc; }
+@media (max-width: 768px) { .accounting-filters { display:grid; } .accounting-filters > * { width:100%; } .admin-layout { grid-template-columns:1fr; } .admin-sidebar { position:static; } }

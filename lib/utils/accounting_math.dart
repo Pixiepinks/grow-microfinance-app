@@ -1,0 +1,4 @@
+int toCents(Object? value){ final raw=(value??'').toString().trim().replaceAll(',',''); if(raw.isEmpty)return 0; final neg=raw.startsWith('-'); final clean=neg?raw.substring(1):raw; final parts=clean.split('.'); final whole=int.tryParse(parts[0])??0; final frac=((parts.length>1?parts[1]:'')+'00').substring(0,2); final cents=whole*100+(int.tryParse(frac)??0); return neg?-cents:cents; }
+String centsToDecimal(int cents){ final neg=cents<0; final abs=neg?-cents:cents; return '${neg?'-':''}${abs~/100}.${(abs%100).toString().padLeft(2,'0')}'; }
+int sumCents(Iterable<Object?> values)=>values.fold(0,(a,v)=>a+toCents(v));
+bool hasBalancedJournal(List<dynamic> lines){ int d=0,c=0,valid=0; for(final l in lines){ final debit=toCents(l.debit); final credit=toCents(l.credit); if(debit>0 && credit>0)return false; if(debit==0 && credit==0)return false; d+=debit; c+=credit; valid++; } return valid>=2 && d>0 && d==c; }
