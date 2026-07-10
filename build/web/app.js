@@ -1617,8 +1617,12 @@ async function apiMultipart(path, formData) {
 }
 
 function formatCurrency(value) {
-  const amount = Number(value ?? 0);
-  return amount ? `$${amount.toFixed(2)}` : '—';
+  const normalizedValue = String(value ?? 0).replace(/,/g, '');
+  const amount = Number(normalizedValue || 0);
+  return `Rs. ${amount.toLocaleString('en-LK', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
 }
 
 function escapeHtml(value) {
@@ -2680,10 +2684,7 @@ function renderAdminLoanApplicationsTable(applications) {
       <td>${customerName}</td>
       <td>${loanType}</td>
       <td>${renderStatusBadge(status)}</td>
-      <td>${Number(appliedAmount).toLocaleString('en-LK', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      })}</td>
+      <td>${formatCurrency(appliedAmount)}</td>
       <td>${formatDate(submittedAt) || '-'}</td>
     `;
 
@@ -5961,7 +5962,7 @@ function renderCollections(items) {
     node.querySelector('.item-subtitle').textContent =
       `Due: ${item.dueDate || '—'} · Reference: ${item.reference || '—'}`;
     node.querySelector('.pill').textContent =
-      typeof item.amount === 'number' ? `$${item.amount.toFixed(2)}` : item.amount;
+      formatCurrency(item.amount);
     staffCollections.appendChild(node);
   });
 }

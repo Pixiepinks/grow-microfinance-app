@@ -4,6 +4,7 @@ import '../../models/loan.dart';
 import '../../models/user_profile.dart';
 import '../../services/customer_repository.dart';
 import '../../services/loan_application_service.dart';
+import '../../utils/currency_formatter.dart';
 import '../../widgets/dashboard_card.dart';
 import 'loan_application_form_screen.dart';
 import 'my_loan_applications_screen.dart';
@@ -160,9 +161,9 @@ class _CustomerDashboardScreenState extends State<CustomerDashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Amount: ${loan.amount.toStringAsFixed(2)}'),
+                      Text('Amount: ${formatCurrency(loan.amount)}'),
                       const SizedBox(height: 4),
-                      Text('Balance: ${loan.balance.toStringAsFixed(2)}'),
+                      Text('Balance: ${formatCurrency(loan.balance)}'),
                       const SizedBox(height: 4),
                       Chip(label: Text(loan.status)),
                     ],

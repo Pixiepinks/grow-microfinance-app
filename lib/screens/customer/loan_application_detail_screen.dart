@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/loan_application.dart';
 import '../../services/loan_application_service.dart';
+import '../../utils/currency_formatter.dart';
 import 'loan_application_form_screen.dart';
 
 class LoanApplicationDetailScreen extends StatefulWidget {
@@ -152,7 +153,7 @@ class _LoanApplicationDetailScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(app.loanType),
-            Text('Amount: ${app.appliedAmount.toStringAsFixed(2)}'),
+            Text('Amount: ${formatCurrency(app.appliedAmount)}'),
             Text('Tenure: ${app.tenureMonths} months'),
             Text('Purpose: ${app.loanPurpose}'),
             Text('Created: ${app.formattedDate}'),

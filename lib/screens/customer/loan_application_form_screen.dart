@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../models/loan_application.dart';
 import '../../services/api_client.dart';
 import '../../services/loan_application_service.dart';
+import '../../utils/currency_formatter.dart';
 
 class LoanApplicationFormScreen extends StatefulWidget {
   const LoanApplicationFormScreen({
@@ -659,15 +660,25 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
             '${_address1Controller.text}, ${_address2Controller.text}, ${_cityController.text}, ${_districtController.text}, ${_provinceController.text}'),
         _buildSummaryRow(
             'DOB', _dateOfBirth?.toString().split(' ').first ?? 'Not set'),
-        _buildSummaryRow('Monthly Income', _monthlyIncomeController.text),
-        _buildSummaryRow('Monthly Expenses', _monthlyExpensesController.text),
-        _buildSummaryRow('Applied Amount', _appliedAmountController.text),
+        _buildSummaryRow(
+          'Monthly Income',
+          formatCurrency(_monthlyIncomeController.text),
+        ),
+        _buildSummaryRow(
+          'Monthly Expenses',
+          formatCurrency(_monthlyExpensesController.text),
+        ),
+        _buildSummaryRow(
+          'Applied Amount',
+          formatCurrency(_appliedAmountController.text),
+        ),
         _buildSummaryRow('Tenure (months)', _tenureController.text),
         _buildSummaryRow('Loan Purpose', _loanPurposeController.text),
         if (_selectedLoanType == 'Grow Online Business Loan') ...[
           _buildSummaryRow('Store URL', _onlineStoreController.text),
           _buildSummaryRow(
-              'Average monthly revenue', _averageRevenueController.text),
+              'Average monthly revenue',
+              formatCurrency(_averageRevenueController.text)),
           _buildSummaryRow(
               'Main product category', _productCategoryController.text),
         ],

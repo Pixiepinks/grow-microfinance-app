@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../models/loan.dart';
 import '../../models/payment.dart';
 import '../../services/customer_repository.dart';
+import '../../utils/currency_formatter.dart';
 import '../../widgets/dashboard_card.dart';
 
 class LoanDetailScreen extends StatefulWidget {
@@ -53,7 +54,6 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final formatter = NumberFormat.currency(symbol: '\$');
     return Scaffold(
       appBar: AppBar(title: Text('Loan #${_loan.id}')),
       body: RefreshIndicator(
@@ -67,9 +67,9 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Amount: ${formatter.format(_loan.amount)}'),
+                  Text('Amount: ${formatCurrency(_loan.amount)}'),
                   const SizedBox(height: 4),
-                  Text('Balance: ${formatter.format(_loan.balance)}'),
+                  Text('Balance: ${formatCurrency(_loan.balance)}'),
                   const SizedBox(height: 4),
                   Chip(label: Text(_loan.status)),
                 ],
@@ -100,7 +100,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
                             (p) => ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: const Icon(Icons.payments_outlined),
-                              title: Text(formatter.format(p.amount)),
+                              title: Text(formatCurrency(p.amount)),
                               subtitle: Text(DateFormat.yMMMd().format(p.date)),
                               trailing: Text(p.method),
                             ),
