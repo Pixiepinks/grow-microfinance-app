@@ -8,6 +8,58 @@ String _s(Map<String, dynamic> j, List<String> keys, [String fallback = '']) {
   return fallback;
 }
 
+
+String accountLabel(AccountingAccount? account) {
+  if (account == null) return 'Not selected';
+  final code = account.code.trim();
+  final name = account.name.trim();
+  if (code.isNotEmpty && name.isNotEmpty) return '$code — $name';
+  if (code.isNotEmpty) return code;
+  if (name.isNotEmpty) return name;
+  return account.id.isNotEmpty ? 'ID: ${account.id}' : 'Unnamed account';
+}
+
+bool parseAccountingBool(Object? value) {
+  if (value is bool) return value;
+  final s = value?.toString().trim().toLowerCase();
+  return s == 'true' || s == '1' || s == 'yes' || s == 'balanced';
+}
+
+String accountingIdFallback(Object? label, Object? id) {
+  final text = label?.toString().trim() ?? '';
+  if (text.isNotEmpty && !RegExp(r'^(customer|loan)?\s*id[: ]', caseSensitive: false).hasMatch(text)) return text;
+  final raw = id?.toString().trim() ?? '';
+  return raw.isEmpty ? '-' : 'ID: $raw';
+}
+
+Map<String, dynamic> parseGeneralLedgerResponse(Map<String, dynamic> j) {
+  final tx = j['transactions'];
+  final summary = (j['summary'] is Map ? Map<String, dynamic>.from(j['summary'] as Map) : <String, dynamic>{});
+  for (final k in ['opening_balance', 'total_debit', 'total_credit', 'closing_balance']) {
+    if (j.containsKey(k)) summary[k] = j[k];
+  }
+  if (tx is! List) throw FormatException('General ledger response is missing transactions.');
+  for (final k in ['opening_balance', 'total_debit', 'total_credit', 'closing_balance']) {
+    if (!summary.containsKey(k)) throw FormatException('General ledger response is missing $k.');
+  }
+  return {'summary': summary, 'transactions': tx};
+}
+
+Map<String, dynamic> parseFinancialSummaryResponse(Map<String, dynamic> j) {
+  final out = <String, dynamic>{};
+  for (final k in ['total_assets','total_liabilities','total_equity','total_income','total_expenses','net_profit_loss','trial_balance_difference','financial_position_difference','unclassified_account_count']) {
+    if (!j.containsKey(k)) throw FormatException('Financial reports summary is missing $k.');
+    out[k] = j[k];
+  }
+  out['trial_balance_balanced'] = parseAccountingBool(j['trial_balance_balanced']) || toCents(j['trial_balance_difference']) == 0;
+  out['financial_position_balanced'] = parseAccountingBool(j['financial_position_balanced']) || toCents(j['financial_position_difference']) == 0;
+  out['incomplete_accounting_history'] = parseAccountingBool(j['incomplete_accounting_history']);
+  out['warnings'] = j['warnings'] is List ? j['warnings'] : const [];
+  return out;
+}
+
+String humanIssueType(String? value) => humanReferenceType(value);
+
 class AccountingAccount {
   AccountingAccount({required this.id, required this.code, required this.name, required this.type, required this.normalBalance, this.parentId, this.parentName, this.description, this.subtype = '', this.allowManualPosting = true, this.active = true, this.systemAccount = false, this.depth = 0, this.defaultFor = const []});
   final String id, code, name, type, normalBalance, subtype;
@@ -15,7 +67,7 @@ class AccountingAccount {
   final bool allowManualPosting, active, systemAccount;
   final int depth;
   final List<String> defaultFor;
-  String get label => '$code — $name';
+  String get label => accountLabel(this);
   factory AccountingAccount.fromJson(Map<String, dynamic> j) => AccountingAccount(
         id: _s(j, ['id', 'account_id'], _s(j, ['code'])),
         code: _s(j, ['code', 'account_code']),

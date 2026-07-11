@@ -15,6 +15,7 @@ import 'services/auth_repository.dart';
 import 'services/customer_repository.dart';
 import 'services/loan_application_service.dart';
 import 'services/staff_repository.dart';
+import 'utils/browser_history.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -168,18 +169,27 @@ class _AdminNavigationShell extends StatefulWidget {
 }
 class _AdminNavigationShellState extends State<_AdminNavigationShell> {
   static String _pageFromPath(String path){
+    if (path.startsWith('/admin/accounting/journals/') && path.split('/').length > 4) return 'journalDetail';
     switch(path){
+      case '/admin/accounting': return 'accounting';
+      case '/admin/accounting/accounts': return 'accounts';
+      case '/admin/accounting/journals': return 'journals';
+      case '/admin/accounting/journals/new': return 'journalNew';
+      case '/admin/accounting/general-ledger': return 'ledger';
       case '/admin/accounting/reports': return 'accountingReports';
       case '/admin/accounting/trial-balance': return 'trialBalance';
       case '/admin/accounting/income-statement': return 'incomeStatement';
-      case '/admin/accounting/financial-position':
-      case '/admin/accounting/balance-sheet': return 'financialPosition';
+      case '/admin/accounting/financial-position': return 'financialPosition';
+      case '/admin/accounting/reconciliation': return 'reconciliation';
+      case '/admin/accounting/settings': return 'accountingSettings';
       default: return 'dashboard';
     }
   }
-  String page = _pageFromPath(Uri.base.path); String? selectedId;
+  static String _pathForPage(String p,{String? id}){switch(p){
+    case 'accounting': return '/admin/accounting'; case 'accounts': return '/admin/accounting/accounts'; case 'journals': return '/admin/accounting/journals'; case 'journalNew': return '/admin/accounting/journals/new'; case 'journalDetail': return '/admin/accounting/journals/${id??''}'; case 'ledger': return '/admin/accounting/general-ledger'; case 'accountingReports': return '/admin/accounting/reports'; case 'trialBalance': return '/admin/accounting/trial-balance'; case 'incomeStatement': return '/admin/accounting/income-statement'; case 'financialPosition': return '/admin/accounting/financial-position'; case 'reconciliation': return '/admin/accounting/reconciliation'; case 'accountingSettings': return '/admin/accounting/settings'; default: return '/admin';}}
+  String page = _pageFromPath(Uri.base.path); String? selectedId = Uri.base.path.startsWith('/admin/accounting/journals/') ? Uri.base.path.split('/').last : null;
   final perms = const AccountingPermissions(<String>{});
-  void open(String p,{String? id}) => setState(() { page=p; selectedId=id; });
+  void open(String p,{String? id}) { pushBrowserPath(_pathForPage(p,id:id)); setState(() { page=p; selectedId=id; }); }
   @override Widget build(BuildContext context) {
     final items = <({String key, IconData icon, String label})>[
       (key:'dashboard',icon:Icons.dashboard,label:'Dashboard'),(key:'applications',icon:Icons.assignment,label:'Loan Applications'),(key:'customers',icon:Icons.people,label:'Customers'),(key:'leads',icon:Icons.person_search,label:'Leads'),(key:'loans',icon:Icons.account_balance_wallet,label:'Loans'),(key:'collections',icon:Icons.payments,label:'Collections'),(key:'payments',icon:Icons.credit_card,label:'Payments'),(key:'staff',icon:Icons.admin_panel_settings,label:'Staff & Roles'),(key:'documents',icon:Icons.folder,label:'Documents'),(key:'risk',icon:Icons.shield,label:'Risk Management'),(key:'accounting',icon:Icons.account_balance,label:'Accounting Dashboard'),(key:'accounts',icon:Icons.schema,label:'Chart of Accounts'),(key:'journals',icon:Icons.receipt_long,label:'Journal Entries'),(key:'ledger',icon:Icons.menu_book,label:'General Ledger'),(key:'accountingReports',icon:Icons.assessment,label:'Financial Reports'),(key:'trialBalance',icon:Icons.balance,label:'Trial Balance'),(key:'incomeStatement',icon:Icons.trending_up,label:'Income Statement'),(key:'financialPosition',icon:Icons.account_balance,label:'Statement of Financial Position'),(key:'reconciliation',icon:Icons.rule,label:'Reconciliation'),(key:'accountingSettings',icon:Icons.settings_applications,label:'Accounting Settings'),(key:'reports',icon:Icons.bar_chart,label:'Reports'),(key:'settings',icon:Icons.settings,label:'Settings'),(key:'audit',icon:Icons.history,label:'Audit Logs')];
