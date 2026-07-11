@@ -104,6 +104,7 @@ class _LoanApplicationDetailScreenState
                               _formatMap(app.applicantDetails)),
                           _buildSection(
                               'Loan Details', _formatMap(app.loanDetails)),
+                          _buildSection('Approved Loan Terms', _approvedTerms(app)),
                         _buildSection(
                             'Type Specific', _formatMap(app.typeSpecific)),
                         _buildSection(
@@ -208,6 +209,33 @@ class _LoanApplicationDetailScreenState
     }
     return buffer.toString();
   }
+
+  List<Widget> _approvedTerms(LoanApplication app) {
+    String money(Object? value) => value == null ? 'Not available' : formatCurrency(value);
+    String percent(double? value) => value == null ? 'Not available' : '${value.toStringAsFixed(2)}%';
+    return [
+      _detailRow('Approved Amount', money(app.approvedAmount)),
+      _detailRow('Loan Duration', app.loanDays == null ? 'Not available' : '${app.loanDays} Days'),
+      _detailRow('Repayment Frequency', enumLabel(app.repaymentFrequency)),
+      _detailRow('Installments', app.numberOfInstallments?.toString() ?? 'Not available'),
+      _detailRow('Installment Amount', money(app.installmentAmount)),
+      _detailRow('Total Repayment', money(app.totalRepayment)),
+      _detailRow('Total Interest', money(app.totalInterest)),
+      _detailRow('Flat Interest Rate', percent(app.interestRate)),
+      _detailRow('Interest Type', enumLabel(app.interestType)),
+    ];
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Flexible(child: Text(value, textAlign: TextAlign.right)),
+          ],
+        ),
+      );
 
   List<Widget> _formatMap(Map<String, dynamic> data, {String emptyValue = ''}) {
     if (data.isEmpty) {

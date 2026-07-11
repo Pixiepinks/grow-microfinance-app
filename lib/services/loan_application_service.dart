@@ -144,10 +144,12 @@ class LoanApplicationService {
     );
   }
 
-  Future<void> finalApprove(String id) async {
-    await _client.postJson(
+  Future<LoanApplication> finalApprove(String id, {Map<String, dynamic>? body}) async {
+    final json = await _client.postJson(
       ApiConfig.endpoint('adminLoanApplicationApprove', params: {'id': id}),
+      body: body,
     );
+    return LoanApplication.fromJson(json);
   }
 
   Future<Map<String, dynamic>> disburse(String id, {Map<String, dynamic>? body}) async {
