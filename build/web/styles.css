@@ -1221,3 +1221,122 @@ td:nth-last-child(-n+3), th:nth-last-child(-n+3) { font-variant-numeric: tabular
 
 /* Phase 2 accounting reports */
 .report-page{max-width:none;width:100%;overflow-x:hidden}.report-table th,.report-table td{white-space:nowrap}.report-table .money{text-align:right;font-variant-numeric:tabular-nums}.parent-row{font-weight:700;background:#fafafa}.link-button{background:none;border:0;color:#2563eb;text-decoration:underline;cursor:pointer}.modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:50}.modal-card{background:#fff;border-radius:16px;max-height:90vh;overflow:auto;padding:24px;max-width:720px}.modal-card.wide{max-width:min(1100px,96vw)}.icon-button{float:right}.alert.success{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}@media print{.app-header,.admin-sidebar,.admin-menu,.report-filters,.action-row,button{display:none!important}.app-main,.card,.admin-content{box-shadow:none!important;border:0!important}.admin-layout{display:block}.report-page{font-size:12px}.report-table{overflow:visible}.report-table table{width:100%;border-collapse:collapse}.report-table tr{break-inside:avoid}}
+
+/* Apply Loan modal: render wizard directly with a light, readable design. */
+#apply-loan-modal .app-modal-dialog {
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  margin: 20px auto;
+  background: #ffffff;
+  color: #111827;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#apply-loan-modal .app-modal-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #ffffff;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+#apply-loan-modal .loan-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  background: #f8fafc;
+  color: #111827;
+}
+
+#apply-loan-modal .loan-wizard,
+#apply-loan-modal .loan-wizard * {
+  box-sizing: border-box;
+}
+
+#apply-loan-modal .loan-wizard {
+  display: block;
+  width: 100%;
+  min-height: 300px;
+  margin: 0;
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+}
+
+#apply-loan-modal .loan-wizard .sheet-header {
+  display: none;
+}
+
+#apply-loan-modal .loan-wizard label,
+#apply-loan-modal .loan-wizard .form-field,
+#apply-loan-modal .loan-wizard .form-field span,
+#apply-loan-modal .loan-wizard h4,
+#apply-loan-modal .loan-wizard h5,
+#apply-loan-modal .loan-wizard strong {
+  color: #374151;
+}
+
+#apply-loan-modal .loan-wizard input,
+#apply-loan-modal .loan-wizard select,
+#apply-loan-modal .loan-wizard textarea {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #d1d5db;
+}
+
+#apply-loan-modal .loan-wizard .form-step,
+#apply-loan-modal .loan-wizard .customer-search-panel,
+#apply-loan-modal .loan-wizard .document-card,
+#apply-loan-modal .loan-wizard .loan-type-card {
+  background: #ffffff;
+  color: #111827;
+}
+
+#apply-loan-modal .stepper-footer {
+  position: sticky;
+  bottom: -20px;
+  z-index: 2;
+  margin: 16px -16px -16px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+}
+
+#apply-loan-modal .modal-loading,
+#apply-loan-modal .modal-error {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  background: #ffffff;
+  color: #111827;
+}
+
+@media (max-width: 640px) {
+  #apply-loan-modal .app-modal-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    margin: 8px auto;
+  }
+
+  #apply-loan-modal .loan-modal-body {
+    padding: 12px;
+  }
+
+  #apply-loan-modal .loan-wizard .two-col,
+  #apply-loan-modal .loan-wizard .customer-search-controls {
+    grid-template-columns: 1fr;
+  }
+
+  #apply-loan-modal .stepper-footer,
+  #apply-loan-modal .footer-actions {
+    display: grid;
+    width: 100%;
+  }
+}
