@@ -157,6 +157,7 @@ const applyLoanModal = document.querySelector('#apply-loan-modal');
 const applyLoanModalClose = document.querySelector('#close-apply-loan-modal');
 const applyLoanModalIframe = document.querySelector('#apply-loan-modal-iframe');
 const applyLoanModalDialog = document.querySelector('#apply-loan-modal .app-modal-dialog');
+const overlayBodyClasses = ['modal-open', 'drawer-open', 'loading', 'overlay-active', 'no-scroll'];
 let customerRouteViews = document.querySelectorAll('[data-customer-view]');
 let customerDetailView;
 let customerDetailMessage;
@@ -2038,6 +2039,54 @@ function renderStatusBadge(status) {
 
   const badgeClass = badgeClassMap[normalized] || 'badge-neutral';
   return `<span class="badge ${badgeClass}">${normalized}</span>`;
+}
+
+
+function hasActiveOverlay() {
+  return !!document.querySelector(
+    '.app-modal:not(.hidden), .modal:not(.hidden), .modal-overlay:not(.hidden), .loading-overlay.active, .drawer-backdrop.active, .screen-overlay.active'
+  );
+}
+
+function restoreBodyScrollingIfNoOverlay() {
+  if (hasActiveOverlay()) return;
+  document.body.classList.remove(...overlayBodyClasses);
+}
+
+function cleanupInactiveOverlays() {
+  document
+    .querySelectorAll('.modal-backdrop, .loading-overlay, .drawer-backdrop, .screen-overlay, .app-modal-backdrop')
+    .forEach((element) => {
+      const parentModal = element.closest('.app-modal');
+      const isActiveParentModal = parentModal && !parentModal.classList.contains('hidden');
+      if (
+        !isActiveParentModal &&
+        !element.classList.contains('active') &&
+        !element.classList.contains('open') &&
+        !element.classList.contains('show')
+      ) {
+        element.remove();
+      }
+    });
+  restoreBodyScrollingIfNoOverlay();
+}
+
+function ensureModalBackdrop(modal) {
+  if (!modal) return null;
+  let backdrop = modal.querySelector(':scope > .app-modal-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.className = 'app-modal-backdrop active show';
+    backdrop.dataset.modalClose = 'true';
+    modal.prepend(backdrop);
+  }
+  backdrop.classList.remove('hidden');
+  backdrop.classList.add('active', 'show');
+  return backdrop;
+}
+
+function removeModalBackdrop(modal) {
+  modal?.querySelectorAll(':scope > .app-modal-backdrop').forEach((backdrop) => backdrop.remove());
 }
 
 function setInlineAlert(target, text, type = 'success') {
@@ -5329,8 +5378,11 @@ function handleLoanApplicationsRoute(path = loanApplicationsRouteHomePath, { pus
 
 function openApplyLoanModal() {
   if (!applyLoanModal || !applyLoanModalIframe) return;
+  cleanupInactiveOverlays();
   applyLoanModal.classList.remove('hidden');
+  applyLoanModal.classList.add('open');
   applyLoanModal.setAttribute('aria-hidden', 'false');
+  ensureModalBackdrop(applyLoanModal);
   applyLoanModalIframe.src = `${loanApplyWizardRoutePath}?embed=1`;
   document.body.classList.add('modal-open');
 }
@@ -5338,9 +5390,11 @@ function openApplyLoanModal() {
 function closeApplyLoanModal() {
   if (!applyLoanModal || !applyLoanModalIframe) return;
   applyLoanModal.classList.add('hidden');
+  applyLoanModal.classList.remove('open');
   applyLoanModal.setAttribute('aria-hidden', 'true');
   applyLoanModalIframe.src = 'about:blank';
-  document.body.classList.remove('modal-open');
+  removeModalBackdrop(applyLoanModal);
+  restoreBodyScrollingIfNoOverlay();
 }
 
 function createDocumentTile({ title, description, buttonLabel, key, path }) {
@@ -6153,6 +6207,8 @@ async function loadAdmin() {
       error?.message ? fallbackMessage : "Couldn't load applications – tap Refresh to try again.",
       'error',
     );
+  } finally {
+    cleanupInactiveOverlays();
   }
 }
 
@@ -7371,6 +7427,7 @@ function goToPrevStep() {
 }
 
 async function bootstrap() {
+  cleanupInactiveOverlays();
   await loadApiConfig();
 
   if (window.location.pathname === '/lead') {
