@@ -2183,7 +2183,7 @@ function ensureAdminLoansUI() {
           <thead>
             <tr>
               <th>Loan Number</th>
-              <th>Customer ID</th>
+              <th class="admin-loans-customer-col">Customer</th>
               <th>Principal Amount</th>
               <th>Total Payable</th>
               <th>Total Paid</th>
@@ -2308,6 +2308,50 @@ function getLoanId(loan) {
   return getLoanField(loan, ['id', 'loan_id', 'loanId', 'uuid', 'loan.uuid'], '');
 }
 
+function getLoanCustomerField(loan, keys, fallback = '') {
+  const customer = loan?.customer || loan?.borrower || loan?.applicant || {};
+  for (const key of keys) {
+    const value = key.split('.').reduce((acc, part) => acc?.[part], loan);
+    if (value !== undefined && value !== null && value !== '') return String(value);
+
+    const customerValue = key.split('.').reduce((acc, part) => acc?.[part], customer);
+    if (customerValue !== undefined && customerValue !== null && customerValue !== '') return String(customerValue);
+  }
+  return fallback;
+}
+
+function getCustomerDisplayNameFromLoan(loan) {
+  const fullName = getLoanCustomerField(loan, [
+    'customer.full_name', 'customer.fullName', 'customer.name', 'customer_name', 'customerName',
+    'borrower.full_name', 'borrower.fullName', 'borrower.name', 'borrower_name', 'borrowerName',
+    'applicant.full_name', 'applicant.fullName', 'applicant.name', 'applicant_name', 'applicantName',
+    'full_name', 'fullName', 'name'
+  ]).trim();
+  return fullName || 'Unknown Customer';
+}
+
+function renderLoanCustomerCell(loan) {
+  const name = getCustomerDisplayNameFromLoan(loan);
+  const mobile = getLoanCustomerField(loan, [
+    'customer.mobile_number', 'customer.mobileNumber', 'customer.mobile', 'customer.phone', 'customer.contact_number', 'customer.contactNumber',
+    'borrower.mobile_number', 'borrower.mobileNumber', 'borrower.mobile', 'borrower.phone', 'borrower.contact_number', 'borrower.contactNumber',
+    'applicant.mobile_number', 'applicant.mobileNumber', 'applicant.mobile', 'applicant.phone', 'applicant.contact_number', 'applicant.contactNumber',
+    'customer_mobile', 'customerMobile', 'mobile_number', 'mobileNumber', 'mobile', 'phone', 'contact_number', 'contactNumber'
+  ]).trim();
+  const nic = getLoanCustomerField(loan, [
+    'customer.nic_number', 'customer.nicNumber', 'customer.nic_no', 'customer.nicNo', 'customer.nic',
+    'borrower.nic_number', 'borrower.nicNumber', 'borrower.nic_no', 'borrower.nicNo', 'borrower.nic',
+    'applicant.nic_number', 'applicant.nicNumber', 'applicant.nic_no', 'applicant.nicNo', 'applicant.nic',
+    'customer_nic', 'customerNic', 'nic_number', 'nicNumber', 'nic_no', 'nicNo', 'nic'
+  ]).trim();
+
+  return `<div class="loan-customer-cell">
+    <strong>${escapeHtml(name)}</strong>
+    ${mobile ? `<span class="loan-customer-mobile">${escapeHtml(mobile)}</span>` : ''}
+    ${nic ? `<span class="loan-customer-nic">NIC: ${escapeHtml(nic)}</span>` : ''}
+  </div>`;
+}
+
 function normalizeLedgerResponse(response) {
   const entriesCandidates = [
     response?.entries,
@@ -2358,8 +2402,8 @@ function calculateLedgerDisplayTotals(entries, backendTotals) {
 
 function renderLoanDetailFields(loan) {
   const fields = [
-    ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference', 'loan_id', 'loanId', 'id'])],
-    ['Customer ID', getLoanField(loan, ['customer_id', 'customerId', 'customer.id', 'borrower_id', 'borrowerId'])],
+    ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference'])],
+    ['Customer', getCustomerDisplayNameFromLoan(loan)],
     ['Principal Amount', formatCurrency(getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0))],
     ['Total Payable', formatCurrency(getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0))],
     ['Total Paid', formatCurrency(getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0))],
@@ -2530,8 +2574,7 @@ function renderAdminLoansTable(loans) {
   }
 
   loans.forEach((loan) => {
-    const loanNumber = getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference', 'loan_id', 'loanId', 'id']);
-    const customerId = getLoanField(loan, ['customer_id', 'customerId', 'customer.id', 'borrower_id', 'borrowerId']);
+    const loanNumber = getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference']);
     const principal = getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0);
     const totalPayable = getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0);
     const totalPaid = getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0);
@@ -2541,7 +2584,7 @@ function renderAdminLoansTable(loans) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${escapeHtml(loanNumber)}</td>
-      <td>${escapeHtml(customerId)}</td>
+      <td class="admin-loans-customer-col">${renderLoanCustomerCell(loan)}</td>
       <td>${formatCurrency(principal)}</td>
       <td>${formatCurrency(totalPayable)}</td>
       <td>${formatCurrency(totalPaid)}</td>
