@@ -7226,6 +7226,32 @@ function scheduleCustomerSearch() {
   }, 500);
 }
 
+function normalizeLoanEnum(value, fallback = '') {
+  const normalized = String(value || fallback || '')
+    .trim()
+    .replace(/[\s-]+/g, '_')
+    .toUpperCase();
+  const aliases = {
+    DAY: 'DAYS',
+    DAYS: 'DAYS',
+    MONTH: 'MONTHS',
+    MONTHS: 'MONTHS',
+    DAILY: 'DAILY',
+    WEEKLY: 'WEEKLY',
+    MONTHLY: 'MONTHLY',
+    FLAT: 'FLAT',
+    FLAT_TERM: 'FLAT_TERM',
+    FLAT_FOR_FULL_TERM: 'FLAT_TERM',
+  };
+  return aliases[normalized] || normalized;
+}
+
+function toPayloadNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const numeric = Number(String(value).replace(/%/g, '').trim());
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 function buildApplicationPayload() {
   const formData = new FormData(loanApplicationForm);
   const values = Object.fromEntries(formData.entries());
@@ -7248,18 +7274,44 @@ function buildApplicationPayload() {
     existing_loans_description: values.existing_loans_description || '',
   };
 
-  const termType = String(values.term_type || '').toUpperCase();
-  const termValue = Number.parseInt(values.term_value, 10) || 0;
-  const loanDetails = {
-    applied_amount: Number(values.applied_amount) || 0,
+  const termType = normalizeLoanEnum(values.term_type);
+  const termValue = Math.trunc(toPayloadNumber(values.term_value));
+  const repaymentFrequency = normalizeLoanEnum(values.repayment_frequency);
+  const appliedAmount = toPayloadNumber(values.applied_amount);
+  const interestRate = toPayloadNumber(values.interest_rate);
+  const previewSource = {
+    applied_amount: appliedAmount,
     term_type: termType,
     term_value: termValue,
-    loan_days: termType === 'DAYS' ? termValue : 0,
-    tenure_months: termType === 'MONTHS' ? termValue : 0,
-    interest_rate: Number(values.interest_rate) || 0,
+    loan_days: termType === 'DAYS' ? termValue : null,
+    tenure_months: termType === 'MONTHS' ? termValue : null,
+    interest_rate: interestRate,
     interest_rate_basis: 'FLAT_TERM',
+    repayment_frequency: repaymentFrequency,
+    loan_purpose: values.loan_purpose || '',
+  };
+  const preview = calculateLoanPreview(previewSource);
+  const installmentCount = Math.trunc(toPayloadNumber(preview.installmentCount));
+  const installmentAmount = toPayloadNumber(preview.installmentAmount);
+  const totalInterest = toPayloadNumber(preview.totalInterest);
+  const totalRepayment = toPayloadNumber(preview.totalPayable);
+  const loanDetails = {
+    applied_amount: appliedAmount,
+    term_type: termType,
+    term_value: termValue,
+    loan_days: termType === 'DAYS' ? termValue : null,
+    tenure_months: termType === 'MONTHS' ? termValue : null,
+    repayment_frequency: repaymentFrequency,
+    interest_rate: interestRate,
+    interest_rate_basis: 'FLAT_TERM',
+    interest_type: 'FLAT',
+    number_of_installments: installmentCount,
+    installment_count: installmentCount,
+    installment_amount: installmentAmount,
+    total_interest: totalInterest,
+    total_repayment: totalRepayment,
+    total_payable: totalRepayment,
     installment_details: values.installment_details || '',
-    repayment_frequency: values.repayment_frequency || '',
     loan_purpose: values.loan_purpose || '',
   };
 
@@ -7314,6 +7366,29 @@ function buildApplicationPayload() {
   }
 
   return { ...payload, ...applicantDetails, ...loanDetails, ...typeSpecific };
+}
+
+function validateLoanSubmissionPayload(payload) {
+  const requiredFields = {
+    term_type: payload.term_type,
+    term_value: payload.term_value,
+    repayment_frequency: payload.repayment_frequency,
+    interest_rate: payload.interest_rate,
+    installment_count: payload.installment_count,
+    loan_purpose: payload.loan_purpose,
+  };
+  const missing = Object.entries(requiredFields)
+    .filter(([, value]) => value === null || value === undefined || value === '')
+    .map(([key]) => key);
+  if (missing.length) {
+    throw new Error(`Cannot submit loan application. Missing: ${missing.join(', ')}`);
+  }
+}
+
+function responseConfirmsLoanTermData(response = {}) {
+  const source = collectLoanTermSource(response?.data || response || {});
+  return ['term_type', 'term_value', 'repayment_frequency', 'installment_count', 'loan_purpose']
+    .every((key) => hasValue(source[key]));
 }
 
 function hasValue(value) {
@@ -7513,8 +7588,8 @@ function normalizeApplicationPayload(payload) {
 
 function updateReviewSummary() {
   if (!reviewSummary) return;
-  const data = buildApplicationPayload();
-  const summary = calculateLoanPreview(data.loan_details);
+  const data = normalizeApplicationPayload(buildApplicationPayload());
+  const summary = calculateLoanPreview(data);
   const rows = [
     ['Loan type', data.loan_type],
     ['Purpose', data.loan_details.loan_purpose],
@@ -7684,6 +7759,8 @@ async function submitApplication() {
     const payload = normalizeApplicationPayload(buildApplicationPayload());
     payload.status = 'SUBMITTED';
     payload.customer_id = selectedCustomerId || payload.customer_id || null;
+    validateLoanSubmissionPayload(payload);
+    console.log('Loan application submission payload:', payload);
     setInlineAlert(applicationFormMessage, 'Saving application...', 'success');
     const endpointPath = currentDraftId
       ? `${endpoint('loanApplications')}/${currentDraftId}`
@@ -7693,10 +7770,17 @@ async function submitApplication() {
     currentDraftId = resolveApplicationId(app) ?? currentDraftId;
 
     await uploadDocumentsIfNeeded();
-    await api(`${endpoint('loanApplications')}/${currentDraftId}/submit`, { method: 'POST' });
-    setInlineAlert(applicationFormMessage, 'Application submitted.', 'success');
+    const submitResponse = await api(`${endpoint('loanApplications')}/${currentDraftId}/submit`, { method: 'POST' });
+    const confirmed = responseConfirmsLoanTermData(submitResponse) || responseConfirmsLoanTermData(app);
+    setInlineAlert(
+      applicationFormMessage,
+      confirmed
+        ? 'Application submitted.'
+        : 'Application was submitted but loan term data was not confirmed by the server.',
+      confirmed ? 'success' : 'warning'
+    );
     await loadApplications();
-    applicationFormCard.classList.add('hidden');
+    if (confirmed) applicationFormCard.classList.add('hidden');
   } catch (err) {
     console.error(err);
     const friendlyMessage =
