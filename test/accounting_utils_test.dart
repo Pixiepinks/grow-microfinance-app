@@ -67,4 +67,63 @@ test('reconciliation issue labels and ID fallback are human readable', () {
   expect(accountingIdFallback('Customer ID: 8', 8), 'ID: 8');
   expect(accountingIdFallback('LN-001', 9), 'LN-001');
 });
+
+test('general ledger parser maps canonical summary fields and labels', () {
+  final parsed = parseGeneralLedgerResponse({
+    'opening_balance': '0.00',
+    'total_debit': '50000.00',
+    'total_credit': '0.00',
+    'closing_balance': '50000.00',
+    'transactions': [
+      {
+        'debit': '50000.00',
+        'credit': '0.00',
+        'running_balance': '50000.00',
+        'customer_number': 'CUST001',
+        'customer_name': 'Sunil Perera',
+        'loan_number': 'GROW-LOAN-20260710-0003',
+      }
+    ],
+  });
+  expect(parsed['summary']['total_debit'], '50000.00');
+  expect(parsed['summary']['closing_balance'], '50000.00');
+});
+
+test('general ledger parser rejects missing summary fields instead of zero defaults', () {
+  expect(
+    () => parseGeneralLedgerResponse({'transactions': []}),
+    throwsFormatException,
+  );
+});
+
+test('financial position parser preserves explicit activity and empty flags', () {
+  final parsed = parseFinancialPositionResponse({
+    'has_activity': true,
+    'is_empty': false,
+    'presentation_adjustment': 'BANK_OVERDRAFT_RECLASSIFICATION',
+    'assets': [
+      {'name': 'Loan Principal Receivable', 'amount': '50000.00'}
+    ],
+    'liabilities': [
+      {'name': 'Bank Overdraft — Main Bank Account', 'amount': '50000.00'}
+    ],
+    'equity': [],
+    'validation': {'balanced': true},
+  });
+  expect(parsed['has_activity'], isTrue);
+  expect(parsed['is_empty'], isFalse);
+  expect(parsed['presentation_adjustment'], 'BANK_OVERDRAFT_RECLASSIFICATION');
+});
+
+test('chart of accounts parser uses is_system_account', () {
+  final account = AccountingAccount.fromJson({
+    'id': 1,
+    'code': '1100',
+    'name': 'Loan Principal Receivable',
+    'type': 'ASSET',
+    'normal_balance': 'DEBIT',
+    'is_system_account': true,
+  });
+  expect(account.systemAccount, isTrue);
+});
 }

@@ -42,6 +42,13 @@ Map<String, dynamic> parseGeneralLedgerResponse(Map<String, dynamic> j) {
   for (final k in ['opening_balance', 'total_debit', 'total_credit', 'closing_balance']) {
     if (!summary.containsKey(k)) throw FormatException('General ledger response is missing $k.');
   }
+  final txCents = sumCents(tx.whereType<Map>().map((r) => r['debit'])) - sumCents(tx.whereType<Map>().map((r) => r['credit']));
+  final expected = toCents(summary['closing_balance']) - toCents(summary['opening_balance']);
+  if (txCents != expected) throw FormatException('General ledger summary totals do not agree with transaction totals.');
+  final maps = tx.whereType<Map>().toList();
+  if (maps.isNotEmpty && maps.last.containsKey('running_balance') && toCents(maps.last['running_balance']) != toCents(summary['closing_balance'])) {
+    throw FormatException('General ledger final running balance does not equal closing balance.');
+  }
   return {'summary': summary, 'transactions': tx};
 }
 
@@ -80,7 +87,7 @@ class AccountingAccount {
         description: j['description']?.toString(),
         allowManualPosting: j['allow_manual_posting'] ?? j['posting_allowed'] ?? j['allowManualPosting'] ?? true,
         active: j['active'] ?? j['is_active'] ?? true,
-        systemAccount: j['system_account'] ?? j['is_system'] ?? false,
+        systemAccount: parseAccountingBool(j['is_system_account'] ?? j['system_account'] ?? j['is_system']),
         depth: int.tryParse((j['depth'] ?? j['level'] ?? 0).toString()) ?? 0,
         defaultFor: ((j['default_for'] ?? j['defaultFor'] ?? []) as List?)?.map((e) => e.toString()).toList() ?? const [],
       );
@@ -103,3 +110,22 @@ class JournalEntry { JournalEntry({required this.id, required this.journalNo, th
 class JournalLine { JournalLine({required this.lineNo,this.accountCode,this.accountName,this.accountType,this.description,this.customerId,this.customerName,this.customerNumber,this.loanId,this.loanNumber,this.debit='0',this.credit='0'}); final int lineNo; final String? accountCode,accountName,accountType,description,customerId,customerName,customerNumber,loanId,loanNumber; final String debit,credit; String get customerLabel=>[customerNumber,customerName].where((v)=>v!=null&&v.isNotEmpty).join('\n'); String get loanLabel=>loanNumber??''; factory JournalLine.fromJson(Map<String,dynamic> j)=>JournalLine(lineNo:int.tryParse((j['line_no']??j['lineNo']??1).toString())??1,accountCode:j['account_code']?.toString(),accountName:j['account_name']?.toString(),accountType:j['account_type']?.toString(),description:j['description']?.toString(),customerId:j['customer_id']?.toString(),customerName:j['customer_name']?.toString()??(j['customer']?.toString().startsWith('Customer ID')==true?null:j['customer']?.toString()),customerNumber:j['customer_number']?.toString(),loanId:j['loan_id']?.toString(),loanNumber:j['loan_number']?.toString()??(j['loan']?.toString().startsWith('Loan ID')==true?null:j['loan']?.toString()),debit:(j['debit']??0).toString(),credit:(j['credit']??0).toString()); }
 
 String humanReferenceType(String? value) { final v=(value??'').trim(); const labels={'LOAN_DISBURSEMENT':'Loan Disbursement','LOAN_PAYMENT':'Loan Payment','MANUAL_JOURNAL':'Manual Journal','REVERSAL':'Reversal'}; return labels[v] ?? (v.isEmpty ? '-' : v.toLowerCase().split('_').map((p)=>p.isEmpty?p:'${p[0].toUpperCase()}${p.substring(1)}').join(' ')); }
+
+
+Map<String, dynamic> parseFinancialPositionResponse(Map<String, dynamic> j) {
+  for (final k in ['has_activity', 'is_empty']) {
+    if (!j.containsKey(k)) throw FormatException('Statement of financial position response is missing $k.');
+  }
+  final out = Map<String, dynamic>.from(j);
+  out['has_activity'] = parseAccountingBool(j['has_activity']);
+  out['is_empty'] = parseAccountingBool(j['is_empty']);
+  out['warnings'] = j['warnings'] is List ? j['warnings'] : const [];
+  out['validation'] = j['validation'] is Map ? j['validation'] : const {};
+  out['totals'] = j['totals'] is Map ? j['totals'] : <String, dynamic>{
+    'total_assets': j['total_assets'],
+    'total_liabilities': j['total_liabilities'],
+    'total_equity': j['total_equity'],
+    'balancing_difference': j['balancing_difference'],
+  };
+  return out;
+}
