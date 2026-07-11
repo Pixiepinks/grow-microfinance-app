@@ -2266,6 +2266,7 @@ function ensureAdminLoansUI() {
       .loan-detail-stat { border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 0.85rem; padding: 0.75rem; background: rgba(248, 250, 252, 0.8); }
       .loan-detail-stat span { display: block; color: #64748b; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
       .loan-detail-stat strong { display: block; margin-top: 0.25rem; }
+      .loan-detail-actions { display: flex; justify-content: flex-end; margin: 0 0 1rem; }
       .ledger-table-scroll { overflow-x: auto; }
       .ledger-table-scroll table { min-width: 1500px; }
     `;
@@ -2427,6 +2428,122 @@ function getLedgerField(entry, keys, fallback = '—') {
   return getLoanField(entry, keys, fallback);
 }
 
+function loanHasValue(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function getAuthoritativeLoanSource(loan = {}) {
+  return collectLoanTermSource(loan);
+}
+
+function getAuthoritativeLoanValue(loan, keys, fallback = null) {
+  const source = getAuthoritativeLoanSource(loan);
+  return getLoanField(source, keys, fallback);
+}
+
+function formatAdminTermDisplay(loan = {}) {
+  const source = getAuthoritativeLoanSource(loan);
+  const termDisplay = getLoanField(source, ['term_display', 'termDisplay'], '');
+  if (loanHasValue(termDisplay)) return String(termDisplay);
+  const termType = String(getLoanField(source, ['term_type', 'termType'], '') || '').toUpperCase();
+  const termValue = getLoanField(source, ['term_value', 'termValue'], null);
+  if (termType === 'DAYS' && loanHasValue(termValue)) return `${termValue} days`;
+  if (termType === 'MONTHS' && loanHasValue(termValue)) return `${termValue} months`;
+  const loanDays = getLoanField(source, ['loan_days', 'loanDays'], null);
+  if (loanHasValue(loanDays)) return `${loanDays} days`;
+  const tenureMonths = getLoanField(source, ['tenure_months', 'tenureMonths'], null);
+  if (loanHasValue(tenureMonths)) return `${tenureMonths} months`;
+  return 'Missing';
+}
+
+function getAdminTermTypeAndValue(loan = {}) {
+  const source = getAuthoritativeLoanSource(loan);
+  const termType = String(getLoanField(source, ['term_type', 'termType'], '') || '').toUpperCase();
+  const termValue = getLoanField(source, ['term_value', 'termValue'], null);
+  if ((termType === 'DAYS' || termType === 'MONTHS') && loanHasValue(termValue)) {
+    return { type: termType, value: Number(termValue) || 0 };
+  }
+  const loanDays = getLoanField(source, ['loan_days', 'loanDays'], null);
+  if (loanHasValue(loanDays)) return { type: 'DAYS', value: Number(loanDays) || 0 };
+  const tenureMonths = getLoanField(source, ['tenure_months', 'tenureMonths'], null);
+  if (loanHasValue(tenureMonths)) return { type: 'MONTHS', value: Number(tenureMonths) || 0 };
+  return { type: termType, value: 0 };
+}
+
+function formatAdminFrequency(loan = {}) {
+  const frequency = String(getAuthoritativeLoanValue(loan, ['repayment_frequency', 'repaymentFrequency'], '') || '').toUpperCase();
+  const labels = { DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly' };
+  return labels[frequency] || (frequency ? titleCase(frequency) : 'Missing');
+}
+
+function getAdminFrequencyCode(loan = {}) {
+  return String(getAuthoritativeLoanValue(loan, ['repayment_frequency', 'repaymentFrequency'], '') || '').toUpperCase();
+}
+
+function getAdminInstallmentCountDisplay(loan = {}, ledgerRows = [], ledgerSummary = null) {
+  const source = getAuthoritativeLoanSource(loan);
+  const count = getLoanField(source, ['installment_count', 'installmentCount'], null)
+    ?? getLoanField(source, ['number_of_installments', 'numberOfInstallments'], null)
+    ?? getLoanField(ledgerSummary || {}, ['installment_count', 'installmentCount'], null);
+  if (loanHasValue(count)) return String(count);
+  if (ledgerRows.length === 1) return '1 — verify schedule';
+  if (ledgerRows.length) return String(ledgerRows.length);
+  return 'Missing';
+}
+
+function getAdminInstallmentCountNumber(loan = {}, ledgerRows = [], ledgerSummary = null) {
+  const display = getAdminInstallmentCountDisplay(loan, ledgerRows, ledgerSummary);
+  const parsed = Number(String(display).match(/^\d+(?:\.\d+)?/)?.[0] || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildLoanDataWarnings(loan = {}, ledgerRows = [], ledgerSummary = null) {
+  const missing = [];
+  if (formatAdminTermDisplay(loan) === 'Missing') missing.push('Term');
+  if (formatAdminFrequency(loan) === 'Missing') missing.push('Repayment frequency');
+  if (getAdminInstallmentCountDisplay(loan, ledgerRows, ledgerSummary) === 'Missing') missing.push('Installment count');
+  if (!loanHasValue(getAuthoritativeLoanValue(loan, ['start_date', 'startDate'], null))) missing.push('Start date');
+  if (!loanHasValue(getAuthoritativeLoanValue(loan, ['maturity_date', 'maturityDate', 'final_installment_due_date', 'finalInstallmentDueDate'], null))) missing.push('Maturity date');
+  if (!missing.length) return '';
+  return `<div class="alert warning"><strong>Loan configuration incomplete</strong><p>Missing:</p><ul>${missing.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul><p>This loan may have been disbursed before the term data was correctly saved.</p></div>`;
+}
+
+function buildScheduleValidationWarning(loan = {}, ledgerRows = [], ledgerSummary = null) {
+  const term = getAdminTermTypeAndValue(loan);
+  const frequency = getAdminFrequencyCode(loan);
+  if (term.type !== 'DAYS' || frequency !== 'WEEKLY' || !term.value) return '';
+  const expectedInstallments = Math.ceil(term.value / 7);
+  const found = getAdminInstallmentCountNumber(loan, ledgerRows, ledgerSummary) || ledgerRows.length;
+  if (found && expectedInstallments !== found) {
+    return `<div class="alert warning">Schedule mismatch: expected ${expectedInstallments} installments but found ${found}.</div>`;
+  }
+  return '';
+}
+
+function buildFinancialValidationWarning(loan = {}) {
+  const source = getAuthoritativeLoanSource(loan);
+  const basis = String(getLoanField(source, ['interest_rate_basis', 'interestRateBasis'], '') || '').toUpperCase();
+  if (basis !== 'FLAT_TERM') return '';
+  const principal = Number(getLoanField(source, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0)) || 0;
+  const interestRate = Number(getLoanField(source, ['interest_rate', 'interestRate'], 0)) || 0;
+  const apiInterest = Number(getLoanField(source, ['total_interest', 'totalInterest'], NaN));
+  const apiTotal = Number(getLoanField(source, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], NaN));
+  if (!principal || !interestRate) return '';
+  const expectedInterest = principal * interestRate / 100;
+  const expectedTotal = principal + expectedInterest;
+  const tolerance = 0.01;
+  if ((Number.isFinite(apiInterest) && Math.abs(apiInterest - expectedInterest) > tolerance) || (Number.isFinite(apiTotal) && Math.abs(apiTotal - expectedTotal) > tolerance)) {
+    return '<div class="alert warning">Financial mismatch detected.</div>';
+  }
+  return '';
+}
+
+function renderLoanRepairAction(loan = {}) {
+  return getLoanField(loan, ['repair_allowed', 'repairAllowed'], false) === true
+    ? '<button type="button" class="secondary" data-admin-repair-schedule>Repair Schedule</button>'
+    : '';
+}
+
 function calculateLedgerDisplayTotals(entries, backendTotals) {
   if (backendTotals) {
     return {
@@ -2451,23 +2568,38 @@ function calculateLedgerDisplayTotals(entries, backendTotals) {
 
 function renderLoanDetailFields(loan) {
   const summary = calculateLoanPreview(loan);
+  const termDisplay = formatAdminTermDisplay(loan);
+  const frequencyDisplay = formatAdminFrequency(loan);
+  const installmentCountDisplay = getAdminInstallmentCountDisplay(loan);
+  const installmentAmount = getAuthoritativeLoanValue(loan, ['installment_amount', 'installmentAmount', 'estimated_installment_amount', 'estimatedInstallmentAmount'], null);
+  const totalInterest = getAuthoritativeLoanValue(loan, ['total_interest', 'totalInterest'], summary.totalInterest);
+  const totalPayable = getAuthoritativeLoanValue(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], summary.totalPayable);
+  const startDate = getAuthoritativeLoanValue(loan, ['start_date', 'startDate'], null);
+  const maturityDate = getAuthoritativeLoanValue(loan, ['maturity_date', 'maturityDate', 'final_installment_due_date', 'finalInstallmentDueDate'], null);
   const fields = [
     ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference'])],
     ['Customer', getCustomerDisplayNameFromLoan(loan)],
     ['Principal', formatCurrency(summary.principal || getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0))],
-    ['Term', formatLoanTerm(loan)],
-    ['Frequency', titleCase(summary.frequency) || '—'],
-    ['Interest rate and basis', `${summary.rate || 0}% ${(getLoanField(loan, ['interest_rate_basis', 'interestRateBasis'], 'FLAT_TERM') || 'FLAT_TERM')}`],
-    ['Installment count', summary.installmentCount || getLoanField(loan, ['installment_count', 'installmentCount'], '—')],
-    ['Total Interest', formatCurrency(summary.totalInterest)],
-    ['Total Payable', formatCurrency(summary.totalPayable || getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0))],
+    ['Term', termDisplay],
+    ['Frequency', frequencyDisplay],
+    ['Interest rate and basis', `${getAuthoritativeLoanValue(loan, ['interest_rate', 'interestRate'], summary.rate || 0)}% ${(getAuthoritativeLoanValue(loan, ['interest_rate_basis', 'interestRateBasis'], 'FLAT_TERM') || 'FLAT_TERM')}`],
+    ['Installment count', installmentCountDisplay],
+    ['Installment amount', loanHasValue(installmentAmount) ? formatCurrency(installmentAmount) : 'Missing'],
+    ['Total Interest', formatCurrency(totalInterest)],
+    ['Total Payable', formatCurrency(totalPayable)],
     ['Total Paid', formatCurrency(getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0))],
     ['Outstanding', formatCurrency(getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0))],
-    ['Start date', formatDate(getLoanField(loan, ['start_date', 'startDate', 'disbursement_date', 'disbursementDate'], '')) || '—'],
-    ['Maturity date', formatDate(getLoanField(loan, ['maturity_date', 'maturityDate', 'final_due_date', 'finalDueDate', 'end_date', 'endDate'], '')) || '—'],
+    ['Start date', loanHasValue(startDate) ? (formatDate(startDate) || startDate) : 'Missing'],
+    ['Maturity date', loanHasValue(maturityDate) ? (formatDate(maturityDate) || maturityDate) : 'Missing'],
     ['Status', getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN')],
   ];
-  adminLoanDetailContent.innerHTML = `<div class="loan-detail-grid">${fields
+  const warnings = [
+    buildLoanDataWarnings(loan),
+    buildScheduleValidationWarning(loan),
+    buildFinancialValidationWarning(loan),
+  ].join('');
+  const repairAction = renderLoanRepairAction(loan);
+  adminLoanDetailContent.innerHTML = `${warnings}${repairAction ? `<div class="loan-detail-actions">${repairAction}</div>` : ''}<div class="loan-detail-grid">${fields
     .map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join('')}</div>`;
 }
@@ -2483,17 +2615,18 @@ function renderLoanLedger() {
     return;
   }
   const entries = adminLoansState.ledger;
-  const selectedSummary = calculateLoanPreview(adminLoansState.selectedLoan || {});
-  const expectedInstallments = estimateInstallmentCount(selectedSummary.type, selectedSummary.value, selectedSummary.frequency);
-  const actualInstallments = selectedSummary.installmentCount || entries.length;
-  const mismatchWarning = selectedSummary.type === 'DAYS' && expectedInstallments && actualInstallments && expectedInstallments !== actualInstallments
-    ? `<div class="alert warning">Schedule mismatch detected. Expected ${expectedInstallments} ${String(selectedSummary.frequency).toLowerCase()} installments for a ${selectedSummary.value}-day loan.</div>`
-    : '';
-  const scheduleHtml = `<div class="ledger-totals-grid">${[
-    ['Term', formatLoanTerm(adminLoansState.selectedLoan || {})],
-    ['Frequency', titleCase(selectedSummary.frequency) || '—'],
-    ['Installments', actualInstallments || '—'],
-  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${mismatchWarning}`;
+  const loan = adminLoansState.selectedLoan || {};
+  const warnings = [
+    buildLoanDataWarnings(loan, entries, adminLoansState.ledgerTotals),
+    buildScheduleValidationWarning(loan, entries, adminLoansState.ledgerTotals),
+    buildFinancialValidationWarning(loan),
+  ].join('');
+  const repairAction = renderLoanRepairAction(loan);
+  const scheduleHtml = `${warnings}${repairAction ? `<div class="loan-detail-actions">${repairAction}</div>` : ''}<div class="ledger-totals-grid">${[
+    ['Term', formatAdminTermDisplay(loan)],
+    ['Frequency', formatAdminFrequency(loan)],
+    ['Installments', getAdminInstallmentCountDisplay(loan, entries, adminLoansState.ledgerTotals)],
+  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>`;
   const totals = calculateLedgerDisplayTotals(entries, adminLoansState.ledgerTotals);
   const totalsHtml = [
     ['Total Principal', totals.totalPrincipal],
@@ -2501,7 +2634,7 @@ function renderLoanLedger() {
     ['Total Payable', totals.totalPayable],
     ['Total Paid', totals.totalPaid],
     ['Outstanding', totals.outstanding],
-    ['Total Delay Interest', totals.totalDelayInterest],
+    ['Delay Interest', totals.totalDelayInterest],
   ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('');
 
   if (!entries.length) {
@@ -2601,6 +2734,27 @@ async function loadAdminLoanLedger(force = false) {
   } finally {
     adminLoansState.ledgerLoading = false;
     renderAdminLoanDetail();
+  }
+}
+
+async function repairAdminLoanSchedule() {
+  const loanId = getLoanId(adminLoansState.selectedLoan);
+  if (!loanId) return;
+  const confirmed = confirm('This will replace the incorrect unpaid schedule and recalculate the loan. No payment records will be changed.');
+  if (!confirmed) return;
+  try {
+    setInlineAlert(adminLoanDetailMessage, 'Repairing schedule...', 'success');
+    await api(`/admin/loans/${encodeURIComponent(loanId)}/repair-schedule`, { method: 'POST', body: {} });
+    setInlineAlert(adminLoanDetailMessage, 'Schedule repaired successfully.', 'success');
+    await loadAdminLoans(true);
+    const refreshedLoan = adminLoansState.loans.find((item) => String(getLoanId(item)) === String(loanId));
+    if (refreshedLoan) adminLoansState.selectedLoan = refreshedLoan;
+    adminLoansState.ledgerLoadedLoanId = null;
+    if (adminLoansState.detailTab === 'ledger') await loadAdminLoanLedger(true);
+    else renderAdminLoanDetail();
+  } catch (error) {
+    console.error('Failed to repair loan schedule', error);
+    setInlineAlert(adminLoanDetailMessage, error?.message || 'Failed to repair schedule.', 'error');
   }
 }
 
@@ -7776,6 +7930,13 @@ document.addEventListener('click', (event) => {
   if (paymentBtn) {
     event.preventDefault();
     recordAdminLedgerPayment(paymentBtn.dataset.adminLedgerPayment);
+    return;
+  }
+
+  const repairBtn = event.target.closest('[data-admin-repair-schedule]');
+  if (repairBtn) {
+    event.preventDefault();
+    repairAdminLoanSchedule();
   }
 });
 
