@@ -18,4 +18,12 @@ class AccountingService { AccountingService(this._client); final ApiClient _clie
   Future<Map<String,dynamic>> ledger(Map<String,dynamic?> q)=>_client.getJson('/admin/accounting/general-ledger${_query(Map.of(q))}');
   Future<List<dynamic>> reconciliation([Map<String,dynamic?> q=const{}]) async => _items(await _client.getJsonData('/admin/accounting/reconciliation/issues${_query(Map.of(q))}'));
   Future<List<int>> exportLedgerCsv(Map<String,dynamic?> q) => _client.getBytes('/admin/accounting/general-ledger/export.csv${_query(Map.of(q))}', accept: 'text/csv');
+  Future<Map<String,dynamic>> financialReportsSummary(Map<String,dynamic?> q)=>_client.getJson('/admin/accounting/reports/summary${_query(Map.of(q))}');
+  Future<Map<String,dynamic>> trialBalance(Map<String,dynamic?> q)=>_client.getJson('/admin/accounting/reports/trial-balance${_query(Map.of(q))}');
+  Future<Map<String,dynamic>> incomeStatement(Map<String,dynamic?> q)=>_client.getJson('/admin/accounting/reports/income-statement${_query(Map.of(q))}');
+  Future<Map<String,dynamic>> financialPosition(Map<String,dynamic?> q)=>_client.getJson('/admin/accounting/reports/statement-of-financial-position${_query(Map.of(q))}');
+  Future<Map<String,dynamic>> accountDrilldown(Map<String,dynamic?> q)=>_client.getJson('/admin/accounting/reports/account-drilldown${_query(Map.of(q))}');
+  Future<List<int>> exportTrialBalanceCsv(Map<String,dynamic?> q)=>_client.getBytes('/admin/accounting/reports/trial-balance/export.csv${_query(Map.of(q))}', accept:'text/csv');
+  Future<List<int>> exportIncomeStatementCsv(Map<String,dynamic?> q)=>_client.getBytes('/admin/accounting/reports/income-statement/export.csv${_query(Map.of(q))}', accept:'text/csv');
+  Future<List<int>> exportFinancialPositionCsv(Map<String,dynamic?> q)=>_client.getBytes('/admin/accounting/reports/statement-of-financial-position/export.csv${_query(Map.of(q))}', accept:'text/csv');
 }

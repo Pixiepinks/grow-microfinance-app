@@ -167,18 +167,32 @@ class _AdminNavigationShell extends StatefulWidget {
   @override State<_AdminNavigationShell> createState() => _AdminNavigationShellState();
 }
 class _AdminNavigationShellState extends State<_AdminNavigationShell> {
-  String page = 'dashboard'; String? selectedId;
+  static String _pageFromPath(String path){
+    switch(path){
+      case '/admin/accounting/reports': return 'accountingReports';
+      case '/admin/accounting/trial-balance': return 'trialBalance';
+      case '/admin/accounting/income-statement': return 'incomeStatement';
+      case '/admin/accounting/financial-position':
+      case '/admin/accounting/balance-sheet': return 'financialPosition';
+      default: return 'dashboard';
+    }
+  }
+  String page = _pageFromPath(Uri.base.path); String? selectedId;
   final perms = const AccountingPermissions(<String>{});
   void open(String p,{String? id}) => setState(() { page=p; selectedId=id; });
   @override Widget build(BuildContext context) {
     final items = <({String key, IconData icon, String label})>[
-      (key:'dashboard',icon:Icons.dashboard,label:'Dashboard'),(key:'applications',icon:Icons.assignment,label:'Loan Applications'),(key:'customers',icon:Icons.people,label:'Customers'),(key:'leads',icon:Icons.person_search,label:'Leads'),(key:'loans',icon:Icons.account_balance_wallet,label:'Loans'),(key:'collections',icon:Icons.payments,label:'Collections'),(key:'payments',icon:Icons.credit_card,label:'Payments'),(key:'staff',icon:Icons.admin_panel_settings,label:'Staff & Roles'),(key:'documents',icon:Icons.folder,label:'Documents'),(key:'risk',icon:Icons.shield,label:'Risk Management'),(key:'accounting',icon:Icons.account_balance,label:'Accounting Dashboard'),(key:'accounts',icon:Icons.schema,label:'Chart of Accounts'),(key:'journals',icon:Icons.receipt_long,label:'Journal Entries'),(key:'ledger',icon:Icons.menu_book,label:'General Ledger'),(key:'reconciliation',icon:Icons.rule,label:'Reconciliation'),(key:'accountingSettings',icon:Icons.settings_applications,label:'Accounting Settings'),(key:'reports',icon:Icons.bar_chart,label:'Reports'),(key:'settings',icon:Icons.settings,label:'Settings'),(key:'audit',icon:Icons.history,label:'Audit Logs')];
+      (key:'dashboard',icon:Icons.dashboard,label:'Dashboard'),(key:'applications',icon:Icons.assignment,label:'Loan Applications'),(key:'customers',icon:Icons.people,label:'Customers'),(key:'leads',icon:Icons.person_search,label:'Leads'),(key:'loans',icon:Icons.account_balance_wallet,label:'Loans'),(key:'collections',icon:Icons.payments,label:'Collections'),(key:'payments',icon:Icons.credit_card,label:'Payments'),(key:'staff',icon:Icons.admin_panel_settings,label:'Staff & Roles'),(key:'documents',icon:Icons.folder,label:'Documents'),(key:'risk',icon:Icons.shield,label:'Risk Management'),(key:'accounting',icon:Icons.account_balance,label:'Accounting Dashboard'),(key:'accounts',icon:Icons.schema,label:'Chart of Accounts'),(key:'journals',icon:Icons.receipt_long,label:'Journal Entries'),(key:'ledger',icon:Icons.menu_book,label:'General Ledger'),(key:'accountingReports',icon:Icons.assessment,label:'Financial Reports'),(key:'trialBalance',icon:Icons.balance,label:'Trial Balance'),(key:'incomeStatement',icon:Icons.trending_up,label:'Income Statement'),(key:'financialPosition',icon:Icons.account_balance,label:'Statement of Financial Position'),(key:'reconciliation',icon:Icons.rule,label:'Reconciliation'),(key:'accountingSettings',icon:Icons.settings_applications,label:'Accounting Settings'),(key:'reports',icon:Icons.bar_chart,label:'Reports'),(key:'settings',icon:Icons.settings,label:'Settings'),(key:'audit',icon:Icons.history,label:'Audit Logs')];
     Widget body; switch(page){
       case 'accounting': body=AccountingDashboardPage(service:widget.accountingService,perms:perms,open:(p)=>open(p)); break;
       case 'accounts': body=ChartOfAccountsPage(service:widget.accountingService,perms:perms); break;
       case 'journals': body=JournalEntriesPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
       case 'journalNew': body=JournalEntryFormPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
       case 'journalDetail': body=JournalDetailPage(service:widget.accountingService,perms:perms,id:selectedId??'',open:(p,{id})=>open(p,id:id)); break;
+      case 'accountingReports': body=FinancialReportsDashboardPage(service:widget.accountingService,perms:perms,open:(p)=>open(p)); break;
+      case 'trialBalance': body=TrialBalancePage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
+      case 'incomeStatement': body=IncomeStatementPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
+      case 'financialPosition': body=FinancialPositionPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
       case 'ledger': body=GeneralLedgerPage(service:widget.accountingService,perms:perms,open:(p,{id})=>open(p,id:id)); break;
       case 'reconciliation': body=ReconciliationPage(service:widget.accountingService); break;
       case 'accountingSettings': body=AccountingSettingsPage(service:widget.accountingService,perms:perms); break;
@@ -186,7 +200,7 @@ class _AdminNavigationShellState extends State<_AdminNavigationShell> {
       case 'dashboard': body=AdminDashboardScreen(repository:widget.adminRepository,loanApplicationService:widget.loanApplicationService,accountingService:widget.accountingService,openAdminPage:(p,{id})=>open(p,id:id)); break;
       default: body=Center(child: Text('${items.firstWhere((i)=>i.key==page).label} module'));
     }
-    final nav = ListView(children: [const Padding(padding: EdgeInsets.all(16), child: Text('Admin Navigation', style: TextStyle(fontWeight: FontWeight.bold))), ...items.map((i)=>ListTile(leading:Icon(i.icon),title:Text(i.label),selected: page==i.key || (i.key=='accounting' && ['accounts','journals','journalNew','journalDetail','ledger','reconciliation','accountingSettings'].contains(page)),onTap:(){open(i.key); if(MediaQuery.of(context).size.width<900) Navigator.maybePop(context);}))]);
+    final nav = ListView(children: [const Padding(padding: EdgeInsets.all(16), child: Text('Admin Navigation', style: TextStyle(fontWeight: FontWeight.bold))), ...items.map((i)=>ListTile(leading:Icon(i.icon),title:Text(i.label),selected: page==i.key || (i.key=='accounting' && ['accounts','journals','journalNew','journalDetail','ledger','accountingReports','trialBalance','incomeStatement','financialPosition','reconciliation','accountingSettings'].contains(page)),onTap:(){open(i.key); if(MediaQuery.of(context).size.width<900) Navigator.maybePop(context);}))]);
     return LayoutBuilder(builder:(context,c){ if(c.maxWidth>=900){ return Row(children:[SizedBox(width:280,child:Material(color:Theme.of(context).colorScheme.surface,child:nav)), const VerticalDivider(width:1), Expanded(child:body)]);} return Scaffold(drawer:Drawer(child:nav), appBar:AppBar(title:Text(items.firstWhere((i)=>i.key==page,orElse:()=>items.first).label)), body:body);});
   }
 }
