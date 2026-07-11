@@ -155,7 +155,7 @@ const customerRouteGrid = document.querySelector(
 const customerRouteContent = document.querySelector('#customer-route-content');
 const applyLoanModal = document.querySelector('#apply-loan-modal');
 const applyLoanModalClose = document.querySelector('#close-apply-loan-modal');
-const applyLoanModalIframe = document.querySelector('#apply-loan-modal-iframe');
+const applyLoanModalBody = document.querySelector('#apply-loan-modal-body');
 const applyLoanModalDialog = document.querySelector('#apply-loan-modal .app-modal-dialog');
 const overlayBodyClasses = ['modal-open', 'drawer-open', 'loading', 'overlay-active', 'no-scroll'];
 let customerRouteViews = document.querySelectorAll('[data-customer-view]');
@@ -5376,23 +5376,72 @@ function handleLoanApplicationsRoute(path = loanApplicationsRouteHomePath, { pus
   return true;
 }
 
+const originalApplicationFormParent = applicationFormCard?.parentElement || null;
+const originalApplicationFormNextSibling = applicationFormCard?.nextElementSibling || null;
+
+function showApplyLoanError(message) {
+  if (!applyLoanModalBody) return;
+  applyLoanModalBody.innerHTML = `
+    <div class="modal-error">
+      <h3>Unable to load the loan application form</h3>
+      <p>${escapeHtml(message || 'Unknown error')}</p>
+      <button type="button" id="retryLoanWizard" class="primary">Retry</button>
+    </div>
+  `;
+  applyLoanModalBody.querySelector('#retryLoanWizard')?.addEventListener('click', openApplyLoanModal);
+}
+
 function openApplyLoanModal() {
-  if (!applyLoanModal || !applyLoanModalIframe) return;
+  if (!applyLoanModal || !applyLoanModalBody || !applicationFormCard) return;
   cleanupInactiveOverlays();
   applyLoanModal.classList.remove('hidden');
   applyLoanModal.classList.add('open');
   applyLoanModal.setAttribute('aria-hidden', 'false');
   ensureModalBackdrop(applyLoanModal);
-  applyLoanModalIframe.src = `${loanApplyWizardRoutePath}?embed=1`;
   document.body.classList.add('modal-open');
+  applyLoanModalBody.innerHTML = '<div class="modal-loading">Loading loan application form...</div>';
+
+  try {
+    if (!formSteps || formSteps.length === 0) {
+      throw new Error('No loan application wizard steps configured');
+    }
+    resetApplicationForm();
+    currentStep = 0;
+    applyLoanModalBody.replaceChildren();
+    applicationFormCard.classList.add('loan-wizard');
+    applicationFormCard.classList.remove('hidden');
+    applyLoanModalBody.appendChild(applicationFormCard);
+    const footerActions = applicationFormCard.querySelector('.stepper-footer .footer-actions');
+    if (footerActions && !footerActions.querySelector('[data-apply-loan-cancel]')) {
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.className = 'ghost';
+      cancelButton.dataset.applyLoanCancel = 'true';
+      cancelButton.textContent = 'Cancel';
+      cancelButton.addEventListener('click', closeApplyLoanModal);
+      footerActions.prepend(cancelButton);
+    }
+    updateStepperUI();
+    if (!applicationFormCard.childElementCount) {
+      throw new Error('Loan wizard returned empty content');
+    }
+  } catch (error) {
+    console.error('Failed to load Apply Loan wizard:', error);
+    showApplyLoanError(error.message);
+  }
 }
 
 function closeApplyLoanModal() {
-  if (!applyLoanModal || !applyLoanModalIframe) return;
+  if (!applyLoanModal) return;
   applyLoanModal.classList.add('hidden');
   applyLoanModal.classList.remove('open');
   applyLoanModal.setAttribute('aria-hidden', 'true');
-  applyLoanModalIframe.src = 'about:blank';
+  if (originalApplicationFormParent && applicationFormCard) {
+    applicationFormCard.classList.add('hidden');
+    applicationFormCard.classList.remove('loan-wizard');
+    originalApplicationFormParent.insertBefore(applicationFormCard, originalApplicationFormNextSibling);
+  }
+  if (applyLoanModalBody) applyLoanModalBody.replaceChildren();
   removeModalBackdrop(applyLoanModal);
   restoreBodyScrollingIfNoOverlay();
 }
@@ -6944,7 +6993,11 @@ function buildApplicationPayload() {
 
   const loanDetails = {
     applied_amount: Number(values.applied_amount) || 0,
-    tenure_months: Number(values.tenure_months) || 0,
+    tenure_months: Math.ceil((Number(values.loan_days) || Number(values.tenure_months) * 30 || 0) / 30),
+    loan_days: Number(values.loan_days) || 0,
+    interest_rate: Number(values.interest_rate) || 0,
+    installment_details: values.installment_details || '',
+    repayment_frequency: values.repayment_frequency || 'WEEKLY',
     loan_purpose: values.loan_purpose || '',
   };
 
@@ -7203,7 +7256,10 @@ function updateReviewSummary() {
     ['Loan type', data.loan_type],
     ['Purpose', data.loan_details.loan_purpose],
     ['Applied amount', formatCurrency(data.loan_details.applied_amount)],
-    ['Tenure', `${data.loan_details.tenure_months} months`],
+    ['Loan days', `${data.loan_details.loan_days || data.loan_details.tenure_months * 30} days`],
+    ['Interest rate', `${data.loan_details.interest_rate || 0}%`],
+    ['Installment details', data.loan_details.installment_details || '—'],
+    ['Repayment frequency', data.loan_details.repayment_frequency || '—'],
     ['Full name', data.applicant_details.full_name],
     ['NIC', data.applicant_details.nic_number],
     ['Mobile', data.applicant_details.mobile_number],
