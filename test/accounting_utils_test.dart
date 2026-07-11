@@ -14,4 +14,57 @@ void main() {
     expect(hasBalancedJournal([JournalLineDraft(accountId: '1', debit: '10', credit: '10'), JournalLineDraft(accountId: '2', credit: '10')]), isFalse);
     expect(toCents('1,234.56'), 123456);
   });
+
+test('accountLabel regression handles null and partial accounts', () {
+  expect(accountLabel(null), 'Not selected');
+  expect(accountLabel(AccountingAccount(id: '8', code: '1010', name: 'Main Bank Account', type: 'ASSET', normalBalance: 'DEBIT')), '1010 — Main Bank Account');
+  expect(accountLabel(AccountingAccount(id: '8', code: '', name: '', type: 'ASSET', normalBalance: 'DEBIT')), 'ID: 8');
+});
+
+test('general ledger canonical response parsing maps summary fields', () {
+  final parsed = parseGeneralLedgerResponse({
+    'opening_balance': '0.00',
+    'total_debit': '50000.00',
+    'total_credit': '0.00',
+    'closing_balance': '50000.00',
+    'transactions': [
+      {'customer_number': 'C-001', 'customer_name': 'Jane Doe', 'loan_number': 'LN-001', 'debit': '50000.00'}
+    ],
+  });
+  expect(parsed['summary']['total_debit'], '50000.00');
+  expect(parsed['summary']['closing_balance'], '50000.00');
+  expect(parsed['transactions'].first['customer_name'], 'Jane Doe');
+  expect(parsed['transactions'].first['loan_number'], 'LN-001');
+  expect(() => parseGeneralLedgerResponse({'total_debit': '0.00'}), throwsFormatException);
+});
+
+test('financial summary parsing treats string booleans and zero differences safely', () {
+  final parsed = parseFinancialSummaryResponse({
+    'total_assets': '0.00',
+    'total_liabilities': '0.00',
+    'total_equity': '0.00',
+    'total_income': '0.00',
+    'total_expenses': '0.00',
+    'net_profit_loss': '0.00',
+    'trial_balance_difference': '0.00',
+    'trial_balance_balanced': 'false',
+    'financial_position_difference': '0.00',
+    'financial_position_balanced': 'false',
+    'unclassified_account_count': 0,
+    'incomplete_accounting_history': 'true',
+    'warnings': [{'code': 'INCOMPLETE_HISTORY'}],
+  });
+  expect(parsed['trial_balance_balanced'], isTrue);
+  expect(parsed['financial_position_balanced'], isTrue);
+  expect(parsed['incomplete_accounting_history'], isTrue);
+  expect(parseAccountingBool('false'), isFalse);
+  expect(() => parseFinancialSummaryResponse({'total_assets': '0.00'}), throwsFormatException);
+});
+
+test('reconciliation issue labels and ID fallback are human readable', () {
+  expect(humanIssueType('MISSING_DISBURSEMENT_JOURNAL'), 'Missing Disbursement Journal');
+  expect(humanIssueType('MISSING_PAYMENT_JOURNAL'), 'Missing Payment Journal');
+  expect(accountingIdFallback('Customer ID: 8', 8), 'ID: 8');
+  expect(accountingIdFallback('LN-001', 9), 'LN-001');
+});
 }
