@@ -1000,32 +1000,42 @@
                           />
                         </label>
                         <label class="form-field">
-                          <span>Loan days</span>
+                          <span>Loan Term Type</span>
+                          <select name="term_type" id="loan-term-type" required>
+                            <option value="">Select term type</option>
+                            <option value="DAYS">Days</option>
+                            <option value="MONTHS">Months</option>
+                          </select>
+                        </label>
+                        <label class="form-field">
+                          <span id="loan-term-value-label">Loan Term</span>
                           <input
                             type="number"
-                            name="loan_days"
+                            name="term_value"
+                            id="loan-term-value"
                             inputmode="numeric"
                             min="1"
-                            placeholder="30"
+                            step="1"
+                            placeholder="63"
                             required
                           />
                         </label>
                         <label class="form-field">
-                          <span>Interest rate (%)</span>
-                          <input type="number" name="interest_rate" inputmode="decimal" min="0" step="0.01" placeholder="10" required />
-                        </label>
-                        <label class="form-field">
-                          <span>Installment details</span>
-                          <input type="text" name="installment_details" placeholder="e.g. Weekly installments" required />
+                          <span>Interest rate for full loan term (%)</span>
+                          <input type="number" name="interest_rate" inputmode="decimal" min="0" step="0.01" placeholder="26" required />
+                          <small class="muted">Flat interest applied once to the full loan term.</small>
                         </label>
                         <label class="form-field">
                           <span>Repayment frequency</span>
                           <select name="repayment_frequency" required>
+                            <option value="">Select repayment frequency</option>
+                            <option value="DAILY">Daily</option>
                             <option value="WEEKLY">Weekly</option>
-                            <option value="BIWEEKLY">Biweekly</option>
                             <option value="MONTHLY">Monthly</option>
                           </select>
                         </label>
+                        <input type="hidden" name="installment_details" value="" />
+                        <div class="loan-summary-preview full-width" id="loan-summary-preview" aria-live="polite"></div>
                         <label class="form-field full-width">
                           <span>Loan purpose</span>
                           <select name="loan_purpose" id="loan-purpose-select" required></select>

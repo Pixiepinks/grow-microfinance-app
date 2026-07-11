@@ -2450,15 +2450,22 @@ function calculateLedgerDisplayTotals(entries, backendTotals) {
 }
 
 function renderLoanDetailFields(loan) {
+  const summary = calculateLoanPreview(loan);
   const fields = [
     ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference'])],
     ['Customer', getCustomerDisplayNameFromLoan(loan)],
-    ['Principal Amount', formatCurrency(getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0))],
-    ['Total Payable', formatCurrency(getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0))],
+    ['Principal', formatCurrency(summary.principal || getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0))],
+    ['Term', formatLoanTerm(loan)],
+    ['Frequency', titleCase(summary.frequency) || '—'],
+    ['Interest rate and basis', `${summary.rate || 0}% ${(getLoanField(loan, ['interest_rate_basis', 'interestRateBasis'], 'FLAT_TERM') || 'FLAT_TERM')}`],
+    ['Installment count', summary.installmentCount || getLoanField(loan, ['installment_count', 'installmentCount'], '—')],
+    ['Total Interest', formatCurrency(summary.totalInterest)],
+    ['Total Payable', formatCurrency(summary.totalPayable || getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0))],
     ['Total Paid', formatCurrency(getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0))],
     ['Outstanding', formatCurrency(getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0))],
+    ['Start date', formatDate(getLoanField(loan, ['start_date', 'startDate', 'disbursement_date', 'disbursementDate'], '')) || '—'],
+    ['Maturity date', formatDate(getLoanField(loan, ['maturity_date', 'maturityDate', 'final_due_date', 'finalDueDate', 'end_date', 'endDate'], '')) || '—'],
     ['Status', getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN')],
-    ['Created', formatDate(getLoanField(loan, ['created_at', 'createdAt', 'created'], '')) || '—'],
   ];
   adminLoanDetailContent.innerHTML = `<div class="loan-detail-grid">${fields
     .map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
@@ -2476,6 +2483,17 @@ function renderLoanLedger() {
     return;
   }
   const entries = adminLoansState.ledger;
+  const selectedSummary = calculateLoanPreview(adminLoansState.selectedLoan || {});
+  const expectedInstallments = estimateInstallmentCount(selectedSummary.type, selectedSummary.value, selectedSummary.frequency);
+  const actualInstallments = selectedSummary.installmentCount || entries.length;
+  const mismatchWarning = selectedSummary.type === 'DAYS' && expectedInstallments && actualInstallments && expectedInstallments !== actualInstallments
+    ? `<div class="alert warning">Schedule mismatch detected. Expected ${expectedInstallments} ${String(selectedSummary.frequency).toLowerCase()} installments for a ${selectedSummary.value}-day loan.</div>`
+    : '';
+  const scheduleHtml = `<div class="ledger-totals-grid">${[
+    ['Term', formatLoanTerm(adminLoansState.selectedLoan || {})],
+    ['Frequency', titleCase(selectedSummary.frequency) || '—'],
+    ['Installments', actualInstallments || '—'],
+  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${mismatchWarning}`;
   const totals = calculateLedgerDisplayTotals(entries, adminLoansState.ledgerTotals);
   const totalsHtml = [
     ['Total Principal', totals.totalPrincipal],
@@ -2487,7 +2505,7 @@ function renderLoanLedger() {
   ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('');
 
   if (!entries.length) {
-    adminLoanDetailContent.innerHTML = `<div class="ledger-totals-grid">${totalsHtml}</div><p class="muted">No ledger entries found for this loan.</p>`;
+    adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div><p class="muted">No ledger entries found for this loan.</p>`;
     return;
   }
 
@@ -2515,7 +2533,7 @@ function renderLoanLedger() {
     </tr>`;
   }).join('');
 
-  adminLoanDetailContent.innerHTML = `<div class="ledger-totals-grid">${totalsHtml}</div>
+  adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div>
     <div class="ledger-table-scroll"><table class="placeholder-table loan-table"><thead><tr>
       <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Interest</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Status</th><th>Actions</th>
     </tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -6134,6 +6152,80 @@ function renderActiveLoans(loans) {
   });
 }
 
+
+function titleCase(value) {
+  return String(value || '').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function collectLoanTermSource(record = {}) {
+  return { ...(record.loan_details || record.loanDetails || {}), ...record };
+}
+
+function getLoanTermInfo(record = {}) {
+  const source = collectLoanTermSource(record);
+  let type = String(source.term_type || source.termType || '').toUpperCase();
+  let value = Number(source.term_value ?? source.termValue ?? 0);
+  if (!type && Number(source.loan_days ?? source.loanDays ?? 0) > 0) {
+    type = 'DAYS';
+    value = Number(source.loan_days ?? source.loanDays);
+  } else if (!type && Number(source.tenure_months ?? source.tenureMonths ?? source.approved_tenure ?? 0) > 0) {
+    type = 'MONTHS';
+    value = Number(source.tenure_months ?? source.tenureMonths ?? source.approved_tenure);
+  }
+  if (!value && type === 'DAYS') value = Number(source.loan_days ?? source.loanDays ?? 0);
+  if (!value && type === 'MONTHS') value = Number(source.tenure_months ?? source.tenureMonths ?? source.approved_tenure ?? 0);
+  return { type, value: Number.isFinite(value) ? value : 0 };
+}
+
+function formatLoanTerm(record = {}) {
+  const { type, value } = getLoanTermInfo(record);
+  if (!value) return '—';
+  return type === 'MONTHS' ? `${value} month${value === 1 ? '' : 's'}` : `${value} day${value === 1 ? '' : 's'}`;
+}
+
+function estimateInstallmentCount(termType, termValue, frequency) {
+  const value = Number(termValue) || 0;
+  const freq = String(frequency || '').toUpperCase();
+  if (!value || !freq) return 0;
+  if (termType === 'DAYS') {
+    if (freq === 'DAILY') return value;
+    if (freq === 'WEEKLY') return Math.ceil(value / 7);
+    if (freq === 'MONTHLY') return Math.max(1, Math.ceil(value / 30));
+  }
+  if (termType === 'MONTHS') {
+    if (freq === 'MONTHLY') return value;
+    if (freq === 'WEEKLY') return Math.ceil(value * 30 / 7);
+    if (freq === 'DAILY') return value * 30;
+  }
+  return 0;
+}
+
+function calculateLoanPreview(data = {}) {
+  const source = collectLoanTermSource(data);
+  const term = getLoanTermInfo(source);
+  const principal = Number(source.applied_amount ?? source.approved_amount ?? source.principal_amount ?? source.principal ?? source.amount ?? 0) || 0;
+  const rate = Number(source.interest_rate ?? source.interestRate ?? 0) || 0;
+  const frequency = String(source.repayment_frequency ?? source.repaymentFrequency ?? '').toUpperCase();
+  const installmentCount = Number(source.installment_count ?? source.installmentCount ?? 0) || estimateInstallmentCount(term.type, term.value, frequency);
+  const totalInterest = Number(source.total_interest ?? source.totalInterest ?? 0) || (principal * rate / 100);
+  const totalPayable = Number(source.total_payable ?? source.totalPayable ?? 0) || (principal + totalInterest);
+  const installmentAmount = Number(source.installment_amount ?? source.installmentAmount ?? source.estimated_installment_amount ?? 0) || (installmentCount ? totalPayable / installmentCount : 0);
+  return { ...term, principal, rate, frequency, installmentCount, totalInterest, totalPayable, installmentAmount };
+}
+
+function renderLoanSummaryRows(summary) {
+  return [
+    ['Principal', formatCurrency(summary.principal)],
+    ['Term', formatLoanTerm({ term_type: summary.type, term_value: summary.value })],
+    ['Repayment frequency', titleCase(summary.frequency) || '—'],
+    ['Number of installments', summary.installmentCount || '—'],
+    ['Interest', formatCurrency(summary.totalInterest)],
+    ['Total payable', formatCurrency(summary.totalPayable)],
+    ['Installment amount', formatCurrency(summary.installmentAmount)],
+    ['Final due', summary.value ? `${formatLoanTerm({ term_type: summary.type, term_value: summary.value })} after disbursement` : '—'],
+  ];
+}
+
 function renderReviewQueue(container, messageEl, applications, emptyText, onSelect) {
   container.innerHTML = '';
   if (messageEl) messageEl.classList.add('hidden');
@@ -6150,12 +6242,12 @@ function renderReviewQueue(container, messageEl, applications, emptyText, onSele
       ? `Application #${app.application_number}`
       : `Application ${app.id}`;
     node.querySelector('.review-title').textContent = title;
-    const tenure = app.tenure_months ?? app.loan_details?.tenure_months;
+    const termLabel = formatLoanTerm(app);
     const amount = app.applied_amount ?? app.loan_details?.applied_amount;
     const loanType = app.loan_type ?? app.loan_details?.loan_type ?? 'Loan';
     node.querySelector('.review-meta').textContent =
       `${loanType} • ${amount ? formatCurrency(amount) : 'Amount pending'}${
-        tenure ? ` • ${tenure} mo` : ''
+        termLabel !== '—' ? ` • ${termLabel}` : ''
       }`;
     node.querySelector('.review-customer').textContent = app.customer_name || app.customer || '';
     node.querySelector('.review-status').textContent = app.status || 'Unknown';
@@ -6207,13 +6299,13 @@ function renderApplications(applications) {
     const title = app.application_number
       ? `Application #${app.application_number}`
       : `Application ${app.id}`;
-    const tenure = app.tenure_months ?? app.loan_details?.tenure_months;
+    const termLabel = formatLoanTerm(app);
     const amount = app.applied_amount ?? app.loan_details?.applied_amount;
     const loanType = app.loan_type ?? app.loanDetails?.loan_type ?? 'Loan';
     node.querySelector('.application-title').textContent = title;
     node.querySelector('.application-meta').textContent =
       `${loanType} • ${amount ? formatCurrency(amount) : 'Amount pending'}${
-        tenure ? ` • ${tenure} mo` : ''
+        termLabel !== '—' ? ` • ${termLabel}` : ''
       }`;
     node.querySelector('.application-purpose').textContent =
       app.loan_purpose || app.loan_details?.loan_purpose || 'No purpose provided yet';
@@ -6405,7 +6497,7 @@ function closeApplicationDetail() {
 
 function renderApplicationDetails(app) {
   applicationModalContent.innerHTML = '';
-  const tenure = app.tenure_months ?? app.loan_details?.tenure_months;
+  const summary = calculateLoanPreview(app);
   const fields = [
     ['Customer', app.customer_name || app.customer || '—'],
     ['Loan type', app.loan_type || app.loan_details?.loan_type || '—'],
@@ -6413,7 +6505,12 @@ function renderApplicationDetails(app) {
       'Requested amount',
       formatCurrency(app.applied_amount ?? app.loan_details?.applied_amount ?? app.amount ?? app.approved_amount),
     ],
-    ['Tenure', tenure ? `${tenure} months` : '—'],
+    ['Loan term', formatLoanTerm(app)],
+    ['Repayment frequency', titleCase(summary.frequency) || '—'],
+    ['Installments', summary.installmentCount || '—'],
+    ['Interest', `${summary.rate || 0}% flat for full term`],
+    ['Total interest', formatCurrency(summary.totalInterest)],
+    ['Total payable', formatCurrency(summary.totalPayable)],
     ['Purpose', app.loan_purpose || app.loan_details?.loan_purpose || '—'],
     ['Status', app.status || '—'],
     ['Created', formatDate(app.created_at || app.createdAt) || '—'],
@@ -6470,14 +6567,15 @@ async function openApplicationDetail(appSummary, role) {
         appSummary?.requested_amount;
 
       const approvedTenure =
+        app?.term_value ??
+        app?.loan_details?.term_value ??
         app?.approved_tenure ??
         app?.tenure_months ??
-        app?.loan_details?.loan_tenure ??
-        app?.tenure ??
+        app?.loan_details?.tenure_months ??
+        appSummary?.term_value ??
+        appSummary?.loan_details?.term_value ??
         appSummary?.approved_tenure ??
-        appSummary?.tenure_months ??
-        appSummary?.loan_details?.loan_tenure ??
-        appSummary?.tenure;
+        appSummary?.tenure_months;
 
     const handleApprove = async () => {
       try {
@@ -6735,7 +6833,7 @@ function validateStep(stepIndex) {
     invalidField.reportValidity();
     return false;
   }
-  return true;
+  return validateLoanTermsForStep(stepIndex);
 }
 
 function validateWizardAndJump() {
@@ -6745,6 +6843,11 @@ function validateWizardAndJump() {
       currentStep = i;
       updateStepperUI();
       invalidField.reportValidity();
+      return false;
+    }
+    if (!validateLoanTermsForStep(i)) {
+      currentStep = i;
+      updateStepperUI();
       return false;
     }
   }
@@ -6991,13 +7094,18 @@ function buildApplicationPayload() {
     existing_loans_description: values.existing_loans_description || '',
   };
 
+  const termType = String(values.term_type || '').toUpperCase();
+  const termValue = Number.parseInt(values.term_value, 10) || 0;
   const loanDetails = {
     applied_amount: Number(values.applied_amount) || 0,
-    tenure_months: Math.ceil((Number(values.loan_days) || Number(values.tenure_months) * 30 || 0) / 30),
-    loan_days: Number(values.loan_days) || 0,
+    term_type: termType,
+    term_value: termValue,
+    loan_days: termType === 'DAYS' ? termValue : 0,
+    tenure_months: termType === 'MONTHS' ? termValue : 0,
     interest_rate: Number(values.interest_rate) || 0,
+    interest_rate_basis: 'FLAT_TERM',
     installment_details: values.installment_details || '',
-    repayment_frequency: values.repayment_frequency || 'WEEKLY',
+    repayment_frequency: values.repayment_frequency || '',
     loan_purpose: values.loan_purpose || '',
   };
 
@@ -7252,14 +7360,20 @@ function normalizeApplicationPayload(payload) {
 function updateReviewSummary() {
   if (!reviewSummary) return;
   const data = buildApplicationPayload();
+  const summary = calculateLoanPreview(data.loan_details);
   const rows = [
     ['Loan type', data.loan_type],
     ['Purpose', data.loan_details.loan_purpose],
     ['Applied amount', formatCurrency(data.loan_details.applied_amount)],
-    ['Loan days', `${data.loan_details.loan_days || data.loan_details.tenure_months * 30} days`],
-    ['Interest rate', `${data.loan_details.interest_rate || 0}%`],
-    ['Installment details', data.loan_details.installment_details || '—'],
-    ['Repayment frequency', data.loan_details.repayment_frequency || '—'],
+    ['Term type', summary.type || '—'],
+    ['Loan term', formatLoanTerm(data.loan_details)],
+    ['Repayment frequency', titleCase(summary.frequency) || '—'],
+    ['Interest rate', `${data.loan_details.interest_rate || 0}% flat for full term`],
+    ['Interest basis', data.loan_details.interest_rate_basis || 'FLAT_TERM'],
+    ['Installment count', summary.installmentCount || '—'],
+    [`${titleCase(summary.frequency) || 'Installment'} payment`, summary.installmentAmount ? formatCurrency(summary.installmentAmount) : '—'],
+    ['Total interest', formatCurrency(summary.totalInterest)],
+    ['Total payable', formatCurrency(summary.totalPayable)],
     ['Full name', data.applicant_details.full_name],
     ['NIC', data.applicant_details.nic_number],
     ['Mobile', data.applicant_details.mobile_number],
@@ -7819,6 +7933,78 @@ paymentForm?.addEventListener('submit', async (event) => {
     console.error(err);
     setInlineAlert(paymentMessage, err.message || 'Failed to record payment', 'error');
   }
+});
+
+
+function updateLoanTermUi() {
+  if (!loanApplicationForm) return;
+  const termTypeEl = loanApplicationForm.querySelector('[name="term_type"]');
+  const termValueEl = loanApplicationForm.querySelector('[name="term_value"]');
+  const labelEl = document.querySelector('#loan-term-value-label');
+  const termType = String(termTypeEl?.value || '').toUpperCase();
+  if (labelEl) labelEl.textContent = termType === 'MONTHS' ? 'Loan months' : termType === 'DAYS' ? 'Loan days' : 'Loan Term';
+  if (termValueEl) termValueEl.placeholder = termType === 'MONTHS' ? '3' : '63';
+}
+
+function renderLoanPreview() {
+  const previewEl = document.querySelector('#loan-summary-preview');
+  if (!previewEl || !loanApplicationForm) return;
+  updateLoanTermUi();
+  const data = buildApplicationPayload();
+  const summary = calculateLoanPreview(data.loan_details);
+  previewEl.innerHTML = `<div class="subcard"><h3>Loan Summary</h3>${renderLoanSummaryRows(summary)
+    .map(([label, value]) => `<div class="review-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value || '—')}</span></div>`)
+    .join('')}</div>`;
+  updateReviewSummary();
+}
+
+function validateLoanTermsForStep(stepIndex) {
+  const step = formSteps[stepIndex];
+  if (!step || !step.querySelector('[name="term_type"]')) return true;
+  const amountEl = step.querySelector('[name="applied_amount"]');
+  const termTypeEl = step.querySelector('[name="term_type"]');
+  const termValueEl = step.querySelector('[name="term_value"]');
+  const rateEl = step.querySelector('[name="interest_rate"]');
+  const freqEl = step.querySelector('[name="repayment_frequency"]');
+  if (!Number(amountEl?.value || 0) || Number(amountEl.value) <= 0) {
+    amountEl?.setCustomValidity('Enter an applied amount greater than zero.');
+    amountEl?.reportValidity();
+    amountEl?.setCustomValidity('');
+    return false;
+  }
+  if (!termTypeEl?.value) {
+    termTypeEl?.setCustomValidity('Select a loan term type.');
+    termTypeEl?.reportValidity();
+    termTypeEl?.setCustomValidity('');
+    return false;
+  }
+  const termValue = Number(termValueEl?.value || 0);
+  if (!Number.isInteger(termValue) || termValue <= 0) {
+    termValueEl?.setCustomValidity(termTypeEl.value === 'MONTHS' ? 'Enter the number of loan months.' : 'Enter the number of loan days.');
+    termValueEl?.reportValidity();
+    termValueEl?.setCustomValidity('');
+    return false;
+  }
+  if (Number(rateEl?.value || 0) < 0) {
+    rateEl?.setCustomValidity('Enter an interest rate of zero or more.');
+    rateEl?.reportValidity();
+    rateEl?.setCustomValidity('');
+    return false;
+  }
+  if (!freqEl?.value) {
+    freqEl?.setCustomValidity('Select a repayment frequency.');
+    freqEl?.reportValidity();
+    freqEl?.setCustomValidity('');
+    return false;
+  }
+  return true;
+}
+
+loanApplicationForm?.addEventListener('input', (event) => {
+  if (['applied_amount', 'term_value', 'interest_rate'].includes(event.target?.name)) renderLoanPreview();
+});
+loanApplicationForm?.addEventListener('change', (event) => {
+  if (['term_type', 'repayment_frequency', 'loan_purpose'].includes(event.target?.name)) renderLoanPreview();
 });
 
 closeApplicationModal?.addEventListener('click', closeApplicationDetail);
