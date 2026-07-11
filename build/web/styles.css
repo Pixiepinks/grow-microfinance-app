@@ -366,6 +366,37 @@ body {
   white-space: nowrap;
 }
 
+
+.admin-section[data-section='loans'] .admin-loans-customer-col {
+  min-width: 220px;
+  width: 240px;
+  max-width: 260px;
+  white-space: normal;
+}
+
+.loan-customer-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.loan-customer-cell strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.loan-customer-mobile {
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.loan-customer-nic {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
 .admin-section[data-section='loan-applications'] .subcard {
   overflow: hidden;
   min-width: 0;
