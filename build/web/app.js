@@ -4,6 +4,9 @@ const defaultApiConfig = {
   baseUrl: 'https://grow-microfinance-api-production.up.railway.app',
   endpoints: {
     login: '/auth/login',
+    refresh: '/auth/refresh',
+    changePassword: '/auth/change-password',
+    logout: '/auth/logout',
     adminDashboard: '/admin/dashboard',
     adminLoanApplications: '/admin/loan-applications',
     adminLoanApplicationsAll: '/api/loan-applications',
@@ -96,7 +99,14 @@ function mapDocumentTypeToApi(docType) {
 
 let apiConfig = { ...defaultApiConfig };
 
-const storageKeys = { token: 'gm_jwt', role: 'gm_role' };
+const storageKeys = {
+  token: 'gm_jwt',
+  refreshToken: 'gm_refresh_token',
+  accessExpiresAt: 'gm_access_expires_at',
+  refreshExpiresAt: 'gm_refresh_expires_at',
+  role: 'gm_role',
+  user: 'gm_user_state',
+};
 
 const appShell = document.querySelector('.app-shell');
 const appMain = document.querySelector('.app-main');
@@ -105,10 +115,12 @@ const loginForm = document.querySelector('#login-form');
 const loginMessage = document.querySelector('#login-message');
 const loginSubmit = document.querySelector('#login-submit');
 const loginSubmitLabel = document.querySelector('#login-submit-label');
+loginForm?.querySelector('input[name="email"]')?.setAttribute('autocomplete', 'username');
 const loginSpinner = document.querySelector('#login-spinner');
 const dashboards = document.querySelector('#dashboards');
 const userRoleChip = document.querySelector('#user-role');
 const logoutBtn = document.querySelector('#logout-btn');
+let changePasswordBtn;
 
 let toastContainer;
 
@@ -1416,21 +1428,91 @@ function setLoading(isLoading) {
   loginSubmitLabel.textContent = isLoading ? 'Signing in...' : 'Sign in';
 }
 
-function saveSession(token, role) {
+const refreshLeewayMs = 5 * 60 * 1000;
+let refreshTimerId = null;
+let refreshPromise = null;
+let logoutInProgress = false;
+
+function nowMs() { return Date.now(); }
+function toExpiryTimestamp(seconds, fallbackSeconds) {
+  const value = Number(seconds || fallbackSeconds || 0);
+  return value > 0 ? nowMs() + value * 1000 : 0;
+}
+function safeJsonParse(value, fallback = {}) {
+  try { return value ? JSON.parse(value) : fallback; } catch (_) { return fallback; }
+}
+function minimumUserState(user = {}) {
+  return { must_change_password: !!user.must_change_password, name: user.name || '', email: user.email || '' };
+}
+function saveSessionFromLogin(data, role) {
+  const token = data.access_token || data.token || data.accessToken || data.jwt;
+  const refreshToken = data.refresh_token || data.refreshToken || '';
   localStorage.setItem(storageKeys.token, token);
+  if (refreshToken) localStorage.setItem(storageKeys.refreshToken, refreshToken);
+  localStorage.setItem(storageKeys.accessExpiresAt, String(toExpiryTimestamp(data.access_expires_in || data.expires_in, 3600)));
+  localStorage.setItem(storageKeys.refreshExpiresAt, String(toExpiryTimestamp(data.refresh_expires_in, 604800)));
   localStorage.setItem(storageKeys.role, role);
+  localStorage.setItem(storageKeys.user, JSON.stringify(minimumUserState(data.user || {})));
+  scheduleRefresh();
 }
-
+function saveSession(token, role) {
+  saveSessionFromLogin({ access_token: token, access_expires_in: 3600, refresh_expires_in: 604800 }, role);
+}
+function updateAccessToken(data = {}) {
+  const token = data.access_token || data.token || data.accessToken || data.jwt;
+  if (token) localStorage.setItem(storageKeys.token, token);
+  if (data.refresh_token || data.refreshToken) localStorage.setItem(storageKeys.refreshToken, data.refresh_token || data.refreshToken);
+  localStorage.setItem(storageKeys.accessExpiresAt, String(toExpiryTimestamp(data.access_expires_in || data.expires_in, 3600)));
+  if (data.refresh_expires_in) localStorage.setItem(storageKeys.refreshExpiresAt, String(toExpiryTimestamp(data.refresh_expires_in, 604800)));
+  if (data.user) localStorage.setItem(storageKeys.user, JSON.stringify(minimumUserState(data.user)));
+  scheduleRefresh();
+}
+function clearRefreshTimer() { if (refreshTimerId) clearTimeout(refreshTimerId); refreshTimerId = null; }
 function clearSession() {
-  localStorage.removeItem(storageKeys.token);
-  localStorage.removeItem(storageKeys.role);
+  clearRefreshTimer();
+  Object.values(storageKeys).forEach((key) => localStorage.removeItem(key));
+  refreshPromise = null;
 }
-
 function getSession() {
   return {
     token: localStorage.getItem(storageKeys.token),
+    refreshToken: localStorage.getItem(storageKeys.refreshToken),
+    accessExpiresAt: Number(localStorage.getItem(storageKeys.accessExpiresAt) || 0),
+    refreshExpiresAt: Number(localStorage.getItem(storageKeys.refreshExpiresAt) || 0),
     role: localStorage.getItem(storageKeys.role),
+    user: safeJsonParse(localStorage.getItem(storageKeys.user), {}),
   };
+}
+function hasValidRefreshToken(session = getSession()) { return !!session.refreshToken && (!session.refreshExpiresAt || session.refreshExpiresAt > nowMs()); }
+function isAccessNearingExpiry(session = getSession()) { return !session.accessExpiresAt || session.accessExpiresAt - nowMs() <= refreshLeewayMs; }
+function scheduleRefresh() {
+  clearRefreshTimer();
+  const session = getSession();
+  if (!session.token || !hasValidRefreshToken(session) || !session.accessExpiresAt) return;
+  refreshTimerId = setTimeout(() => ensureValidSession().catch(console.warn), Math.max(0, session.accessExpiresAt - nowMs() - refreshLeewayMs));
+}
+async function refreshAccessToken() {
+  const session = getSession();
+  if (!hasValidRefreshToken(session)) throw new Error('Your session has expired. Please sign in again.');
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await fetch(`${apiConfig.baseUrl}${endpoint('refresh')}`, {
+        method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: session.refreshToken }),
+      });
+      const { data, raw } = await parseResponse(response.clone());
+      if (!response.ok) throw new Error(buildErrorMessage({ status: response.status, data, raw }) || 'Your session has expired. Please sign in again.');
+      updateAccessToken(data);
+      return data;
+    })().finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+async function ensureValidSession() {
+  const session = getSession();
+  if (!session.token) return false;
+  if (isAccessNearingExpiry(session) && hasValidRefreshToken(session)) await refreshAccessToken();
+  return true;
 }
 
 async function parseResponse(response) {
@@ -1475,6 +1557,12 @@ function buildErrorMessage({ status, data, raw }) {
   // Avoid surfacing raw HTML error pages to the user.
   if (raw && !isLikelyHtml(raw)) return raw;
   return `Request failed with status ${status}`;
+}
+
+
+function isTokenExpiredResponse(data = {}) {
+  const code = String(data?.error || data?.code || data?.message || '').toLowerCase();
+  return code === 'token_expired' || code.includes('token expired') || code.includes('jwt expired');
 }
 
 function attachIdFromLocation(data, headers) {
@@ -1526,20 +1614,21 @@ function normalizeApplicationsResponse(response) {
   return [];
 }
 
-async function api(path, { method = 'GET', body, signal } = {}) {
-  const { token } = getSession();
-  const shouldSendJson = body !== undefined || !['GET', 'HEAD'].includes(method);
-  const headers = { Accept: 'application/json' };
-  if (shouldSendJson) headers['Content-Type'] = 'application/json';
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  // When the backend expects JSON but no body is provided (e.g., submit endpoint),
-  // send an empty object to avoid framework parsers returning HTML 400 pages.
-  const payload = body !== undefined ? JSON.stringify(body) : shouldSendJson ? '{}' : undefined;
+async function api(path, { method = 'GET', body, signal, retryOnExpiredToken = true } = {}) {
+  await ensureValidSession();
+  const buildRequestOptions = () => {
+    const { token } = getSession();
+    const shouldSendJson = body !== undefined || !['GET', 'HEAD'].includes(method);
+    const headers = { Accept: 'application/json' };
+    if (shouldSendJson) headers['Content-Type'] = 'application/json';
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const payload = body !== undefined ? JSON.stringify(body) : shouldSendJson ? '{}' : undefined;
+    return { method, headers, body: payload, signal };
+  };
 
   let response;
   const url = `${apiConfig.baseUrl}${path}`;
-  const requestOptions = { method, headers, body: payload, signal };
+  let requestOptions = buildRequestOptions();
   try {
     response = await fetch(url, requestOptions);
   } catch (networkError) {
@@ -1554,7 +1643,13 @@ async function api(path, { method = 'GET', body, signal } = {}) {
     throw new Error("Couldn't reach the server. Please check your connection.");
   }
 
-  const { data, raw } = await parseResponse(response.clone());
+  let { data, raw } = await parseResponse(response.clone());
+  if (response.status === 401 && retryOnExpiredToken && isTokenExpiredResponse(data) && hasValidRefreshToken()) {
+    await refreshAccessToken();
+    requestOptions = buildRequestOptions();
+    response = await fetch(url, requestOptions);
+    ({ data, raw } = await parseResponse(response.clone()));
+  }
   const enrichedData = response.ok ? attachIdFromLocation(data, response.headers) : data;
   if (!response.ok) {
     console.error('API request failed', {
@@ -1586,6 +1681,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 }
 
 async function apiRequest(path, { method = 'GET', body } = {}) {
+  await ensureValidSession();
   const { token } = getSession();
   const headers = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -1612,6 +1708,7 @@ async function apiRequest(path, { method = 'GET', body } = {}) {
 }
 
 async function apiMultipart(path, formData) {
+  await ensureValidSession();
   const { token } = getSession();
   const headers = token
     ? { Authorization: `Bearer ${token}`, Accept: 'application/json' }
@@ -6335,6 +6432,11 @@ function loadAdminDocuments() {
 }
 
 function showAdminSection(section = 'dashboard') {
+  if (sessionRequiresPasswordChange()) {
+    adminSections.forEach((el) => el.classList.add('hidden'));
+    showChangePasswordModal(true);
+    return;
+  }
   if (!adminSections.length) return;
   const hasSection = Array.from(adminSections).some((el) => el.dataset.section === section);
   const target = hasSection ? section : 'dashboard';
@@ -6505,15 +6607,17 @@ function navigateStaffRoute(path) {
 }
 
 function togglePanels(role) {
+  ensureChangePasswordButton();
   dashboards.classList.toggle('hidden', !role);
   appShell?.classList.toggle('admin-shell', role === 'admin');
   dashboards?.classList.toggle('admin-dashboard-grid', role === 'admin');
   userRoleChip.classList.toggle('hidden', !role);
   logoutBtn.classList.toggle('hidden', !role);
+  changePasswordBtn?.classList.toggle('hidden', !role);
   loginCard?.classList.toggle('hidden', !!role);
 
   adminPanel.classList.toggle('hidden', role !== 'admin');
-  if (role === 'admin') showAdminSection('dashboard');
+  if (role === 'admin' && !sessionRequiresPasswordChange()) showAdminSection('dashboard');
   else {
     resetAdminLoanApplicationsState();
     resetAdminLoansState();
@@ -7204,11 +7308,85 @@ function closePaymentSheetUI() {
   currentLoanForPayment = null;
 }
 
+
+function ensureChangePasswordButton() {
+  if (changePasswordBtn || !logoutBtn?.parentElement) return;
+  changePasswordBtn = document.createElement('button');
+  changePasswordBtn.type = 'button';
+  changePasswordBtn.id = 'change-password-btn';
+  changePasswordBtn.className = 'ghost hidden';
+  changePasswordBtn.textContent = 'Change Password';
+  logoutBtn.parentElement.insertBefore(changePasswordBtn, logoutBtn);
+  changePasswordBtn.addEventListener('click', () => showChangePasswordModal(false));
+}
+function passwordPolicy(currentPassword, newPassword) {
+  return [
+    ['Minimum 12 characters', newPassword.length >= 12],
+    ['Uppercase letter', /[A-Z]/.test(newPassword)],
+    ['Lowercase letter', /[a-z]/.test(newPassword)],
+    ['Number', /\d/.test(newPassword)],
+    ['Special character', /[^A-Za-z0-9]/.test(newPassword)],
+    ['Different from current password', !!newPassword && newPassword !== currentPassword],
+  ];
+}
+function showChangePasswordModal(forced = false) {
+  document.querySelector('#change-password-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'change-password-modal';
+  modal.className = 'modal-overlay historical-accounting-modal';
+  modal.innerHTML = `<div class="modal-card wide"><div class="modal-header"><div><h2>${forced ? 'Password must be changed before continuing' : 'Change Password'}</h2><p class="muted">Choose a strong password to protect your account.</p></div>${forced ? '' : '<button type="button" class="icon-button" data-cancel>×</button>'}</div><form id="change-password-form" class="form-grid"><label class="form-field"><span>Current Password</span><div><input id="current-password" name="current_password" type="password" autocomplete="current-password" required><button type="button" class="secondary" data-toggle-password="current-password">Show</button></div></label><label class="form-field"><span>New Password</span><div><input id="new-password" name="new_password" type="password" autocomplete="new-password" required><button type="button" class="secondary" data-toggle-password="new-password">Show</button></div></label><label class="form-field"><span>Confirm New Password</span><div><input id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" required><button type="button" class="secondary" data-toggle-password="confirm-password">Show</button></div></label><div class="subcard"><strong>Password requirements</strong><ul id="password-policy-list"></ul><p class="muted">Your browser may warn you when a password has appeared in a known data breach. Choose a new, unique password that you do not use on any other website.</p></div><p id="change-password-message" class="alert hidden"></p><div class="modal-actions sticky-modal-footer"><button type="submit" class="primary">Change Password</button>${forced ? '' : '<button type="button" class="secondary" data-cancel>Cancel</button>'}<button type="button" class="ghost" data-logout>Logout</button></div></form></div>`;
+  document.body.appendChild(modal);
+  const form = modal.querySelector('#change-password-form');
+  const current = modal.querySelector('#current-password');
+  const next = modal.querySelector('#new-password');
+  const confirm = modal.querySelector('#confirm-password');
+  const message = modal.querySelector('#change-password-message');
+  const renderPolicy = () => {
+    modal.querySelector('#password-policy-list').innerHTML = passwordPolicy(current.value, next.value).map(([label, ok]) => `<li>${ok ? '✅' : '○'} ${escapeHtml(label)}</li>`).join('');
+  };
+  [current,next,confirm].forEach(input => input.addEventListener('input', renderPolicy));
+  renderPolicy();
+  modal.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-toggle-password]');
+    if (toggle) { const input = modal.querySelector(`#${toggle.dataset.togglePassword}`); input.type = input.type === 'password' ? 'text' : 'password'; toggle.textContent = input.type === 'password' ? 'Show' : 'Hide'; }
+    if (event.target.closest('[data-cancel]')) modal.remove();
+    if (event.target.closest('[data-logout]')) performLogout('You have been signed out.');
+  });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    message.className = 'alert hidden';
+    const payload = { current_password: current.value, new_password: next.value, confirm_password: confirm.value };
+    if (payload.new_password !== payload.confirm_password) { message.textContent = 'New password and confirmation do not match.'; message.className = 'alert error'; return; }
+    if (passwordPolicy(payload.current_password, payload.new_password).some(([,ok]) => !ok)) { message.textContent = 'Please meet all password requirements.'; message.className = 'alert error'; return; }
+    try {
+      await api(endpoint('changePassword'), { method: 'POST', body: payload });
+      clearSession();
+      modal.remove();
+      togglePanels(null);
+      setMessage('Password changed successfully. Please sign in again with your new password.', 'success');
+    } catch (error) {
+      message.textContent = error?.message || 'Unable to change password.';
+      message.className = 'alert error';
+    } finally {
+      current.value = next.value = confirm.value = '';
+    }
+  });
+}
+function sessionRequiresPasswordChange(session = getSession()) { return !!session.user?.must_change_password; }
+async function performLogout(message = 'Your session has expired. Please sign in again.') {
+  if (logoutInProgress) return;
+  logoutInProgress = true;
+  try { if (getSession().token) await api(endpoint('logout'), { method: 'POST', retryOnExpiredToken: false }).catch(() => {}); }
+  finally { clearSession(); togglePanels(null); setMessage(message, message.includes('expired') ? 'error' : 'success'); logoutInProgress = false; }
+}
+
 async function hydrateFromSession() {
   const { token, role } = getSession();
   if (!token || !role) return;
 
+  await ensureValidSession();
   togglePanels(role);
+  if (sessionRequiresPasswordChange()) { showChangePasswordModal(true); setMessage('Your password must be changed before continuing.', 'error'); return; }
   setMessage('Restored previous session.', 'success');
 
   try {
@@ -8263,7 +8441,15 @@ loginForm?.addEventListener('submit', async (event) => {
     if (!token || !data.role) {
       throw new Error('Invalid response from server.');
     }
-    saveSession(token, data.role);
+    saveSessionFromLogin(data, data.role);
+    if (data.password_change_required || data.user?.must_change_password) {
+      const user = { ...minimumUserState(data.user || {}), must_change_password: true };
+      localStorage.setItem(storageKeys.user, JSON.stringify(user));
+      togglePanels(data.role);
+      showChangePasswordModal(true);
+      setMessage('Your password must be changed before continuing.', 'error');
+      return;
+    }
     togglePanels(data.role);
     setMessage('Signed in successfully.', 'success');
 
@@ -8272,7 +8458,8 @@ loginForm?.addEventListener('submit', async (event) => {
     if (data.role === 'customer') await loadCustomer();
   } catch (err) {
     console.error(err);
-    setMessage(err.message, 'error');
+    const msg = /locked/i.test(err.message || '') ? 'Your account is temporarily locked. Try again later or contact an administrator.' : /password.*change|required|reset/i.test(err.message || '') ? 'Your password must be changed before continuing.' : 'Invalid username or password.';
+    setMessage(msg, 'error');
     clearSession();
     togglePanels(null);
   } finally {
@@ -8280,10 +8467,12 @@ loginForm?.addEventListener('submit', async (event) => {
   }
 });
 
-logoutBtn?.addEventListener('click', () => {
-  clearSession();
-  togglePanels(null);
-  setMessage('You have been signed out.', 'success');
+logoutBtn?.addEventListener('click', () => performLogout('You have been signed out.'));
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    try { await ensureValidSession(); } catch (_) { await performLogout('Your session has expired. Please sign in again.'); }
+  }
 });
 
 loanApplicationForm?.addEventListener('submit', (event) => event.preventDefault());
