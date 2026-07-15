@@ -15,6 +15,8 @@ const defaultApiConfig = {
     staffLoanApplications: '/loan-applications',
     staffLoanApplicationApprove: '/staff/loan-applications/{id}/approve',
     loanApplicationReject: '/loan-applications/{id}/reject',
+    loanApplicationDisburse: '/admin/loan-applications/{id}/disburse',
+    loanApplicationDisbursementOptions: '/admin/loan-applications/{id}/disbursement-options',
     loanRepayments: '/loans/{id}/repayments',
     customerProfile: '/customer/me',
     customerLoans: '/customer/loans',
@@ -1523,7 +1525,7 @@ function normalizeApplicationsResponse(response) {
   return [];
 }
 
-async function api(path, { method = 'GET', body } = {}) {
+async function api(path, { method = 'GET', body, signal } = {}) {
   const { token } = getSession();
   const shouldSendJson = body !== undefined || !['GET', 'HEAD'].includes(method);
   const headers = { Accept: 'application/json' };
@@ -1536,7 +1538,7 @@ async function api(path, { method = 'GET', body } = {}) {
 
   let response;
   const url = `${apiConfig.baseUrl}${path}`;
-  const requestOptions = { method, headers, body: payload };
+  const requestOptions = { method, headers, body: payload, signal };
   try {
     response = await fetch(url, requestOptions);
   } catch (networkError) {
@@ -1547,6 +1549,7 @@ async function api(path, { method = 'GET', body } = {}) {
       options: { ...requestOptions, headers: { ...requestOptions.headers, Authorization: requestOptions.headers?.Authorization ? '[REDACTED]' : undefined } },
       error: networkError,
     });
+    if (networkError?.name === 'AbortError') { const error = new Error('Disbursement setup took too long to load. Please retry.'); error.name = 'AbortError'; throw error; }
     throw new Error("Couldn't reach the server. Please check your connection.");
   }
 
@@ -1570,6 +1573,16 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 api.get = (path, options = {}) => api(path, { ...options, method: 'GET' });
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await api(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function apiRequest(path, { method = 'GET', body } = {}) {
   const { token } = getSession();
@@ -7030,56 +7043,77 @@ async function openApplicationDetail(appSummary, role) {
       }
     };
 
-    const handleDisburse = async () => {
-      if (applicationModalActions.dataset.disbursing === 'true') return;
+    const handleDisburse = async (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      if (applicationModalActions.dataset.loadingDisbursement === 'true') return;
+      applicationModalActions.dataset.loadingDisbursement = 'true';
       const modal = document.createElement('div');
       modal.className = 'modal-overlay historical-accounting-modal';
       const appNo = app.application_number || app.applicationNumber || appId;
       const customer = app.applicant_details?.full_name || app.applicant_details?.name || app.customer_name || '-';
-      const principal = Number(app.applied_amount || app.amount || app.approved_amount || app.loan_details?.principal_amount || 0);
-      const totalInterest = Number(app.loan_details?.total_interest || app.total_interest || 0);
-      let settings = {};
-      let accounts = [];
-      try {
-        const [settingsRaw, accountsRaw] = await Promise.all([api('/admin/accounting/settings'), api('/admin/accounting/accounts?active=true')]);
-        settings = settingsRaw || {};
-        accounts = accountItems(accountsRaw).filter(a => (a.active !== false && a.is_active !== false) && (a.allow_manual_posting !== false && a.posting_allowed !== false) && String(a.type || a.account_type).toUpperCase() === 'ASSET' && ['CASH','BANK'].includes(String(a.subtype || a.account_subtype || a.accountSubType).toUpperCase()));
-      } catch (err) {
-        accounts = accountItems(await api('/admin/accounting/accounts?active=true')).filter(a => String(a.type || a.account_type).toUpperCase() === 'ASSET');
-      }
-      const defaultMethod = settings.default_interest_accounting_method || settings.defaultInterestAccountingMethod || 'ACCRUAL_BY_INSTALLMENT';
-      const historicalMode = String(settings.backdated_loan_accounting || settings.backdatedLoanAccounting || settings.historical_accrual_mode || 'ASK').toUpperCase();
-      const methodReadOnly = boolFromBackend(settings.interest_accounting_method_locked ?? settings.interestAccountingMethodLocked, true);
-      modal.innerHTML = `<div class="modal-card wide"><div class="modal-header"><h2>Disburse Loan</h2><button class="icon-button" data-close-disburse>×</button></div><div id="disburse-error"></div><p><strong>Application Number:</strong> ${escapeHtml(appNo)} &nbsp; <strong>Customer Name:</strong> ${escapeHtml(customer)}</p><p><strong>Principal Amount:</strong> ${formatCurrency(principal)} &nbsp; <strong>Total Payable:</strong> ${formatCurrency(app.loan_details?.total_payable || app.total_payable || principal)}</p><div class="accounting-grid"><label>Disbursement Date *<input id="disburse-date" type="date" value="${todayDateOnly()}"></label><label>Transaction Method *<select id="disburse-method"><option>BANK_TRANSFER</option><option>CASH</option><option>CHEQUE</option><option>OTHER</option></select></label><label>Funding Account *<select id="funding-account"><option value="">Select funding account</option></select></label><label>Reference<input id="disburse-reference" placeholder="Required for bank transfer or cheque"></label><label>Interest Accounting Method<select id="interest-accounting-method" ${methodReadOnly ? 'disabled' : ''}><option value="ACCRUAL_BY_INSTALLMENT">Accrual by installment</option><option value="CASH_BASIS">Cash basis</option></select><small>${methodReadOnly ? 'Inherited from Accounting Settings.' : 'Override allowed by Accounting Settings.'}</small></label><label>Remarks<textarea id="disburse-remarks"></textarea></label></div><div id="historical-disbursement-panel"></div><div class="subcard"><strong>Disbursement journal preview</strong><div class="accounting-grid"><p><strong>Dr Loan Principal Receivable</strong><br>${formatCurrency(principal)}</p><p><strong>Cr <span id="preview-credit">Selected Bank/Cash Account</span></strong><br>${formatCurrency(principal)}</p></div><p class="muted">Amount: principal only. No full-term interest income will be recognised at disbursement.</p></div><details id="historical-journal-details" class="subcard hidden"><summary>View details</summary><div id="historical-journal-detail-body"></div></details><div class="modal-actions sticky-modal-footer"><button class="secondary" data-close-disburse>Cancel</button><button id="confirm-disburse" disabled>Confirm Disbursement</button></div></div>`;
+      const fallbackPrincipal = Number(app.approved_amount || app.applied_amount || app.amount || app.loan_details?.principal_amount || 0);
+      const renderShell = (body) => { modal.innerHTML = `<div class="modal-card wide"><div class="modal-header"><h2>Disburse Loan</h2><button type="button" class="icon-button" data-close-disburse>×</button></div><div id="disburse-body">${body}</div></div>`; modal.querySelectorAll('[data-close-disburse]').forEach(b=>b.onclick=()=>modal.remove()); };
+      const renderLoading = () => renderShell('<div class="alert success">Loading disbursement configuration...</div>');
+      const disbursementErrorMessage = (err) => {
+        if (err?.name === 'AbortError') return 'Disbursement setup took too long to load. Please retry.';
+        if (err?.status === 401) return 'Your session has expired. Please sign in again.';
+        if (err?.status === 403) return 'You do not have permission to disburse this loan.';
+        if (err?.status === 422) return err.message || 'Disbursement configuration is invalid.';
+        if (err?.status >= 500) return 'Disbursement setup could not be loaded. Please retry.';
+        return err?.message || 'Disbursement setup could not be loaded. Please retry.';
+      };
+      const renderError = (err) => renderShell(`<div class="alert error">${escapeHtml(disbursementErrorMessage(err))}</div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close-disburse>Cancel</button><button type="button" class="primary" id="retry-disburse-options">Retry</button></div>`);
+      const loadOptions = async () => {
+        console.log('Opening disbursement', appId);
+        console.time('load-disbursement-options');
+        try {
+          const optionsPath = endpoint('loanApplicationDisbursementOptions', { id: appId });
+          const data = await fetchWithTimeout(optionsPath, {}, 15000);
+          console.log('Disbursement options loaded', { path: optionsPath, status: 200 });
+          return data || {};
+        } finally {
+          console.timeEnd('load-disbursement-options');
+        }
+      };
+      const renderForm = (options) => {
+        const summary = options.application || options.application_summary || options.applicationSummary || app;
+        const settings = options.disbursement_settings || options.disbursementSettings || options.settings || {};
+        const chargeTypes = options.charge_types || options.chargeTypes || options.charges || [];
+        const mappings = options.default_charge_mappings || options.defaultChargeMappings || options.charge_mappings || {};
+        const accounts = accountItems(options.eligible_funding_accounts || options.eligibleFundingAccounts || options.funding_accounts || options.accounts || []);
+        const principal = Number(summary.gross_principal || summary.principal || summary.approved_amount || summary.applied_amount || fallbackPrincipal || 0);
+        const deductions = (Array.isArray(chargeTypes) ? chargeTypes : []).map(c => ({
+          name: c.name || c.label || c.charge_name || c.type || 'Disbursement charge',
+          amount: Number(c.amount || c.default_amount || c.value || 0),
+          destination: c.destination_gl_account_id || c.destinationGlAccountId || c.gl_account_id || mappings[c.id] || mappings[c.name]
+        })).filter(c => c.amount > 0);
+        const totalDeductions = deductions.reduce((sum,c)=>sum+c.amount,0);
+        const netAmount = principal - totalDeductions;
+        const defaultMethod = settings.default_transaction_method || settings.defaultTransactionMethod || 'BANK_TRANSFER';
+        const defaultInterestMethod = settings.default_interest_accounting_method || settings.defaultInterestAccountingMethod || 'ACCRUAL_BY_INSTALLMENT';
+        const historicalMode = String(settings.backdated_loan_accounting || settings.backdatedLoanAccounting || settings.historical_accrual_mode || 'ASK').toUpperCase();
+        const methodReadOnly = boolFromBackend(settings.interest_accounting_method_locked ?? settings.interestAccountingMethodLocked, true);
+        const configErrors = [];
+        if (!accounts.length) configErrors.push('No active funding account is configured.');
+        if (!deductions.length && Array.isArray(chargeTypes) && chargeTypes.length === 0) configErrors.push('No active disbursement charge types are available.');
+        deductions.forEach(c => { if (!c.destination) configErrors.push(`${c.name} has no destination GL account.`); });
+        renderShell(`<div id="disburse-error">${configErrors.map(e=>`<div class="alert error">${escapeHtml(e)}</div>`).join('')}</div><p><strong>Application Number:</strong> ${escapeHtml(appNo)} &nbsp; <strong>Customer Name:</strong> ${escapeHtml(customer)}</p><div class="accounting-grid"><p><strong>Gross principal</strong><br>${formatCurrency(principal)}</p><label>Disbursement date *<input id="disburse-date" type="date" value="${todayDateOnly()}"></label><label>Transaction method *<select id="disburse-method"><option>BANK_TRANSFER</option><option>CASH</option><option>CHEQUE</option><option>OTHER</option></select></label><label>Funding account *<select id="funding-account"><option value="">Select funding account</option></select></label><label>Reference<input id="disburse-reference" placeholder="Required for bank transfer or cheque"></label><label>Interest accounting method<select id="interest-accounting-method" ${methodReadOnly ? 'disabled' : ''}><option value="ACCRUAL_BY_INSTALLMENT">Accrual by installment</option><option value="CASH_BASIS">Cash basis</option></select><small>${methodReadOnly ? 'Inherited from Accounting Settings.' : 'Override allowed by Accounting Settings.'}</small></label><label>Remarks<textarea id="disburse-remarks"></textarea></label></div><div class="subcard"><strong>Disbursement deductions</strong>${deductions.length ? deductions.map(c=>`<p>${escapeHtml(c.name)}<br>${formatCurrency(c.amount)}</p>`).join('') : '<p class="muted">No deductions configured.</p>'}<p><strong>Total deductions</strong><br>${formatCurrency(totalDeductions)}</p><p><strong>Net amount to customer</strong><br>${formatCurrency(netAmount)}</p></div><div id="historical-disbursement-panel"></div><div class="subcard"><strong>Journal preview</strong><div class="accounting-grid"><p><strong>Dr Loan Principal Receivable</strong><br>${formatCurrency(principal)}</p><p><strong>Cr <span id="preview-credit">Selected Bank/Cash Account</span></strong><br>${formatCurrency(netAmount)}</p>${deductions.map(c=>`<p><strong>Cr ${escapeHtml(c.name)}</strong><br>${formatCurrency(c.amount)}</p>`).join('')}</div></div><details id="historical-journal-details" class="subcard hidden"><summary>View details</summary><div id="historical-journal-detail-body"></div></details><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close-disburse>Cancel</button><button type="button" id="confirm-disburse" disabled>Confirm Disbursement</button></div>`);
+        const methodEl=modal.querySelector('#disburse-method'), accountEl=modal.querySelector('#funding-account'), refEl=modal.querySelector('#disburse-reference'), dateEl=modal.querySelector('#disburse-date'), confirm=modal.querySelector('#confirm-disburse'), errEl=modal.querySelector('#disburse-error'), preview=modal.querySelector('#preview-credit'), interestMethodEl=modal.querySelector('#interest-accounting-method'), historicalPanel=modal.querySelector('#historical-disbursement-panel');
+        methodEl.value = defaultMethod; interestMethodEl.value = defaultInterestMethod === 'CASH_BASIS' ? 'CASH_BASIS' : 'ACCRUAL_BY_INSTALLMENT';
+        let historicalChoice = historicalMode === 'AUTO' ? 'AUTO' : historicalMode === 'NONE' ? 'NONE' : 'CREATE';
+        const validAccounts=()=>accounts.filter(a=>{const st=String(a.subtype||a.account_subtype||a.accountSubType).toUpperCase(); const m=methodEl.value; if(m==='CASH')return st==='CASH'; if(m==='BANK_TRANSFER'||m==='CHEQUE')return st==='BANK'; return st==='CASH'||st==='BANK'||!st;});
+        function renderHistoricalPanel(){ historicalPanel.innerHTML=''; modal.querySelector('#historical-journal-details').classList.add('hidden'); return {hist:isHistoricalDate(dateEl.value),dueCount:0,immediateInterest:0}; }
+        const validate=()=>{ const selected=validAccounts().find(a=>String(a.id)===accountEl.value); preview.textContent=selected?`${selected.code||selected.account_code||''} ${selected.name||selected.account_name||''}`.trim():'Selected Bank/Cash Account'; const futureBlocked=isFutureDateOnly(dateEl.value); const messages=[...configErrors]; if(futureBlocked) messages.unshift('Future disbursement dates are not supported.'); errEl.innerHTML=messages.map(m=>`<div class="alert error">${escapeHtml(m)}</div>`).join(''); confirm.disabled = futureBlocked || configErrors.length > 0 || !(accountEl.value && dateEl.value && methodEl.value && (!['BANK_TRANSFER','CHEQUE'].includes(methodEl.value) || refEl.value.trim())) || applicationModalActions.dataset.disbursing === 'true'; };
+        const renderAccounts=()=>{ accountEl.innerHTML='<option value="">Select funding account</option>'+validAccounts().map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(((a.code||a.account_code||'')+' — '+(a.name||a.account_name||'')).trim())}</option>`).join(''); validate(); };
+        modal.querySelectorAll('[data-close-disburse]').forEach(b=>b.onclick=()=>modal.remove()); [methodEl,accountEl,refEl,dateEl,interestMethodEl].forEach(el=>el.addEventListener('input',validate)); methodEl.addEventListener('change',renderAccounts); renderAccounts();
+        confirm.onclick = async () => { if(confirm.disabled) return; applicationModalActions.dataset.disbursing='true'; confirm.disabled=true; confirm.textContent='Disbursing...'; try { const payload={funding_account_id: accountEl.value, disbursement_method: methodEl.value, transaction_method: methodEl.value, transaction_reference: refEl.value.trim(), reference: refEl.value.trim(), disbursement_date: dateEl.value, accounting_date: dateEl.value, remarks: modal.querySelector('#disburse-remarks').value.trim(), interest_accounting_method: interestMethodEl.value, historical_accrual_option: historicalChoice}; const res=await fetchWithTimeout(endpoint('loanApplicationDisburse', { id: appId }), { method:'POST', body: payload }, 15000); const journalNo=res.journal_no||res.journalNo||res.journal_number||'created'; const loanNo=res.loan_number||res.loanNo||appNo; modal.querySelector('.modal-card').innerHTML=`<h2>Loan Disbursed</h2><p>Loan Number: ${escapeHtml(loanNo)}</p><p>Journal Number: ${escapeHtml(journalNo)}</p><button type="button" data-close-success>Close</button> <button type="button" onclick="showAdminSection('loans')">View Loan</button> <button type="button" onclick="showAdminSection('accounting-journals')">View Journal Entry</button>`; modal.querySelector('[data-close-success]').onclick=()=>modal.remove(); setInlineAlert(applicationModalMessage, `Loan ${loanNo} disbursed. Journal ${journalNo} posted.`, 'success'); if (appId) await openApplicationDetail({ ...appSummary, id: appId }, role); if (role === 'admin') await Promise.allSettled([loadAdmin(), loadAdminLoanApplicationsAll(true)]); } catch(err) { console.error('Failed to disburse loan application', err); errEl.innerHTML=`<div class="alert error">${escapeHtml(disbursementErrorMessage(err))}</div>`; } finally { applicationModalActions.dataset.disbursing='false'; confirm.textContent='Confirm Disbursement'; validate(); } };
+      };
       document.body.appendChild(modal);
-      const methodEl = modal.querySelector('#disburse-method'), accountEl = modal.querySelector('#funding-account'), refEl = modal.querySelector('#disburse-reference'), dateEl = modal.querySelector('#disburse-date'), confirm = modal.querySelector('#confirm-disburse'), errEl = modal.querySelector('#disburse-error'), preview = modal.querySelector('#preview-credit'), interestMethodEl = modal.querySelector('#interest-accounting-method'), historicalPanel = modal.querySelector('#historical-disbursement-panel');
-      interestMethodEl.value = defaultMethod === 'CASH_BASIS' ? 'CASH_BASIS' : 'ACCRUAL_BY_INSTALLMENT';
-      let historicalChoice = historicalMode === 'AUTO' ? 'AUTO' : historicalMode === 'NONE' ? 'NONE' : 'CREATE';
-      const validAccounts = () => accounts.filter(a => { const st=String(a.subtype || a.account_subtype || a.accountSubType).toUpperCase(); const m=methodEl.value; if(m==='CASH') return st==='CASH'; if(m==='BANK_TRANSFER'||m==='CHEQUE') return st==='BANK'; return st==='CASH'||st==='BANK'; });
-      const firstDue = app.loan_details?.first_installment_due_date || app.first_installment_due_date || app.firstInstallmentDueDate || app.loan_details?.first_due_date;
-      const maturity = app.loan_details?.maturity_date || app.maturity_date || app.maturityDate || app.loan_details?.end_date;
-      const installmentCount = Number(app.loan_details?.installment_count || app.installment_count || app.number_of_installments || 0);
-      function renderHistoricalPanel(){
-        const hist = isHistoricalDate(dateEl.value);
-        const daysBack = daysBetweenDateOnly(dateEl.value, todayDateOnly());
-        const dueCount = Math.max(0, Math.min(installmentCount || 999, Number(app.loan_details?.installments_already_due || app.installments_already_due || 0) || (firstDue ? Math.floor(daysBetweenDateOnly(firstDue, todayDateOnly()) / 30) + 1 : 0)));
-        const immediateInterest = Number(app.loan_details?.estimated_historical_interest || app.estimated_historical_interest || (installmentCount ? (totalInterest / installmentCount) * dueCount : 0));
-        const future = Math.max(0, (installmentCount || 0) - dueCount);
-        if(!hist){ historicalPanel.innerHTML=''; modal.querySelector('#historical-journal-details').classList.add('hidden'); return {hist:false,dueCount,immediateInterest,future}; }
-        let optionHtml = '';
-        if(historicalMode === 'AUTO') optionHtml = `<div class="alert success"><strong>Historical interest accruals will be posted automatically up to today.</strong><br>Past-due installments: ${dueCount}. Interest to accrue: ${formatCurrency(immediateInterest)}. Future installments: ${future}. Future unearned interest: ${formatCurrency(Math.max(0,totalInterest-immediateInterest))}.</div>`;
-        else if(historicalMode === 'NONE') optionHtml = `<div class="alert warning"><strong>Historical interest accruals are disabled by accounting settings.</strong></div>`;
-        else optionHtml = `<div class="subcard"><strong>Historical accrual option</strong><label><input name="historical-accrual-choice" type="radio" value="CREATE" ${historicalChoice==='CREATE'?'checked':''}> Create historical interest journals up to today <span class="badge">Recommended</span></label><label><input name="historical-accrual-choice" type="radio" value="DISBURSEMENT_ONLY" ${historicalChoice==='DISBURSEMENT_ONLY'?'checked':''}> Create disbursement journal only<br><small>Past-period interest will remain unrecognised until processed manually.</small></label><label><input name="historical-accrual-choice" type="radio" value="CANCEL"> Cancel</label></div>`;
-        historicalPanel.innerHTML = `<div class="alert warning"><strong>Historical disbursement</strong><br>This loan will be recorded using a past accounting date.<div class="accounting-grid">${[['Selected disbursement date',formatDateOnlyDisplay(dateEl.value)],['Current date',formatDateOnlyDisplay(todayDateOnly())],['Days backdated',daysBack],['First installment due date',formatDateOnlyDisplay(firstDue)],['Maturity date',formatDateOnlyDisplay(maturity)],['Installments already due',dueCount],['Estimated interest to accrue immediately',formatCurrency(immediateInterest)]].map(([l,v])=>`<div><strong>${escapeHtml(l)}</strong><br>${escapeHtml(v)}</div>`).join('')}</div></div>${optionHtml}<div class="subcard"><strong>Expected historical interest journals</strong><p>Number of journals: ${historicalMode==='NONE'||historicalChoice==='DISBURSEMENT_ONLY'?0:dueCount}<br>Total historical interest: ${formatCurrency(historicalMode==='NONE'||historicalChoice==='DISBURSEMENT_ONLY'?0:immediateInterest)}<br>Date range: ${escapeHtml(formatDateOnlyDisplay(firstDue))} to ${escapeHtml(formatDateOnlyDisplay(todayDateOnly()))}</p></div>`;
-        modal.querySelector('#historical-journal-details').classList.remove('hidden');
-        modal.querySelector('#historical-journal-detail-body').innerHTML = `<p>Past-due installments: ${dueCount}</p><p>Interest to accrue: ${formatCurrency(immediateInterest)}</p><p>Future installments: ${future}</p><p>Future unearned interest: ${formatCurrency(Math.max(0,totalInterest-immediateInterest))}</p>`;
-        historicalPanel.querySelectorAll('[name="historical-accrual-choice"]').forEach(r=>r.onchange=()=>{ historicalChoice=r.value; validate(); renderHistoricalPanel(); });
-        return {hist:true,dueCount,immediateInterest,future};
-      }
-      const validate = () => { const selected=validAccounts().find(a=>String(a.id)===accountEl.value); preview.textContent = selected ? `${selected.code||selected.account_code} ${selected.name||selected.account_name}` : 'Selected Bank/Cash Account'; const state=renderHistoricalPanel(); const futureBlocked=isFutureDateOnly(dateEl.value); const cancelled=state.hist && historicalChoice==='CANCEL'; errEl.innerHTML = futureBlocked ? '<div class="alert error">Future disbursement dates are not supported.</div>' : ''; confirm.textContent = state.hist ? 'Confirm Historical Disbursement' : 'Confirm Disbursement'; confirm.disabled = futureBlocked || cancelled || !(accountEl.value && dateEl.value && methodEl.value && (!['BANK_TRANSFER','CHEQUE'].includes(methodEl.value) || refEl.value.trim())) || applicationModalActions.dataset.disbursing === 'true'; };
-      const renderAccounts = () => { accountEl.innerHTML = '<option value="">Select funding account</option>' + validAccounts().map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml((a.code||a.account_code)+' — '+(a.name||a.account_name))}</option>`).join(''); validate(); };
-      modal.querySelectorAll('[data-close-disburse]').forEach(b=>b.onclick=()=>modal.remove()); [methodEl,accountEl,refEl,dateEl,interestMethodEl].forEach(el=>el.addEventListener('input',validate)); methodEl.addEventListener('change',renderAccounts); renderAccounts();
-      confirm.onclick = async () => { if(confirm.disabled) return; const state=renderHistoricalPanel(); if(state.hist){ const ok=window.confirm(`You are posting this loan with a historical disbursement date.\n\nDisbursement journal date: ${formatDateOnlyDisplay(dateEl.value)}\nHistorical interest journals: ${historicalMode==='NONE'||historicalChoice==='DISBURSEMENT_ONLY'?0:state.dueCount}\nTotal interest to recognise: ${formatCurrency(historicalMode==='NONE'||historicalChoice==='DISBURSEMENT_ONLY'?0:state.immediateInterest)}`); if(!ok)return; } applicationModalActions.dataset.disbursing='true'; confirm.disabled=true; confirm.textContent='Disbursing...'; errEl.innerHTML=''; try { const payload={funding_account_id: accountEl.value, disbursement_method: methodEl.value, transaction_method: methodEl.value, transaction_reference: refEl.value.trim(), reference: refEl.value.trim(), disbursement_date: dateEl.value, accounting_date: dateEl.value, remarks: modal.querySelector('#disburse-remarks').value.trim(), interest_accounting_method: interestMethodEl.value, historical_accrual_option: historicalChoice}; const res=await api(endpoint('loanApplicationDisburse', { id: appId }), { method:'POST', body: payload }); const journalNo=res.journal_no||res.journalNo||res.journal_number||'created'; const loanNo=res.loan_number||res.loanNo||appNo; modal.querySelector('.modal-card').innerHTML=`<h2>Loan Disbursed</h2><p>Loan Number: ${escapeHtml(loanNo)}</p><p>Journal Number: ${escapeHtml(journalNo)}</p><button data-close-success>Close</button> <button onclick="showAdminSection('loans')">View Loan</button> <button onclick="showAdminSection('accounting-journals')">View Journal Entry</button>`; modal.querySelector('[data-close-success]').onclick=()=>modal.remove(); setInlineAlert(applicationModalMessage, `Loan ${loanNo} disbursed. Journal ${journalNo} posted.`, 'success'); if (appId) await openApplicationDetail({ ...appSummary, id: appId }, role); if (role === 'admin') await Promise.all([loadAdmin(), loadAdminLoanApplicationsAll(true)]); } catch(err) { console.error('Failed to disburse loan application', err); const msg = err.message || 'Failed to disburse loan. Please try again.'; errEl.innerHTML=`<div class="alert error">${escapeHtml(msg)}</div>`; applicationModalActions.dataset.disbursing='false'; confirm.textContent=state.hist?'Confirm Historical Disbursement':'Confirm Disbursement'; validate(); } finally { if(applicationModalActions.dataset.disbursing==='true') applicationModalActions.dataset.disbursing='false'; } };
+      renderLoading();
+      try { renderForm(await loadOptions()); }
+      catch (err) { console.error('Failed to load disbursement setup', err); renderError(err); modal.querySelector('#retry-disburse-options')?.addEventListener('click', () => { modal.remove(); handleDisburse(event); }, { once: true }); }
+      finally { applicationModalActions.dataset.loadingDisbursement='false'; }
     };
 
     if (availableActions.includes('reject')) {
