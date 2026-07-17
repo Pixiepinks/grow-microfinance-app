@@ -9153,11 +9153,57 @@ const investorIsBank = a => investorIsActivePostingAccount(a) && investorAccount
 const investorToday = () => todayDateOnly();
 function investorSettingsApiError(e){ if(e?.status===401) return 'Your session has expired. Please sign in again.'; if(e?.status===403) return 'You do not have permission to view Investor Funding settings.'; if(e?.status===404) return 'Investor Funding settings endpoint was not found.'; if(e?.status===422) return e?.message || 'Investor Funding settings contain validation errors.'; if(e?.status===500) return 'Investor Funding settings could not be loaded.'; return e?.message || 'Investor Funding settings could not be loaded.'; }
 function investorApiError(e, resource='funding'){ const message=String(e?.message||''); const code=message.toLowerCase(); const isAgreement=resource==='agreement-create'||resource==='agreement'; if(resource==='settings') return investorSettingsApiError(e); if(e?.status===401) return 'Your session has expired. Please sign in again.'; if(e?.status===403) return resource==='investor'?'You do not have permission to perform this investor action.':isAgreement?'You do not have permission to perform this funding agreement action.':'You do not have permission to perform this investor funding action.'; if(code.includes('investor_not_found')) return isAgreement?'The selected investor was not found.':'The investor was not found.'; if(code.includes('investor_inactive')) return 'The selected investor is not active.'; if(code.includes('investor_agreement_not_found')) return 'The investor funding agreement was not found.'; if(code.includes('investor_funding_not_found')) return resource==='funding'?'The investor funding record was not found.':isAgreement?'The investor funding agreement was not found.':'The investor was not found.'; if(e?.status===404){ if(resource==='investor-create' && (!message || code.includes('request failed with status 404'))) return 'The Investor API endpoint was not found.'; if(resource==='investor-options') return 'Investor options endpoint was not found.'; return resource==='funding'?'The investor funding record was not found.':isAgreement?'The investor funding agreement was not found.':'The investor was not found.'; } if(e?.status===422) return e.message || (isAgreement?'The funding agreement request contains validation errors.':resource==='funding'?'The investor funding request contains validation errors.':'The investor request contains validation errors.'); if(e?.status===500) return isAgreement?'The server could not process the funding agreement request.':resource==='funding'?'The server could not process the investor funding request.':'The server could not process the investor request.'; if(e?.name==='AbortError') return isAgreement?'Funding agreement request timed out. Please retry.':resource==='funding'?'Investor funding request timed out. Please retry.':'Investor request timed out. Please retry.'; return e?.message || (isAgreement?'Funding agreement request failed.':resource==='funding'?'Investor funding request failed.':'Investor request failed.'); }
+function getExistingAdminContentRoot() {
+  return (
+    document.querySelector('#admin-panel .admin-layout > .admin-content') ||
+    document.querySelector('.admin-layout > .admin-content')
+  );
+}
+function ensureInvestorFundingSection(sectionName, rootId) {
+  const adminContent = getExistingAdminContentRoot();
+  if (!adminContent) {
+    console.error('Existing admin-content root not found');
+    return null;
+  }
+  let section = adminContent.querySelector(`.admin-section[data-section="${sectionName}"]`);
+  if (!section) {
+    section = document.createElement('section');
+    section.className = 'admin-section hidden investor-funding-section';
+    section.dataset.section = sectionName;
+    section.innerHTML = `<div id="${rootId}"></div>`;
+    adminContent.appendChild(section);
+  } else {
+    section.classList.add('investor-funding-section');
+    if (!section.querySelector(`#${rootId}`)) section.innerHTML = `<div id="${rootId}"></div>`;
+  }
+  return section;
+}
+function logInvestorFundingPlacementCheck() {
+  const adminContent = getExistingAdminContentRoot();
+  console.log('Investor Funding placement check', {
+    adminContent,
+    parent: adminContent?.parentElement,
+    investorSection: adminContent?.querySelector('[data-section="investor-funding-investors"]'),
+    investorRoot: adminContent?.querySelector('#investor-funding-investors-root'),
+    directChildren: Array.from(adminContent?.children || []).map(element => ({
+      tag: element.tagName,
+      section: element.dataset.section || '',
+      id: element.id || '',
+    }))
+  });
+}
 function ensureInvestorFundingNavigation(){
   const host=document.querySelector('.admin-sidebar,.sidebar,.admin-menu,nav,.admin-nav');
   if(host && !document.querySelector('[data-investor-funding-nav]')) host.insertAdjacentHTML('beforeend', `<div data-investor-funding-nav class="menu-group"><div class="eyebrow">Investor Funding</div>${[['Investors','investor-funding-investors'],['Funding Agreements','investor-funding-agreements'],['Record Investor Funding','investor-funding-record'],['Interest Accruals','investor-funding-accruals'],['Interest Payments','investor-funding-payments'],['Investor Balances','investor-funding-balances'],['Investor Reports','investor-funding-reports'],['Investor Reconciliation','investor-funding-reconciliation']].map(([l,s])=>`<button class="admin-menu-item" data-section-link="${s}">${l}</button>`).join('')}</div>`);
-  const sectionsHost=document.querySelector('.admin-content,#admin-panel,.admin-sections,#dashboards');
-  if(sectionsHost) [['investor-funding-investors','investor-funding-investors-root'],['investor-funding-agreements','investor-funding-agreements-root'],['investor-funding-record','investor-funding-record-root'],['investor-funding-accruals','investor-funding-accruals-root'],['investor-funding-payments','investor-funding-payments-root'],['investor-funding-balances','investor-funding-balances-root'],['investor-funding-reports','investor-funding-reports-root'],['investor-funding-reconciliation','investor-funding-reconciliation-root'],['investor-funding-agreement-detail','investor-funding-agreement-detail-root']].forEach(([sec,id])=>{ if(!document.querySelector(`#${id}`)) sectionsHost.insertAdjacentHTML('beforeend', `<section class="admin-section hidden" data-section="${sec}"><div id="${id}"></div></section>`); });
+  [['investor-funding-investors','investor-funding-investors-root'],['investor-funding-agreements','investor-funding-agreements-root'],['investor-funding-record','investor-funding-record-root'],['investor-funding-accruals','investor-funding-accruals-root'],['investor-funding-payments','investor-funding-payments-root'],['investor-funding-balances','investor-funding-balances-root'],['investor-funding-reports','investor-funding-reports-root'],['investor-funding-reconciliation','investor-funding-reconciliation-root'],['investor-funding-agreement-detail','investor-funding-agreement-detail-root']].forEach(([sec,id])=>ensureInvestorFundingSection(sec,id));
+  logInvestorFundingPlacementCheck();
+}
+function showInvestorFundingSection(sectionName) {
+  const adminContent = getExistingAdminContentRoot();
+  if (!adminContent) return;
+  adminContent.querySelectorAll(':scope > .admin-section').forEach(section => {
+    section.classList.toggle('hidden', section.dataset.section !== sectionName);
+  });
 }
 function normalizeInvestorFundingSettings(raw) { const source = raw?.data ?? raw?.settings ?? raw ?? {}; return { configured: source.configured === true, investorBorrowingsAccountId: source.investor_borrowings_control_account_id ?? source.accounts?.investor_borrowings_control?.id ?? null, investorInterestExpenseAccountId: source.investor_interest_expense_account_id ?? source.accounts?.investor_interest_expense?.id ?? null, investorInterestPayableAccountId: source.investor_interest_payable_account_id ?? source.accounts?.investor_interest_payable?.id ?? null, withholdingTaxAccountId: source.investor_withholding_tax_payable_account_id ?? source.accounts?.withholding_tax_payable?.id ?? null, defaultFundingBankAccountId: source.default_investor_funding_bank_account_id ?? source.accounts?.default_funding_bank?.id ?? null, calculationMethod: source.default_interest_calculation_method ?? 'MONTHLY_AVERAGE_DAILY_BALANCE', interestRatePeriod: source.default_interest_rate_period ?? 'MONTHLY', interestPaymentFrequency: source.default_interest_payment_frequency ?? 'MONTHLY', compoundingMethod: source.default_compounding_method ?? 'NONE', dayCountBasis: source.default_day_count_basis ?? 'ACTUAL_365', interestPaymentMethod: source.default_interest_payment_method ?? 'BANK_TRANSFER', autoPostInterest: source.auto_post_investor_interest === true, allowHistoricalTransactions: source.allow_historical_investor_transactions !== false, allowInterestCapitalization: source.allow_interest_capitalization === true, missingSettings: source.missing_settings ?? [] }; }
 async function loadInvestorFundingSettings(force=false){ if(!force&&investorFundingState.settingsLoaded) return investorFundingState.settings; if(!force&&investorFundingState.settingsPromise) return investorFundingState.settingsPromise; investorFundingState.settingsLoading=true; investorFundingState.settingsError=null; investorFundingState.settingsPromise=(async()=>{ try{ const response=await api(investorFundingRoutes.settings); console.log('Investor funding settings response', response); investorFundingState.settings=normalizeInvestorFundingSettings(response); investorFundingState.settingsLoaded=true; return investorFundingState.settings; }catch(e){ investorFundingState.settings=normalizeInvestorFundingSettings({}); investorFundingState.settingsError=e; investorFundingState.settingsLoaded=true; return investorFundingState.settings; }finally{ investorFundingState.settingsLoading=false; investorFundingState.settingsPromise=null; } })(); return investorFundingState.settingsPromise; }
@@ -9198,11 +9244,12 @@ function normalizeInvestor(item = {}) {
 }
 function investorListErrorMessage(e){ if(e?.status===401) return 'Your session has expired. Please sign in again.'; if(e?.status===403) return 'You do not have permission to view investors.'; if(e?.status===404) return 'Investor list endpoint was not found.'; if(e?.status===500) return 'Investors could not be loaded due to a server error.'; return e?.message || 'Investors could not be loaded.'; }
 function getInvestorApiErrorMessage(error){ return investorListErrorMessage(error); }
-function getInvestorContentRoot(){ return document.querySelector('#investor-funding-investors-root') || document.querySelector('#admin-content') || document.querySelector('.admin-content'); }
+function getInvestorContentRoot(){ const adminContent=getExistingAdminContentRoot(); if(!adminContent) return null; return adminContent.querySelector('#investor-funding-investors-root') || ensureInvestorFundingSection('investor-funding-investors','investor-funding-investors-root')?.querySelector('#investor-funding-investors-root'); }
+function isDedicatedInvestorRoot(root) { return root?.id === 'investor-funding-investors-root'; }
 function clearInvestorPageError(){ const root=getInvestorContentRoot(); root?.querySelector('#investor-message')?.replaceChildren(); }
-function renderInvestorLoadError(message){ const root=getInvestorContentRoot(); if(!root) return; const body=investorPageShell(root); body.innerHTML=`<div class="alert error"><strong>${escapeInvestorHtml(message || 'Investors could not be loaded.')}</strong><br><button type="button" data-refresh-investors>Retry</button></div>`; }
-function renderInvestorPageError(message){ const root=getInvestorContentRoot(); if(!root) return; const body=root.querySelector('#investor-page-body') || investorPageShell(root); body.innerHTML=`<div class="alert error"><strong>${escapeInvestorHtml(message || 'Investor page could not be rendered.')}</strong><br><button type="button" data-refresh-investors>Retry</button></div>`; }
-function investorPageShell(root){ clearInvestorPageChrome(); const contentRoot=root.closest('.admin-content')||document.querySelector('#admin-content')||document.querySelector('.admin-content')||root; if(contentRoot){ contentRoot.style.flex='1 1 0%'; contentRoot.style.minWidth='0'; contentRoot.style.width='100%'; contentRoot.style.maxWidth='none'; } root.replaceChildren(); root.innerHTML='<!-- investors-ui-v2 --><section class="page-card investor-page investors-dashboard-v2" data-ui-version="investors-v2"><header class="investor-hero"><div><div class="eyebrow">INVESTOR FUNDING</div><h1>Investors</h1><p class="muted">Manage investors, funding agreements, balances, and accrued interest.</p></div><button type="button" id="add-investor-btn" class="investor-primary-action" data-add-investor>Add Investor</button></header><div id="investor-message"></div><div id="investor-page-body"><p class="investor-loading">Loading investors...</p></div></section>'; console.log('Investor page root', contentRoot||root); if(history?.pushState && location.pathname!=='/admin/investors') history.pushState({page:'investors'},'', '/admin/investors'); return root.querySelector('#investor-page-body'); }
+function renderInvestorLoadError(message){ const root=getInvestorContentRoot(); if(!root) return; const body=investorPageShell(root); if(!body) return; body.innerHTML=`<div class="alert error"><strong>${escapeInvestorHtml(message || 'Investors could not be loaded.')}</strong><br><button type="button" data-refresh-investors>Retry</button></div>`; }
+function renderInvestorPageError(message){ const root=getInvestorContentRoot(); if(!root) return; const body=root.querySelector('#investor-page-body') || investorPageShell(root); if(!body) return; body.innerHTML=`<div class="alert error"><strong>${escapeInvestorHtml(message || 'Investor page could not be rendered.')}</strong><br><button type="button" data-refresh-investors>Retry</button></div>`; }
+function investorPageShell(root){ clearInvestorPageChrome(); if(!isDedicatedInvestorRoot(root)){ console.error('Refusing to render Investors into an unsafe root', root); return null; } root.replaceChildren(); root.innerHTML='<!-- investors-ui-v2 --><section class="page-card investor-page investors-dashboard-v2" data-ui-version="investors-v2"><header class="investor-hero"><div><div class="eyebrow">INVESTOR FUNDING</div><h1>Investors</h1><p class="muted">Manage investors, funding agreements, balances, and accrued interest.</p></div><button type="button" id="add-investor-btn" class="investor-primary-action" data-add-investor>Add Investor</button></header><div id="investor-message"></div><div id="investor-page-body"><p class="investor-loading">Loading investors...</p></div></section>'; console.log('Investor page root', root); return root.querySelector('#investor-page-body'); }
 function renderInvestorRow(investor) {
   if (!investor) return '';
   const investorId = Number.isInteger(investor.id) ? investor.id : '';
@@ -9315,6 +9362,10 @@ const investorFundingShowAdminSection = showAdminSection;
 showAdminSection = function(section='dashboard'){
   ensureInvestorFundingNavigation();
   investorFundingShowAdminSection(section);
+  if(section.startsWith('investor-funding-')) showInvestorFundingSection(section);
+  document.querySelectorAll('[data-section-link]').forEach(button => {
+    button.classList.toggle('active', button.dataset.sectionLink === section);
+  });
   if(section==='investor-funding-investors') loadInvestorsPage();
   if(section==='investor-funding-agreements') loadAgreementsPage();
   if(section==='investor-funding-record') loadRecordFundingPage();
@@ -9323,6 +9374,7 @@ showAdminSection = function(section='dashboard'){
   if(section==='investor-funding-balances') loadBalancesPage();
   if(section==='investor-funding-reports') loadReportsPage();
   if(section==='investor-funding-reconciliation') loadReconciliationPage();
+  if(section==='accounting-settings') setTimeout(injectInvestorFundingSettingsPanel, 0);
 };
 document.addEventListener('click', async e=>{
   const addInv=e.target.closest('[data-add-investor]'); if(addInv){ e.preventDefault(); openInvestorForm({}); return; }
@@ -9341,23 +9393,7 @@ ensureInvestorFundingNavigation();
 
 
 (function(){document.documentElement.dataset.investorsUi='v2';})();
-// Ensure dynamically-added Investor Funding sections are visible even though adminSections was captured at startup.
-const investorFundingDynamicShow = showAdminSection;
-showAdminSection = function(section='dashboard'){
-  investorFundingDynamicShow(section);
-  const investorSections = Array.from(document.querySelectorAll('.admin-section[data-section^="investor-funding-"]'));
-  if (section.startsWith('investor-funding-')) {
-    document.querySelectorAll('.admin-section').forEach(el => el.classList.toggle('hidden', el.dataset.section !== section));
-    investorSections.forEach(el => el.classList.toggle('hidden', el.dataset.section !== section));
-  }
-};
-
 // Extend Accounting Settings with investor funding controls without changing Chart of Accounts editing.
-const investorFundingSettingsShow = showAdminSection;
-showAdminSection = function(section='dashboard'){
-  investorFundingSettingsShow(section);
-  if(section==='accounting-settings') setTimeout(injectInvestorFundingSettingsPanel, 0);
-};
 function investorSettingsField(name,label,html){ return `<label>${label}${html}</label>`; }
 function investorSettingsSelect(name,label,rows,value){ return investorSettingsField(name,label,`<select data-investor-setting="${name}"><option value="">Select account</option>${rows.map(a=>`<option value="${escapeHtml(a.id)}" ${String(a.id)===String(value)?'selected':''}>${escapeHtml(investorAccountLabel(a))}</option>`).join('')}</select>`); }
 async function injectInvestorFundingSettingsPanel(){

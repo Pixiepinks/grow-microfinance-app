@@ -1826,3 +1826,19 @@ td:nth-last-child(-n+3), th:nth-last-child(-n+3) { font-variant-numeric: tabular
     justify-content: flex-end;
   }
 }
+
+.investor-funding-section {
+  width: 100%;
+  min-width: 0;
+}
+
+.investor-funding-section > [id$='-root'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.investor-funding-section .investors-dashboard-v2 {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
