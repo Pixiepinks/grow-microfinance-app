@@ -6634,6 +6634,54 @@ function togglePanels(role) {
   }
 }
 
+function safeMetricNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return 0;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : 0;
+}
+
+function normalizeDashboardMetrics(raw = {}) {
+  const source = raw?.data ?? raw ?? {};
+
+  return {
+    totalCustomers: safeMetricNumber(
+      source.total_customers ??
+      source.totalCustomers ??
+      0,
+    ),
+    activeLoans: safeMetricNumber(
+      source.active_loans ??
+      source.activeLoans ??
+      0,
+    ),
+    paymentsToday: safeMetricNumber(
+      source.payments_today ??
+      source.paymentsToday ??
+      0,
+    ),
+  };
+}
+
+function renderDashboardMetrics(metrics) {
+  renderMetrics(adminMetrics, [
+    { label: 'Total customers', value: String(metrics.totalCustomers), hint: 'Across all segments' },
+    { label: 'Active loans', value: String(metrics.activeLoans), hint: 'Current portfolio' },
+    { label: 'Payments today', value: String(metrics.paymentsToday), hint: 'Recorded settlements' },
+  ]);
+}
+
+function renderDashboardMetricsLoading() {
+  renderMetrics(adminMetrics, [
+    { label: 'Total customers', value: 'Loading...', hint: 'Across all segments' },
+    { label: 'Active loans', value: 'Loading...', hint: 'Current portfolio' },
+    { label: 'Payments today', value: 'Loading...', hint: 'Recorded settlements' },
+  ]);
+}
+
 function renderMetrics(container, metrics) {
   container.innerHTML = '';
   const template = document.querySelector('#metric-template');
@@ -6644,6 +6692,24 @@ function renderMetrics(container, metrics) {
     node.querySelector('.metric-hint').textContent = metric.hint;
     container.appendChild(node);
   });
+}
+
+function showDashboardMetricsError() {
+  if (!adminMetrics) return;
+  let alert = document.querySelector('#admin-dashboard-metrics-message');
+  if (!alert) {
+    alert = document.createElement('p');
+    alert.id = 'admin-dashboard-metrics-message';
+    adminMetrics.insertAdjacentElement('beforebegin', alert);
+  }
+  alert.className = 'alert error';
+  alert.innerHTML = 'Dashboard metrics could not be loaded. <button type="button" class="link-button" id="admin-dashboard-metrics-retry">Retry</button>';
+  alert.querySelector('#admin-dashboard-metrics-retry')?.addEventListener('click', () => loadAdmin());
+}
+
+function clearDashboardMetricsError() {
+  const alert = document.querySelector('#admin-dashboard-metrics-message');
+  if (alert) alert.remove();
 }
 
 function renderCollections(items) {
@@ -6851,19 +6917,35 @@ function renderApplications(applications) {
 
 async function loadAdmin() {
   setInlineAlert(adminApplicationsMessage, '');
+  clearDashboardMetricsError();
+  renderDashboardMetricsLoading();
   try {
-    const [data, applicationsResponse] = await Promise.all([
+    const [dashboardResult, applicationsResult] = await Promise.allSettled([
       api(endpoint('adminDashboard')),
       api(`${endpoint('staffLoanApplications')}?status=STAFF_APPROVED`),
     ]);
 
-    const metrics = [
-      { label: 'Total customers', value: data.total_customers ?? '—', hint: 'Across all segments' },
-      { label: 'Active loans', value: data.active_loans ?? '—', hint: 'Current portfolio' },
-      { label: 'Payments today', value: data.payments_today ?? '—', hint: 'Recorded settlements' },
-    ];
-    renderMetrics(adminMetrics, metrics);
+    if (dashboardResult.status === 'fulfilled') {
+      const response = dashboardResult.value;
+      console.log('Dashboard raw response', response);
+      const metrics = normalizeDashboardMetrics(response);
+      console.log('Dashboard normalized metrics', metrics);
+      renderDashboardMetrics(metrics);
+    } else {
+      console.error('Failed to load dashboard metrics', dashboardResult.reason);
+      showDashboardMetricsError();
+      renderMetrics(adminMetrics, [
+        { label: 'Total customers', value: '—', hint: 'Across all segments' },
+        { label: 'Active loans', value: '—', hint: 'Current portfolio' },
+        { label: 'Payments today', value: '—', hint: 'Recorded settlements' },
+      ]);
+    }
 
+    if (applicationsResult.status === 'rejected') {
+      throw applicationsResult.reason;
+    }
+
+    const applicationsResponse = applicationsResult.value;
     const applications = normalizeApplicationsResponse(applicationsResponse);
     cachedAdminApplications = applications;
     renderReviewQueue(
