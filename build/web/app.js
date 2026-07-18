@@ -748,7 +748,9 @@ let customerSearchResults = [];
 let selectedCustomer = null;
 let selectedCustomerId = null;
 let customerSearchLoading = false;
-let customerSearchDebounceTimer = null;
+let customerSearchController = null;
+let customerSearchSequence = 0;
+let customerSearchHighlightedIndex = -1;
 let publicLeadSection;
 let publicLeadForm;
 let publicLeadMessage;
@@ -7581,16 +7583,40 @@ function getCustomerField(customer = {}, keys = []) {
   return '';
 }
 
-function normalizeCustomerSearchResults(response) {
-  if (!response) return [];
-  if (Array.isArray(response)) return response;
-  const list = normalizeCustomersResponse(response);
-  if (Array.isArray(list) && list.length) return list;
-  if (typeof response === 'object') {
-    const customerId = getCustomerId(response);
-    if (customerId) return [response];
-  }
-  return [];
+function debounce(fn, delay = 300) {
+  let timer;
+
+  return (...args) => {
+    clearTimeout(timer);
+
+    timer = setTimeout(
+      () => fn(...args),
+      delay
+    );
+  };
+}
+
+function normalizeCustomerSearchResponse(raw) {
+  const source =
+    raw?.data ??
+    raw ??
+    {};
+
+  const rows = Array.isArray(source)
+    ? source
+    : (
+        source.items ??
+        source.customers ??
+        []
+      );
+
+  return Array.isArray(rows)
+    ? rows
+    : [];
+}
+
+function getCustomerDatabaseId(customer = {}) {
+  return customer?.id ?? customer?.customer_id ?? customer?.customerId ?? null;
 }
 
 function setCustomerSearchMessage(message = '', type = 'error') {
@@ -7625,7 +7651,7 @@ function fillApplicantFieldsFromCustomer(customer = {}) {
   });
 }
 
-function renderSelectedCustomerChip() {
+function renderSelectedCustomerChip(needsConfirmation = false) {
   if (!customerSearchSelectionEl) return;
   if (!selectedCustomerId || !selectedCustomer) {
     customerSearchSelectionEl.classList.add('hidden');
@@ -7635,7 +7661,8 @@ function renderSelectedCustomerChip() {
 
   customerSearchSelectionEl.classList.remove('hidden');
   customerSearchSelectionEl.innerHTML = `
-    <span><strong>Selected Customer:</strong> ${selectedCustomerId} - ${getCustomerDisplayName(selectedCustomer)}</span>
+    <span><strong>${needsConfirmation ? 'Previous customer:' : 'Selected Customer:'}</strong> ${escapeHtml(selectedCustomerId)} - ${escapeHtml(getCustomerDisplayName(selectedCustomer))}</span>
+    ${needsConfirmation ? '<span class="muted">Select a customer from the search results.</span>' : ''}
     <button type="button" id="clear-selected-customer" class="ghost">Clear selection</button>
   `;
 
@@ -7647,11 +7674,20 @@ function renderSelectedCustomerChip() {
 function clearSelectedCustomer() {
   selectedCustomer = null;
   selectedCustomerId = null;
+  setActiveCustomerId(null);
   renderSelectedCustomerChip();
 }
 
+function invalidateSelectedCustomerForNewSearch() {
+  if (!selectedCustomerId && !selectedCustomer) return;
+  selectedCustomerId = null;
+  setActiveCustomerId(null);
+  renderSelectedCustomerChip(true);
+  setCustomerSearchMessage('Select a customer from the search results.', 'error');
+}
+
 function selectCustomerForApplication(customer) {
-  const customerId = getCustomerId(customer);
+  const customerId = getCustomerDatabaseId(customer);
   if (!customerId) {
     setCustomerSearchMessage('Selected customer does not have a valid ID.', 'error');
     return;
@@ -7661,12 +7697,37 @@ function selectCustomerForApplication(customer) {
   selectedCustomerId = customerId;
   setActiveCustomerId(customerId);
   fillApplicantFieldsFromCustomer(customer);
+  customerSearchResults = [];
+  customerSearchHighlightedIndex = -1;
+  renderCustomerSearchResults();
   setCustomerSearchMessage('', 'success');
   renderSelectedCustomerChip();
 }
 
+function clearCustomerResults(message = 'Enter a customer name, NIC, mobile number, or customer ID.') {
+  customerSearchController?.abort();
+  customerSearchController = null;
+  customerSearchSequence += 1;
+  customerSearchResults = [];
+  customerSearchHighlightedIndex = -1;
+  customerSearchLoading = false;
+  customerSearchBtn && (customerSearchBtn.disabled = true);
+  renderCustomerSearchResults();
+  setCustomerSearchMessage(message, 'success');
+}
+
+function getCustomerSearchQuery() {
+  const nicTerm = customerSearchNicInput?.value.trim() || '';
+  const mobileTerm = customerSearchMobileInput?.value.trim() || '';
+  return mobileTerm || nicTerm;
+}
+
 function renderCustomerSearchResults() {
   if (!customerSearchResultsEl) return;
+
+  customerSearchResultsEl.style.maxHeight = '300px';
+  customerSearchResultsEl.style.overflowY = 'auto';
+  customerSearchResultsEl.style.overflowX = 'hidden';
 
   if (!customerSearchResults.length) {
     customerSearchResultsEl.classList.add('hidden');
@@ -7678,18 +7739,22 @@ function renderCustomerSearchResults() {
   const rows = customerSearchResults
     .slice(0, 10)
     .map((customer, index) => {
-      const id = getCustomerId(customer) || '—';
+      const id = getCustomerDatabaseId(customer) || '—';
+      const number = getCustomerField(customer, ['customer_number', 'customerNumber', 'customer_code', 'customerCode']);
+      const displayId = number ? `${id} / ${number}` : id;
       const name = getCustomerDisplayName(customer);
       const nic = getCustomerField(customer, ['nic_number', 'nic', 'nicNumber', 'nic_no']) || '—';
       const mobile = getCustomerField(customer, ['mobile', 'mobile_number', 'phone', 'contact']) || '—';
       const address = getCustomerField(customer, ['address', 'address_line1', 'address_line', 'addressLine']) || '—';
+      const isHighlighted = index === customerSearchHighlightedIndex;
       return `
-        <tr data-customer-index="${index}">
-          <td>${id}</td>
-          <td>${name}</td>
-          <td>${nic}</td>
-          <td>${mobile}</td>
-          <td>${address}</td>
+        <tr data-customer-index="${index}" tabindex="0" style="${isHighlighted ? 'background: rgba(37, 99, 235, 0.12);' : ''}">
+          <td>${escapeHtml(displayId)}</td>
+          <td>${escapeHtml(name)}</td>
+          <td>${escapeHtml(nic)}</td>
+          <td>${escapeHtml(mobile)}</td>
+          <td>${escapeHtml(address)}</td>
+          <td><button type="button" class="secondary" data-select-customer-index="${index}">Select</button></td>
         </tr>
       `;
     })
@@ -7699,11 +7764,12 @@ function renderCustomerSearchResults() {
     <table>
       <thead>
         <tr>
-          <th>Customer ID</th>
+          <th>Customer ID / Number</th>
           <th>Full Name</th>
           <th>NIC</th>
           <th>Mobile</th>
           <th>Address</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -7719,65 +7785,111 @@ function renderCustomerSearchResults() {
   });
 }
 
-async function searchCustomersForApplication({ nic = '', mobile = '' } = {}) {
-  const normalizedNic = (nic || '').trim();
-  const normalizedMobile = (mobile || '').trim();
+function showCustomerSearchError(error) {
+  console.error('Customer search failed', error);
+  if (error?.status === 401) {
+    setCustomerSearchMessage('Your session has expired. Please sign in again.', 'error');
+  } else if (error?.status === 404) {
+    setCustomerSearchMessage('Customer search endpoint was not found.', 'error');
+  } else if (error?.status >= 500) {
+    setCustomerSearchMessage('Customer search could not be completed.', 'error');
+  } else if (!error?.status) {
+    setCustomerSearchMessage('Unable to search customers. Check the connection and try again.', 'error');
+  } else {
+    setCustomerSearchMessage(error?.message || 'Customer search could not be completed.', 'error');
+  }
+}
 
-  if (!normalizedNic && !normalizedMobile) {
-    setCustomerSearchMessage('Enter NIC or mobile number to search.', 'error');
+async function searchCustomersForApplication({ nic = '', mobile = '' } = {}) {
+  const query = (mobile || '').trim() || (nic || '').trim();
+  customerSearchBtn && (customerSearchBtn.disabled = query.length < 1);
+
+  if (query.length < 1) {
+    clearCustomerResults();
     return;
   }
 
+  invalidateSelectedCustomerForNewSearch();
   customerSearchLoading = true;
   customerSearchBtn && (customerSearchBtn.disabled = true);
   setCustomerSearchMessage('Searching customers...', 'success');
 
-  try {
-    const basePath = endpoint('customers') || '/customers';
-    const query = new URLSearchParams();
-    if (normalizedNic) {
-      query.set('nic_number', normalizedNic);
-      query.set('nic', normalizedNic);
-    }
-    if (normalizedMobile) {
-      query.set('mobile', normalizedMobile);
-      query.set('mobile_number', normalizedMobile);
-    }
+  const sequence = ++customerSearchSequence;
+  customerSearchController?.abort();
+  customerSearchController = new AbortController();
 
-    const response = await api.get(`${basePath}?${query.toString()}`);
-    customerSearchResults = normalizeCustomerSearchResults(response).slice(0, 10);
+  try {
+    const params = new URLSearchParams();
+    params.set('q', query);
+    params.set('limit', '10');
+    const path = `/admin/customers/search?${params.toString()}`;
+    const response = await api.get(path, { signal: customerSearchController.signal });
+
+    if (sequence !== customerSearchSequence) return;
+
+    const customers = normalizeCustomerSearchResponse(response).slice(0, 10);
+    console.log('Live customer search', { query, resultCount: customers.length });
+    customerSearchResults = customers;
+    customerSearchHighlightedIndex = customers.length ? 0 : -1;
     renderCustomerSearchResults();
 
-    if (!customerSearchResults.length) {
-      setCustomerSearchMessage('No customers found for given NIC/Mobile.', 'error');
+    if (!customers.length) {
+      setCustomerSearchMessage(`No matching customer found. No customer matched "${query}".`, 'error');
       return;
     }
 
-    setCustomerSearchMessage(`Found ${customerSearchResults.length} customer(s). Select one from the list.`, 'success');
+    setCustomerSearchMessage(`Found ${customers.length} matching customer(s). Select one from the list.`, 'success');
   } catch (error) {
-    console.error('Customer search failed', error);
-    if (error?.status === 401) {
-      setCustomerSearchMessage('Session expired. Please sign in again.', 'error');
-    } else {
-      setCustomerSearchMessage(error?.message || 'Customer search failed.', 'error');
-    }
+    if (error?.name === 'AbortError') return;
+    if (sequence !== customerSearchSequence) return;
     customerSearchResults = [];
+    customerSearchHighlightedIndex = -1;
     renderCustomerSearchResults();
+    showCustomerSearchError(error);
   } finally {
-    customerSearchLoading = false;
-    customerSearchBtn && (customerSearchBtn.disabled = false);
+    if (sequence === customerSearchSequence) {
+      customerSearchLoading = false;
+      customerSearchBtn && (customerSearchBtn.disabled = getCustomerSearchQuery().length < 1);
+    }
   }
 }
 
-function scheduleCustomerSearch() {
-  if (customerSearchDebounceTimer) window.clearTimeout(customerSearchDebounceTimer);
-  customerSearchDebounceTimer = window.setTimeout(() => {
-    const nic = customerSearchNicInput?.value || '';
-    const mobile = customerSearchMobileInput?.value || '';
-    if (nic.trim().length >= 5 || mobile.trim().length >= 7) {
-      searchCustomersForApplication({ nic, mobile });
-    }
-  }, 500);
+const scheduleCustomerSearch = debounce(() => {
+  const nic = customerSearchNicInput?.value || '';
+  const mobile = customerSearchMobileInput?.value || '';
+  const query = (mobile || '').trim() || (nic || '').trim();
+  customerSearchBtn && (customerSearchBtn.disabled = query.length < 1);
+  if (query.length < 1) {
+    clearCustomerResults();
+    return;
+  }
+  searchCustomersForApplication({ nic, mobile });
+}, 300);
+
+function handleCustomerSearchKeydown(event) {
+  if (!customerSearchResults.length) {
+    if (event.key === 'Escape') clearCustomerResults('');
+    return;
+  }
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    customerSearchHighlightedIndex = Math.min(customerSearchHighlightedIndex + 1, customerSearchResults.length - 1);
+    renderCustomerSearchResults();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    customerSearchHighlightedIndex = Math.max(customerSearchHighlightedIndex - 1, 0);
+    renderCustomerSearchResults();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const customer = customerSearchResults[customerSearchHighlightedIndex];
+    if (customer) selectCustomerForApplication(customer);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    customerSearchResults = [];
+    customerSearchHighlightedIndex = -1;
+    renderCustomerSearchResults();
+  }
 }
 
 function normalizeLoanEnum(value, fallback = '') {
@@ -8361,11 +8473,10 @@ function resetApplicationForm() {
   documentUploadWarnings.clear();
   skippedDocuments.clear();
   skipDocumentsForNow = false;
+  loanApplicationForm.reset();
   customerSearchResults = [];
   clearSelectedCustomer();
-  setCustomerSearchMessage('');
-  renderCustomerSearchResults();
-  loanApplicationForm.reset();
+  clearCustomerResults();
   selectLoanType(selectedLoanType);
   updateStepperUI();
   setInlineAlert(applicationFormMessage, '');
@@ -8502,6 +8613,9 @@ customerSearchBtn?.addEventListener('click', () => {
 
 customerSearchNicInput?.addEventListener('input', scheduleCustomerSearch);
 customerSearchMobileInput?.addEventListener('input', scheduleCustomerSearch);
+customerSearchNicInput?.addEventListener('keydown', handleCustomerSearchKeydown);
+customerSearchMobileInput?.addEventListener('keydown', handleCustomerSearchKeydown);
+customerSearchBtn && (customerSearchBtn.disabled = true);
 
 refreshApplicationsBtn?.addEventListener('click', async () => {
   try {
