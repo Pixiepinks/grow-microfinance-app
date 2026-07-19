@@ -455,6 +455,9 @@ let adminLoanApplicationsStatusFilter;
 let adminLoansMessage;
 let adminLoansTableBody;
 let adminRefreshLoansBtn;
+let adminLoansControls;
+let adminLoansSummary;
+let adminLoansPagination;
 let adminLoanDetailModal;
 let adminLoanDetailTitle;
 let adminLoanDetailStatus;
@@ -655,6 +658,17 @@ const adminLoanApplicationsState = {
   hasLoaded: false,
   selectedStatus: 'ALL',
 };
+const loanFilters = {
+  q: '',
+  status: '',
+  balanceStatus: '',
+  dateFrom: '',
+  dateTo: '',
+  principalMin: '',
+  principalMax: '',
+  sortBy: 'disbursement_date',
+  sortDirection: 'desc',
+};
 const adminLoansState = {
   loans: [],
   loading: false,
@@ -668,6 +682,10 @@ const adminLoansState = {
   ledgerError: null,
   ledgerLoadedLoanId: null,
   selectedStatus: 'ALL',
+  page: 1,
+  pageSize: 25,
+  total: 0,
+  requestSequence: 0,
 };
 const adminCustomersState = {
   customers: [],
@@ -2310,6 +2328,10 @@ function resetAdminLoansState() {
   adminLoansState.ledgerLoading = false;
   adminLoansState.ledgerError = null;
   adminLoansState.ledgerLoadedLoanId = null;
+  adminLoansState.page = 1;
+  adminLoansState.pageSize = 25;
+  adminLoansState.total = 0;
+  Object.assign(loanFilters, { q: '', status: '', balanceStatus: '', dateFrom: '', dateTo: '', principalMin: '', principalMax: '', sortBy: 'disbursement_date', sortDirection: 'desc' });
 
   if (!adminLoansInitialized) return;
   setInlineAlert(adminLoansMessage, '');
@@ -2404,26 +2426,33 @@ function ensureAdminLoansUI() {
         </div>
       </div>
       <p id="admin-loans-message" class="alert hidden" aria-live="polite"></p>
-      <div class="filter-bar accounting-filters"><label>Loan status<select id="admin-loans-status-filter"><option value="ALL">All</option><option value="ACTIVE">Active</option><option value="OVERDUE">Overdue</option><option value="SETTLED">Settled</option><option value="WRITTEN_OFF">Written Off</option><option value="CANCELLED">Cancelled</option></select></label></div>
+      <div id="admin-loans-controls" class="admin-loans-filter-toolbar">
+        <label class="admin-loans-search">Search Loans<input id="admin-loans-search" type="search" placeholder="Search by loan number, customer name, NIC or mobile..." autocomplete="off"></label>
+        <label>Status<select id="admin-loans-status-filter"><option value="">All Statuses</option><option value="ACTIVE">Active</option><option value="OVERDUE">Overdue</option><option value="SETTLED">Settled</option><option value="WRITTEN_OFF">Written Off</option><option value="CANCELLED">Cancelled</option></select></label>
+        <label>Balance Status<select id="admin-loans-balance-status"><option value="">All Balances</option><option value="OUTSTANDING">Outstanding</option><option value="FULLY_PAID">Fully Paid</option><option value="OVERPAID">Overpaid / Customer Credit</option><option value="ZERO_BALANCE">Zero Balance</option></select></label>
+        <label>Date From<input id="admin-loans-date-from" type="date"></label>
+        <label>Date To<input id="admin-loans-date-to" type="date"></label>
+        <label>Principal Min<input id="admin-loans-principal-min" type="number" min="0" step="0.01"></label>
+        <label>Principal Max<input id="admin-loans-principal-max" type="number" min="0" step="0.01"></label>
+        <div class="admin-loans-filter-actions"><button type="button" id="admin-loans-apply-filters">Apply Filters</button><button type="button" id="admin-loans-clear-filters" class="secondary">Clear Filters</button></div>
+      </div>
+      <p id="admin-loans-result-summary" class="muted" aria-live="polite"></p>
       <div class="loan-table-wrapper">
         <table id="admin-loans-table" class="placeholder-table loan-table">
-          <thead>
-            <tr>
-              <th>Loan Number</th>
-              <th class="admin-loans-customer-col">Customer</th>
-              <th>Principal Amount</th>
-              <th>Total Payable</th>
-              <th>Total Paid</th>
-              <th>Outstanding</th>
-              <th>Customer Credit</th>
-              <th>Settled Date</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="admin-loans-table-body"></tbody>
+          <thead><tr>
+            <th><button type="button" class="loan-sort" data-loan-sort="loan_number">Loan Number</button></th>
+            <th class="admin-loans-customer-col"><button type="button" class="loan-sort" data-loan-sort="customer">Customer</button></th>
+            <th><button type="button" class="loan-sort" data-loan-sort="principal_amount">Principal Amount</button></th>
+            <th><button type="button" class="loan-sort" data-loan-sort="total_payable">Total Payable</button></th>
+            <th><button type="button" class="loan-sort" data-loan-sort="total_paid">Total Paid</button></th>
+            <th><button type="button" class="loan-sort" data-loan-sort="outstanding">Outstanding</button></th>
+            <th>Customer Credit</th>
+            <th><button type="button" class="loan-sort" data-loan-sort="settled_date">Settled Date</button></th>
+            <th><button type="button" class="loan-sort" data-loan-sort="status">Status</button></th><th>Actions</th>
+          </tr></thead><tbody id="admin-loans-table-body"></tbody>
         </table>
       </div>
+      <div id="admin-loans-pagination" class="admin-loans-pagination"><button type="button" id="admin-loans-previous" class="secondary">Previous</button><span id="admin-loans-page-number">Page 1</span><button type="button" id="admin-loans-next" class="secondary">Next</button><label>Page size<select id="admin-loans-page-size"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></label></div>
     `;
     adminLoansSection.appendChild(loansCard);
   }
@@ -2431,9 +2460,27 @@ function ensureAdminLoansUI() {
   adminLoansMessage = adminLoansSection.querySelector('#admin-loans-message');
   adminLoansTableBody = adminLoansSection.querySelector('#admin-loans-table-body');
   adminRefreshLoansBtn = adminLoansSection.querySelector('#admin-refresh-loans');
-  const statusFilter = adminLoansSection.querySelector('#admin-loans-status-filter');
-  if (statusFilter) { statusFilter.value = adminLoansState.selectedStatus; statusFilter.addEventListener('change', () => { adminLoansState.selectedStatus = statusFilter.value || 'ALL'; loadAdminLoans(true); }); }
-
+  adminLoansControls = adminLoansSection.querySelector('#admin-loans-controls');
+  adminLoansSummary = adminLoansSection.querySelector('#admin-loans-result-summary');
+  adminLoansPagination = adminLoansSection.querySelector('#admin-loans-pagination');
+  const controls = {
+    search: adminLoansSection.querySelector('#admin-loans-search'), status: adminLoansSection.querySelector('#admin-loans-status-filter'),
+    balanceStatus: adminLoansSection.querySelector('#admin-loans-balance-status'), dateFrom: adminLoansSection.querySelector('#admin-loans-date-from'),
+    dateTo: adminLoansSection.querySelector('#admin-loans-date-to'), principalMin: adminLoansSection.querySelector('#admin-loans-principal-min'),
+    principalMax: adminLoansSection.querySelector('#admin-loans-principal-max'), pageSize: adminLoansSection.querySelector('#admin-loans-page-size'),
+  };
+  const syncFiltersFromControls = () => Object.entries(controls).forEach(([key, control]) => {
+    if (control && key !== 'pageSize') loanFilters[key] = control.value;
+  });
+  let searchTimer;
+  controls.search?.addEventListener('input', () => { loanFilters.q = controls.search.value; clearTimeout(searchTimer); searchTimer = setTimeout(() => { adminLoansState.page = 1; loadAdminLoans(true); }, 300); });
+  [controls.status, controls.balanceStatus, controls.dateFrom, controls.dateTo, controls.principalMin, controls.principalMax].forEach((control) => control?.addEventListener('change', () => syncFiltersFromControls()));
+  adminLoansSection.querySelector('#admin-loans-apply-filters')?.addEventListener('click', () => { syncFiltersFromControls(); adminLoansState.page = 1; loadAdminLoans(true); });
+  adminLoansSection.querySelector('#admin-loans-clear-filters')?.addEventListener('click', () => { Object.assign(loanFilters, { q: '', status: '', balanceStatus: '', dateFrom: '', dateTo: '', principalMin: '', principalMax: '', sortBy: 'disbursement_date', sortDirection: 'desc' }); Object.entries(controls).forEach(([key, control]) => { if (control) control.value = key === 'pageSize' ? String(adminLoansState.pageSize) : ''; }); adminLoansState.page = 1; loadAdminLoans(true); });
+  controls.pageSize?.addEventListener('change', () => { adminLoansState.pageSize = Number(controls.pageSize.value); adminLoansState.page = 1; loadAdminLoans(true); });
+  adminLoansSection.querySelector('#admin-loans-previous')?.addEventListener('click', () => { if (adminLoansState.page > 1) { adminLoansState.page -= 1; loadAdminLoans(true); } });
+  adminLoansSection.querySelector('#admin-loans-next')?.addEventListener('click', () => { if (adminLoansState.page * adminLoansState.pageSize < adminLoansState.total) { adminLoansState.page += 1; loadAdminLoans(true); } });
+  adminLoansSection.querySelector('#admin-loans-table')?.addEventListener('click', (event) => { const button = event.target.closest('[data-loan-sort]'); if (!button) return; const sortBy = button.dataset.loanSort; loanFilters.sortDirection = loanFilters.sortBy === sortBy && loanFilters.sortDirection === 'asc' ? 'desc' : 'asc'; loanFilters.sortBy = sortBy; adminLoansState.page = 1; loadAdminLoans(true); });
   adminRefreshLoansBtn?.addEventListener('click', () => loadAdminLoans(true));
 
   if (!document.querySelector('#admin-loan-ledger-style')) {
@@ -2454,7 +2501,8 @@ function ensureAdminLoansUI() {
       .historical-accounting-modal .modal-card { background:#fff; color:#0f172a; max-height:92vh; overflow:auto; }
       .sticky-modal-footer { position: sticky; bottom: 0; background:#fff; border-top:1px solid rgba(148,163,184,.25); padding-top: .75rem; }
       .accounting-summary-cards { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
-      @media (max-width: 720px) { .historical-accounting-modal .accounting-grid, .loan-detail-grid, .ledger-totals-grid { grid-template-columns: 1fr; } .loan-detail-modal .app-modal-dialog { width: 100vw; max-width: 100vw; } .loan-detail-tabs { overflow-x:auto; } .ledger-table-scroll table { min-width: 0; } .ledger-table-scroll thead { display:none; } .ledger-table-scroll tr { display:block; margin-bottom:.75rem; border:1px solid rgba(148,163,184,.35); border-radius:.75rem; padding:.5rem; } .ledger-table-scroll td { display:block; border:0; } }
+      .admin-loans-filter-toolbar { display:grid; grid-template-columns:repeat(auto-fit, minmax(145px, 1fr)); gap:.75rem; align-items:end; margin:1rem 0; } .admin-loans-filter-toolbar label { display:grid; gap:.3rem; font-weight:600; } .admin-loans-search { grid-column:span 2; } .admin-loans-filter-toolbar input, .admin-loans-filter-toolbar select { width:100%; } .admin-loans-filter-actions, .admin-loans-pagination { display:flex; flex-wrap:wrap; align-items:end; gap:.5rem; } .admin-loans-pagination { margin-top:1rem; } .loan-sort { border:0; background:transparent; padding:0; font:inherit; font-weight:inherit; cursor:pointer; white-space:nowrap; } .loan-sort[aria-sort="ascending"]::after { content:" ▲"; font-size:.7em; } .loan-sort[aria-sort="descending"]::after { content:" ▼"; font-size:.7em; } .loan-table-wrapper { overflow-x:auto; }
+      @media (max-width: 720px) { .historical-accounting-modal .accounting-grid, .loan-detail-grid, .ledger-totals-grid { grid-template-columns: 1fr; } .loan-detail-modal .app-modal-dialog { width: 100vw; max-width: 100vw; } .loan-detail-tabs { overflow-x:auto; } .ledger-table-scroll table { min-width: 0; } .ledger-table-scroll thead { display:none; } .ledger-table-scroll tr { display:block; margin-bottom:.75rem; border:1px solid rgba(148,163,184,.35); border-radius:.75rem; padding:.5rem; } .ledger-table-scroll td { display:block; border:0; } .admin-loans-search { grid-column:1 / -1; } .admin-loans-filter-actions { grid-column:1 / -1; } }
     `;
     document.head.appendChild(style);
   }
@@ -3497,44 +3545,58 @@ async function openPaymentDetailDialog(paymentId) {
 }
 
 
+function buildLoanListQuery({ page = 1, pageSize = 25 } = {}) {
+  const params = new URLSearchParams();
+  const q = loanFilters.q.trim();
+  if (q) params.set('q', q);
+  if (loanFilters.status) params.set('status', loanFilters.status);
+  if (loanFilters.balanceStatus) params.set('balance_status', loanFilters.balanceStatus);
+  if (loanFilters.dateFrom) params.set('date_from', loanFilters.dateFrom);
+  if (loanFilters.dateTo) params.set('date_to', loanFilters.dateTo);
+  if (loanFilters.principalMin !== '') params.set('principal_min', String(loanFilters.principalMin));
+  if (loanFilters.principalMax !== '') params.set('principal_max', String(loanFilters.principalMax));
+  params.set('sort_by', loanFilters.sortBy);
+  params.set('sort_direction', loanFilters.sortDirection);
+  params.set('page', String(page));
+  params.set('page_size', String(pageSize));
+  return params.toString();
+}
+
+function loanFiltersAreValid() {
+  if (loanFilters.dateFrom && loanFilters.dateTo && loanFilters.dateFrom > loanFilters.dateTo) {
+    setInlineAlert(adminLoansMessage, 'Date From cannot be later than Date To.', 'error');
+    return false;
+  }
+  if (loanFilters.principalMin !== '' && loanFilters.principalMax !== '' && Number(loanFilters.principalMin) > Number(loanFilters.principalMax)) {
+    setInlineAlert(adminLoansMessage, 'Principal Min cannot exceed Principal Max.', 'error');
+    return false;
+  }
+  return true;
+}
+
+function normalizeLoanPagination(response, loanCount) {
+  const pagination = response?.pagination || response?.data?.pagination || {};
+  const total = Number(pagination.total ?? pagination.total_count ?? pagination.totalCount ?? response?.total ?? response?.data?.total);
+  return { total: Number.isFinite(total) ? total : loanCount };
+}
+
 function renderAdminLoansTable(loans) {
   if (!adminLoansTableBody) return;
-  adminLoansTableBody.innerHTML = '';
-
-  if (adminLoansState.loading) {
-    adminLoansTableBody.innerHTML = '<tr><td colspan="10" class="muted">Loading loans...</td></tr>';
-    return;
-  }
-
   if (!loans.length) {
-    adminLoansTableBody.innerHTML = '<tr><td colspan="10" class="muted">No loans found</td></tr>';
+    adminLoansTableBody.innerHTML = '<tr><td colspan="10" class="muted">No loans match the selected search and filters. <button type="button" class="secondary" data-admin-loans-empty-clear>Clear Filters</button></td></tr>';
     return;
   }
-
+  adminLoansTableBody.innerHTML = '';
   loans.forEach((loan) => {
     const loanNumber = getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference']);
     const principal = getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0);
     const totalPayable = getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0);
     const totalPaid = getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0);
     const rawOutstanding = getLoanOutstanding(loan);
-    const outstanding = Math.max(0, rawOutstanding);
-    const status = getLoanStatus(loan);
     const credit = getCustomerCreditAmount(loan);
     const settledDate = getSettlementDate(loan);
-
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${escapeHtml(loanNumber)}</td>
-      <td class="admin-loans-customer-col">${renderLoanCustomerCell(loan)}</td>
-      <td>${formatCurrency(principal)}</td>
-      <td>${formatCurrency(totalPayable)}</td>
-      <td>${formatCurrency(totalPaid)}</td>
-      <td>${formatCurrency(outstanding)}${rawOutstanding < 0 ? '<br><span class="badge badge-warning">Credit balance detected</span><br><span class="muted">Settlement reconciliation required</span>' : ''}</td>
-      <td>${credit > 0 ? formatCurrency(credit) : '<span class="muted">—</span>'}</td>
-      <td>${settledDate ? escapeHtml(formatDate(settledDate) || settledDate) : '<span class="muted">—</span>'}</td>
-      <td>${renderStatusBadge(status)}</td>
-      <td><button type="button" class="secondary" data-admin-loan-view="${escapeHtml(getLoanId(loan))}">View</button></td>
-    `;
+    tr.innerHTML = `<td><strong>${escapeHtml(loanNumber)}</strong></td><td class="admin-loans-customer-col">${renderLoanCustomerCell(loan)}</td><td>${formatCurrency(principal)}</td><td>${formatCurrency(totalPayable)}</td><td>${formatCurrency(totalPaid)}</td><td>${formatCurrency(Math.max(0, rawOutstanding))}${rawOutstanding < 0 ? '<br><span class="badge badge-warning">Credit balance detected</span><br><span class="muted">Settlement reconciliation required</span>' : ''}</td><td>${credit > 0 ? formatCurrency(credit) : '<span class="muted">—</span>'}</td><td>${settledDate ? escapeHtml(formatDate(settledDate) || settledDate) : '<span class="muted">—</span>'}</td><td>${renderStatusBadge(getLoanStatus(loan))}</td><td><button type="button" class="secondary" data-admin-loan-view="${escapeHtml(getLoanId(loan))}">View</button></td>`;
     adminLoansTableBody.appendChild(tr);
   });
 }
@@ -3542,49 +3604,56 @@ function renderAdminLoansTable(loans) {
 function renderAdminLoans() {
   if (!adminLoansInitialized) return;
   setInlineAlert(adminLoansMessage, adminLoansState.error || '', 'error');
-
-  if (adminRefreshLoansBtn) {
-    adminRefreshLoansBtn.disabled = adminLoansState.loading;
-    adminRefreshLoansBtn.textContent = adminLoansState.loading ? 'Refreshing...' : 'Refresh';
+  const isLoading = adminLoansState.loading;
+  if (adminRefreshLoansBtn) { adminRefreshLoansBtn.disabled = isLoading; adminRefreshLoansBtn.textContent = isLoading ? 'Refreshing...' : 'Refresh'; }
+  adminLoansControls?.querySelectorAll('button').forEach((button) => { button.disabled = isLoading; });
+  adminLoansPagination?.querySelectorAll('button, select').forEach((control) => { control.disabled = isLoading; });
+  if (adminLoansSummary) {
+    const start = adminLoansState.total ? ((adminLoansState.page - 1) * adminLoansState.pageSize) + 1 : 0;
+    const end = Math.min(adminLoansState.page * adminLoansState.pageSize, adminLoansState.total);
+    const filtered = Boolean(loanFilters.q || loanFilters.status || loanFilters.balanceStatus || loanFilters.dateFrom || loanFilters.dateTo || loanFilters.principalMin !== '' || loanFilters.principalMax !== '');
+    adminLoansSummary.textContent = `Showing ${start}–${end} of ${adminLoansState.total} ${filtered ? 'matching loans' : 'loans'}${isLoading ? ' · Loading loans...' : ''}`;
   }
-
-  if (adminLoansState.error) {
-    if (adminLoansTableBody) adminLoansTableBody.innerHTML = '';
-    return;
-  }
-
-  renderAdminLoansTable(adminLoansState.loans);
+  adminLoansSection?.querySelectorAll('[data-loan-sort]').forEach((button) => button.setAttribute('aria-sort', button.dataset.loanSort === loanFilters.sortBy ? (loanFilters.sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'));
+  const previous = adminLoansSection?.querySelector('#admin-loans-previous');
+  const next = adminLoansSection?.querySelector('#admin-loans-next');
+  const pageNumber = adminLoansSection?.querySelector('#admin-loans-page-number');
+  if (previous) previous.disabled = isLoading || adminLoansState.page <= 1;
+  if (next) next.disabled = isLoading || adminLoansState.page * adminLoansState.pageSize >= adminLoansState.total;
+  if (pageNumber) pageNumber.textContent = `Page ${adminLoansState.page}`;
+  if (!adminLoansState.error && !isLoading) renderAdminLoansTable(adminLoansState.loans);
 }
 
 async function loadAdminLoans(force = false) {
   ensureAdminLoansUI();
-  if (!adminLoansSection || adminLoansState.loading) return;
-
+  if (!adminLoansSection || (!force && adminLoansState.hasLoaded)) { if (adminLoansState.hasLoaded) renderAdminLoans(); return; }
+  if (!loanFiltersAreValid()) return;
   const { token } = getSession();
   if (!token) return;
-
-  if (adminLoansState.hasLoaded && !force) {
-    renderAdminLoans();
-    return;
-  }
-
+  const requestSequence = ++adminLoansState.requestSequence;
   adminLoansState.loading = true;
   adminLoansState.error = null;
   renderAdminLoans();
-
+  const queryString = buildLoanListQuery({ page: adminLoansState.page, pageSize: adminLoansState.pageSize });
+  const path = `${endpoint('adminLoans')}?${queryString}`;
+  console.log('Loan filters', loanFilters);
+  console.log('Loan list request', path);
   try {
-    const status = adminLoansState.selectedStatus;
-    const url = status === 'ALL' ? endpoint('adminLoans') : `${endpoint('adminLoans')}${endpoint('adminLoans').includes('?') ? '&' : '?'}status=${encodeURIComponent(status)}`;
-    const response = await api(url);
-    adminLoansState.loans = normalizeLoansResponse(response).filter((loan) => status === 'ALL' || getLoanStatus(loan) === status);
+    const response = await api(path);
+    if (requestSequence !== adminLoansState.requestSequence) return;
+    const loans = normalizeLoansResponse(response);
+    console.log('Loan list result count', loans.length);
+    adminLoansState.loans = loans;
+    adminLoansState.total = normalizeLoanPagination(response, loans.length).total;
     adminLoansState.hasLoaded = true;
   } catch (error) {
+    if (requestSequence !== adminLoansState.requestSequence) return;
     console.error('Failed to load admin loans', error);
-    adminLoansState.error = error?.message || "Couldn't load loans. Please try again.";
+    const messages = { 401: 'Your session has expired. Please sign in again.', 404: 'Loan search endpoint is unavailable.', 500: 'Loans could not be loaded.' };
+    adminLoansState.error = error?.status === 422 ? (error.message || 'Invalid loan search filters.') : (messages[error?.status] || 'Loans could not be loaded.');
     adminLoansState.hasLoaded = false;
   } finally {
-    adminLoansState.loading = false;
-    renderAdminLoans();
+    if (requestSequence === adminLoansState.requestSequence) { adminLoansState.loading = false; renderAdminLoans(); }
   }
 }
 
@@ -9145,6 +9214,12 @@ document.addEventListener('click', (event) => {
     const loanId = viewBtn.dataset.adminLoanView;
     const loan = adminLoansState.loans.find((item) => String(getLoanId(item)) === String(loanId));
     if (loan) openAdminLoanDetail(loan);
+    return;
+  }
+
+  if (event.target.closest('[data-admin-loans-empty-clear]')) {
+    event.preventDefault();
+    adminLoansSection?.querySelector('#admin-loans-clear-filters')?.click();
     return;
   }
 
