@@ -2871,10 +2871,14 @@ function loanReconciliationErrorMessage(error) {
   const normalized = message.toLowerCase();
   if (normalized.includes('loan_not_found')) return 'The selected loan no longer exists.';
   if (normalized.includes('confirmation_required')) return 'Confirm the reconciliation before posting.';
-  if (normalized.includes('not_found') || normalized.includes('the requested url was not found') || normalized.includes('status 404')) {
-    return 'The loan reconciliation API endpoint is unavailable. Deploy the matching API route and try again.';
-  }
+  if (normalized.includes('historical excess') || normalized.includes('historical_excess') || normalized.includes('excess_account') || normalized.includes('accounting source')) return 'The excess payment was found, but its accounting source could not be confirmed. Open Accounting Reconciliation for review.';
+  if (normalized.includes('not_found') || normalized.includes('the requested url was not found') || normalized.includes('status 404')) return 'The loan reconciliation API endpoint is unavailable. Deploy the matching API route and try again.';
   return 'Loan reconciliation failed. Please try again.';
+}
+
+function reconciliationPreviewChanged(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return ['preview_changed', 'preview changed', 'stale_preview', 'stale preview', 'reconciliation_changed', 'reconciliation changed', 'balance changed'].some((value) => message.includes(value));
 }
 
 function reconciliationWarnings(data = {}) {
@@ -2893,28 +2897,29 @@ function reconciliationValue(data, keys, fallback = '—') {
 
 function renderLoanReconciliationValues(data = {}, loan = {}) {
   const warnings = reconciliationWarnings(data);
+  const proposedCredit = Math.max(0, Number(reconciliationValue(data, ['proposed_customer_credit'], 0)) || 0);
   const fields = [
     ['Current Status', reconciliationValue(data, ['current_status', 'previous_status', 'old_status'], getLoanStatus(loan))],
     ['Proposed Status', reconciliationValue(data, ['proposed_status', 'new_status'], '—')],
-    ['Total Payable', formatCurrency(reconciliationValue(data, ['total_payable', 'totalPayable'], getLoanField(loan, ['total_payable', 'totalPayable'], 0)))],
-    ['Total Paid', formatCurrency(reconciliationValue(data, ['total_paid', 'totalPaid'], getLoanField(loan, ['total_paid', 'totalPaid'], 0)))],
-    ['Remaining Balance', formatCurrency(reconciliationValue(data, ['remaining_balance', 'outstanding', 'outstanding_balance'], getLoanOutstanding(loan)))],
-    ['Proposed Customer Credit', formatCurrency(reconciliationValue(data, ['proposed_customer_credit', 'customer_credit', 'customer_credit_amount'], 0))],
-    ['Settlement Date', formatDate(reconciliationValue(data, ['settlement_date', 'settled_date'], '')) || reconciliationValue(data, ['settlement_date', 'settled_date'], '—')],
+    ['Total Payable', formatCurrency(reconciliationValue(data, ['total_payable'], getLoanField(loan, ['total_payable', 'totalPayable'], 0)))],
+    ['Total Cash Received', formatCurrency(reconciliationValue(data, ['total_cash_received', 'total_paid'], 0))],
+    ['Amount Applied to Loan', formatCurrency(reconciliationValue(data, ['total_applied_to_loan'], 0))],
+    ['Remaining Balance', formatCurrency(reconciliationValue(data, ['remaining_balance'], getLoanOutstanding(loan)))],
+    ['Proposed Customer Credit', formatCurrency(proposedCredit)],
+    ['Settlement Date', formatDate(reconciliationValue(data, ['settlement_date'], '')) || reconciliationValue(data, ['settlement_date'], '—')],
   ];
-  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
+  const creditExplanation = proposedCredit > 0 ? `<div class="alert warning"><p>The customer paid ${formatCurrency(proposedCredit)} more than the valid loan balance. This amount will be recorded as a customer credit liability.</p><p>No additional cash or bank receipt will be posted.</p></div>` : '';
+  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${creditExplanation}${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
 }
 
 
 function renderLoanReconciliationSuccess(data = {}, loan = {}) {
-  const settledDate = reconciliationValue(data, ['settled_date', 'settlement_date'], getSettlementDate(loan));
+  const settlementDate = reconciliationValue(data, ['settlement_date', 'settled_date'], getSettlementDate(loan));
   const fields = [
-    ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference', 'id'])],
-    ['Previous Status', reconciliationValue(data, ['previous_status', 'current_status', 'old_status'], getLoanStatus(loan))],
-    ['New Status', reconciliationValue(data, ['new_status', 'proposed_status'], 'SETTLED')],
-    ['Settled Date', formatDate(settledDate) || settledDate || '—'],
-    ['Outstanding', formatCurrency(reconciliationValue(data, ['outstanding', 'remaining_balance', 'outstanding_balance'], 0))],
-    ['Customer Credit', formatCurrency(reconciliationValue(data, ['customer_credit', 'customer_credit_amount', 'proposed_customer_credit'], 0))],
+    ['Status', reconciliationValue(data, ['proposed_status', 'new_status', 'loan_status'], 'SETTLED')],
+    ['Outstanding', formatCurrency(reconciliationValue(data, ['remaining_balance', 'outstanding', 'outstanding_balance'], 0))],
+    ['Customer Credit', formatCurrency(reconciliationValue(data, ['proposed_customer_credit', 'customer_credit', 'customer_credit_amount'], 0))],
+    ['Settlement Date', formatDate(settlementDate) || settlementDate || '—'],
   ];
   const warnings = reconciliationWarnings(data);
   return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
@@ -2941,14 +2946,12 @@ async function openLoanReconciliationPreview(button) {
   button.disabled = true;
   const previewPath = `/admin/loans/${loanId}/settlement-reconciliation/preview`;
   const postPath = `/admin/loans/${loanId}/settlement-reconciliation`;
-  console.log('Loan reconciliation request', { loanId, path: postPath });
-  try {
-    const preview = await api(previewPath, { method: 'POST', body: { confirm: true } });
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay historical-accounting-modal';
-    modal.innerHTML = `<div class="modal-card wide"><div class="modal-header"><h2>Reconcile Loan</h2><button class="icon-button" data-close>×</button></div><p>Review the settlement reconciliation before posting.</p>${renderLoanReconciliationValues(preview, loan)}<div id="loan-reconciliation-message"></div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" id="confirm-loan-reconciliation">Confirm Reconciliation</button></div></div>`;
-    document.body.appendChild(modal);
-    const close = () => { loanReconciliationInProgress = false; button.disabled = false; modal.remove(); };
+  let modal;
+  const close = () => { loanReconciliationInProgress = false; button.disabled = false; modal?.remove(); };
+  const renderPreview = (preview) => {
+    const proposedCredit = Math.max(0, Number(reconciliationValue(preview, ['proposed_customer_credit'], 0)) || 0);
+    const confirmationLabel = proposedCredit > 0 ? 'Confirm Settlement & Create Credit' : 'Confirm Settlement';
+    modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Reconcile Loan</h2><button class="icon-button" data-close>×</button></div><p>Review the settlement reconciliation before posting.</p>${renderLoanReconciliationValues(preview, loan)}<div id="loan-reconciliation-message"></div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" id="confirm-loan-reconciliation">${confirmationLabel}</button></div>`;
     modal.querySelectorAll('[data-close]').forEach((closeButton) => { closeButton.onclick = close; });
     const confirmButton = modal.querySelector('#confirm-loan-reconciliation');
     const message = modal.querySelector('#loan-reconciliation-message');
@@ -2957,20 +2960,38 @@ async function openLoanReconciliationPreview(button) {
       confirmButton.disabled = true;
       try {
         const reconciliation = await api(postPath, { method: 'POST', body: { confirm: true } });
-        const settled = reconciliation.loan_settled === true || String(reconciliation.new_status || '').toUpperCase() === 'SETTLED';
+        const settled = reconciliation.loan_settled === true || String(reconciliation.proposed_status || reconciliation.new_status || '').toUpperCase() === 'SETTLED';
         if (!settled) {
-          message.innerHTML = `<div class="alert error">The loan cannot be settled because an amount remains outstanding.<br>Remaining balance: ${formatCurrency(reconciliationValue(reconciliation, ['remaining_balance', 'outstanding', 'outstanding_balance'], getLoanOutstanding(loan)))}</div>`;
+          message.innerHTML = `<div class="alert error">The loan cannot be settled because an amount remains outstanding.<br>Remaining balance: ${formatCurrency(reconciliationValue(reconciliation, ['remaining_balance'], getLoanOutstanding(loan)))}</div>`;
           return;
         }
-        modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Loan Reconciled Successfully</h2><button class="icon-button" data-close-success>×</button></div>${renderLoanReconciliationSuccess(reconciliation, loan)}<div class="modal-actions sticky-modal-footer"><button type="button" data-close-success>Close</button></div>`;
+        modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Loan Settled Successfully</h2><button class="icon-button" data-close-success>×</button></div>${renderLoanReconciliationSuccess(reconciliation, loan)}<div class="modal-actions sticky-modal-footer"><button type="button" data-close-success>Close</button></div>`;
         modal.querySelectorAll('[data-close-success]').forEach((closeButton) => { closeButton.onclick = close; });
         await refreshReconciledLoan(loanId, reconciliation);
       } catch (error) {
+        if (reconciliationPreviewChanged(error)) {
+          try {
+            const updatedPreview = await api(previewPath, { method: 'POST', body: {} });
+            renderPreview(updatedPreview);
+            modal.querySelector('#loan-reconciliation-message').innerHTML = '<div class="alert warning">The loan balances changed after preview. Review the updated reconciliation before confirming.</div>';
+          } catch (previewError) {
+            message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(previewError))}</div>`;
+          }
+          return;
+        }
         message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(error))}</div>`;
       } finally {
         if (modal.isConnected && modal.querySelector('#confirm-loan-reconciliation')) confirmButton.disabled = false;
       }
     };
+  };
+  try {
+    const preview = await api(previewPath, { method: 'POST', body: {} });
+    modal = document.createElement('div');
+    modal.className = 'modal-overlay historical-accounting-modal';
+    modal.innerHTML = '<div class="modal-card wide"></div>';
+    document.body.appendChild(modal);
+    renderPreview(preview);
   } catch (error) {
     setInlineAlert(adminLoanDetailMessage, loanReconciliationErrorMessage(error), 'error');
     loanReconciliationInProgress = false;
