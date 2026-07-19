@@ -2596,6 +2596,8 @@ function getLoanStatus(loan = {}) { return String(getLoanField(loan, ['status', 
 function getLoanOutstanding(loan = {}) { return Number(getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0)) || 0; }
 function displayLoanOutstanding(loan = {}) { return Math.max(0, getLoanOutstanding(loan)); }
 function getCustomerCreditAmount(source = {}) { return Math.max(0, Number(getLoanField(source, ['customer_credit', 'customerCredit', 'customer_credit_amount', 'customerCreditAmount', 'credit_amount', 'creditAmount', 'overpayment_credit', 'overpaymentCredit'], 0)) || 0); }
+function getActualCustomerCashPaid(source = {}, fallback = 0) { return Number(getLoanField(source, ['cash_received', 'cashReceived', 'total_cash_received', 'totalCashReceived', 'actual_cash_received', 'actualCashReceived', 'customer_cash_received', 'customerCashReceived'], fallback)) || 0; }
+function getDelayInterestSettlementAdjustment(source = {}) { return Number(getLoanField(source, ['delay_interest_waived', 'delayInterestWaived', 'delay_interest_waiver_amount', 'delayInterestWaiverAmount', 'settlement.delay_interest_waiver_amount'], 0)) || 0; }
 function getLoanCustomerId(loan = {}) { return getLoanField(loan, ['customer_id', 'customerId', 'customer.id', 'borrower_id', 'borrowerId', 'borrower.id'], ''); }
 function getSettlementDate(loan = {}) { return getLoanField(loan, ['settled_date', 'settledDate', 'settlement_date', 'settlementDate', 'closed_date', 'closedDate'], ''); }
 
@@ -2931,7 +2933,7 @@ function renderEarlySettlementPreview(preview = {}) {
     ['Accrued Interest Outstanding', earlySettlementValue(preview, ['accrued_interest_outstanding', 'accruedInterestOutstanding', 'interest_outstanding', 'interestOutstanding'])],
     ['Future Unearned Interest', earlySettlementValue(preview, ['future_unearned_interest', 'futureUnearnedInterest'])],
     ['Penalty Outstanding', earlySettlementValue(preview, ['penalty_outstanding', 'penaltyOutstanding', 'penalties'])],
-    ['Delay Interest Outstanding', earlySettlementValue(preview, ['delay_interest_outstanding', 'delayInterestOutstanding'])],
+    ['Delay Interest Outstanding', earlySettlementValue(preview, ['delay_interest_outstanding', 'delayInterestOutstanding', 'delay_interest_balance', 'delayInterestBalance'])],
     ['Fee Outstanding', earlySettlementValue(preview, ['fee_outstanding', 'feeOutstanding', 'fees'])],
     ['Maximum Eligible Interest Rebate', earlySettlementValue(preview, ['maximum_interest_rebate', 'maximumInterestRebate'])],
     ['Approved/Requested Interest Rebate', earlySettlementValue(preview, ['approved_interest_rebate', 'requested_interest_rebate', 'interest_rebate', 'interestRebate'])],
@@ -3048,9 +3050,10 @@ function loanReconciliationErrorMessage(error) {
   const normalized = message.toLowerCase();
   if (normalized.includes('loan_not_found')) return 'The selected loan no longer exists.';
   if (normalized.includes('confirmation_required')) return 'Confirm the reconciliation before posting.';
+  if (normalized.includes('account') && (normalized.includes('missing') || normalized.includes('configur'))) return 'Required accounting accounts are not configured. Configure them before posting reconciliation.';
   if (normalized.includes('historical excess') || normalized.includes('historical_excess') || normalized.includes('excess_account') || normalized.includes('accounting source')) return 'The excess payment was found, but its accounting source could not be confirmed. Open Accounting Reconciliation for review.';
   if (normalized.includes('not_found') || normalized.includes('the requested url was not found') || normalized.includes('status 404')) return 'The loan reconciliation API endpoint is unavailable. Deploy the matching API route and try again.';
-  return 'Loan reconciliation failed. Please try again.';
+  return message || 'Loan reconciliation failed. Please try again.';
 }
 
 function reconciliationPreviewChanged(error) {
@@ -3074,64 +3077,72 @@ function reconciliationValue(data, keys, fallback = '—') {
 
 function toMoneyNumber(value) {
   if (value === null || value === undefined || value === '') return 0;
-
-  const normalized = typeof value === 'string'
-    ? value.replace(/Rs\.?/gi, '').replace(/,/g, '').trim()
-    : value;
+  const normalized = typeof value === 'string' ? value.replace(/Rs\.?/gi, '').replace(/,/g, '').trim() : value;
   const number = Number(normalized);
-
   return Number.isFinite(number) ? number : 0;
 }
 
-function settlementPreviewState(preview = {}) {
-  const remainingBalance = toMoneyNumber(
-    preview.remaining_balance ?? preview.remainingBalance ?? preview.outstanding ?? 0
-  );
-  const proposedCredit = toMoneyNumber(
-    preview.proposed_customer_credit ?? preview.customer_credit ?? preview.overpayment ?? 0
-  );
+function reconciliationMoney(data, keys, fallback = 0) {
+  return toMoneyNumber(reconciliationValue(data, keys, fallback));
+}
+
+function reconciliationAccountingReady(preview = {}) {
+  const configured = reconciliationValue(preview, ['accounting_accounts_configured', 'accountingConfigured', 'required_accounts_configured', 'requiredAccountsConfigured'], true);
+  const missing = reconciliationValue(preview, ['missing_accounting_accounts', 'missingAccountingAccounts', 'missing_accounts', 'missingAccounts'], []);
+  return configured !== false && !(Array.isArray(missing) && missing.length);
+}
+
+function reconciliationAmounts(preview = {}) {
+  const principal = reconciliationMoney(preview, ['principal', 'principal_amount', 'principalAmount', 'principal_due', 'principalDue'], 0);
+  const normalInterest = reconciliationMoney(preview, ['normal_interest', 'normalInterest', 'normal_interest_due', 'normalInterestDue', 'interest', 'interest_amount', 'interestAmount'], 0);
+  const cashReceived = reconciliationMoney(preview, ['cash_received', 'cashReceived', 'total_cash_received', 'totalCashReceived', 'actual_cash_received', 'actualCashReceived', 'customer_cash_received', 'customerCashReceived', 'total_paid'], 0);
+  const principalCollected = reconciliationMoney(preview, ['principal_collected', 'principalCollected', 'collected_principal', 'principal_paid', 'principalPaid'], 0);
+  const normalInterestCollected = reconciliationMoney(preview, ['normal_interest_collected', 'normalInterestCollected', 'interest_collected', 'interestCollected', 'normal_interest_paid', 'normalInterestPaid'], 0);
+  const delayAccrued = reconciliationMoney(preview, ['delay_interest_accrued', 'delayInterestAccrued', 'accrued_delay_interest'], 0);
+  const delayCollected = reconciliationMoney(preview, ['delay_interest_collected', 'delayInterestCollected', 'collected_delay_interest'], 0);
+  const delayOutstanding = reconciliationMoney(preview, ['delay_interest_outstanding', 'delayInterestOutstanding', 'delay_interest_balance', 'delayInterestBalance'], Math.max(0, delayAccrued - delayCollected));
+  const customerCredit = reconciliationMoney(preview, ['customer_credit', 'customerCredit', 'proposed_customer_credit', 'proposedCustomerCredit'], 0);
+  const reclassification = reconciliationMoney(preview, ['customer_credit_reclassification_amount', 'customerCreditReclassificationAmount', 'delay_interest_reclassification_amount', 'delayInterestReclassificationAmount', 'reclassification_amount', 'customer_credit_to_reclassify', 'customerCreditToReclassify', 'existing_customer_credit', 'customer_credit_reclassification', 'customerCreditReclassification', 'reclassification_customer_credit'], 0);
+  const remainingBalance = reconciliationMoney(preview, ['remaining_balance', 'remainingBalance', 'outstanding'], delayOutstanding);
+  return { principal, normalInterest, cashReceived, principalCollected, normalInterestCollected, delayAccrued, delayCollected, delayOutstanding, customerCredit, reclassification, remainingBalance };
+}
+
+function settlementPreviewState(preview = {}, waiverAmount = 0) {
+  const amounts = reconciliationAmounts(preview);
   const settlementTolerance = 0.01;
-  const hasRemainingBalance = remainingBalance > settlementTolerance;
-  const proposedStatus = String(preview.proposed_status ?? preview.new_status ?? '')
-    .trim()
-    .toUpperCase();
-  const canSettle = proposedStatus === 'SETTLED' && remainingBalance <= settlementTolerance;
-
-  return { remainingBalance, proposedCredit, settlementTolerance, hasRemainingBalance, proposedStatus, canSettle };
+  const waiver = Math.min(Math.max(0, toMoneyNumber(waiverAmount)), amounts.delayOutstanding);
+  const remainingBalance = Math.max(0, amounts.remainingBalance - waiver);
+  const proposedStatus = remainingBalance <= settlementTolerance ? 'SETTLED' : String(preview.proposed_status ?? preview.new_status ?? '').trim().toUpperCase();
+  return { ...amounts, waiver, remainingBalance, settlementTolerance, hasRemainingBalance: remainingBalance > settlementTolerance, proposedStatus, canSettle: proposedStatus === 'SETTLED' && remainingBalance <= settlementTolerance };
 }
 
-function renderLoanReconciliationValues(data = {}, loan = {}) {
-  const warnings = reconciliationWarnings(data);
-  const { remainingBalance, proposedCredit, settlementTolerance } = settlementPreviewState(data);
+function renderLoanReconciliationValues(data = {}, loan = {}, waiverAmount = 0) {
+  const amounts = settlementPreviewState(data, waiverAmount);
   const fields = [
-    ['Current Status', reconciliationValue(data, ['current_status', 'previous_status', 'old_status'], getLoanStatus(loan))],
-    ['Proposed Status', reconciliationValue(data, ['proposed_status', 'new_status'], '—')],
-    ['Total Payable', formatCurrency(toMoneyNumber(reconciliationValue(data, ['total_payable'], getLoanField(loan, ['total_payable', 'totalPayable'], 0))))],
-    ['Total Cash Received', formatCurrency(toMoneyNumber(reconciliationValue(data, ['total_cash_received', 'total_paid'], 0)))],
-    ['Amount Applied to Loan', formatCurrency(toMoneyNumber(reconciliationValue(data, ['total_applied_to_loan'], 0)))],
-    ['Remaining Balance', formatCurrency(remainingBalance)],
-    ['Proposed Customer Credit', formatCurrency(proposedCredit)],
-    ['Settlement Date', formatDate(reconciliationValue(data, ['settlement_date'], '')) || reconciliationValue(data, ['settlement_date'], '—')],
+    ['Principal', amounts.principal], ['Normal Interest', amounts.normalInterest], ['Cash Received', amounts.cashReceived],
+    ['Principal Collected', amounts.principalCollected], ['Normal Interest Collected', amounts.normalInterestCollected],
+    ['Delay Interest Accrued', amounts.delayAccrued], ['Delay Interest Collected', amounts.delayCollected],
+    ['Delay Interest Outstanding', amounts.delayOutstanding], ['Customer Credit', amounts.customerCredit], ['Remaining Balance', amounts.remainingBalance],
   ];
-  const creditExplanation = proposedCredit > settlementTolerance ? `<div class="alert warning"><p>The customer paid ${formatCurrency(proposedCredit)} more than the valid loan balance. This amount will be recorded as a customer credit liability.</p><p>No additional cash or bank receipt will be posted.</p></div>` : '';
-  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${creditExplanation}${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
+  const reclassificationNotice = amounts.reclassification > amounts.settlementTolerance
+    ? `<div class="alert warning">${formatCurrency(amounts.reclassification)} is currently recorded as Customer Credit. It will be reclassified to Delay Interest Receivable. No cash or bank account will be posted again.</div>` : '';
+  const warnings = reconciliationWarnings(data);
+  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('')}</div>${reclassificationNotice}${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
 }
-
 
 function renderLoanReconciliationSuccess(data = {}, loan = {}) {
-  const settlementDate = reconciliationValue(data, ['settled_date', 'settlement_date'], getSettlementDate(loan));
+  const amounts = reconciliationAmounts(data);
+  const waived = reconciliationMoney(data, ['delay_interest_waived', 'delayInterestWaived', 'delay_interest_waiver_amount', 'delayInterestWaiverAmount'], 0);
   const fields = [
+    ['Cash received', amounts.cashReceived], ['Delay interest collected', amounts.delayCollected], ['Delay interest waived', waived],
+    ['Customer credit', reconciliationMoney(data, ['customer_credit', 'customerCredit'], 0)], ['Outstanding', reconciliationMoney(data, ['outstanding', 'remaining_balance', 'remainingBalance'], 0)],
     ['Status', String(reconciliationValue(data, ['new_status', 'loan_status', 'proposed_status'], 'SETTLED')).trim().toUpperCase()],
-    ['Outstanding', formatCurrency(toMoneyNumber(reconciliationValue(data, ['outstanding', 'remaining_balance', 'outstanding_balance'], 0)))],
-    ['Customer Credit', formatCurrency(toMoneyNumber(reconciliationValue(data, ['customer_credit', 'overpayment', 'proposed_customer_credit', 'customer_credit_amount'], 0)))],
-    ['Settlement Date', formatDate(settlementDate) || settlementDate || '—'],
   ];
-  const warnings = reconciliationWarnings(data);
-  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
+  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${typeof value === 'number' ? formatCurrency(value) : escapeHtml(String(value))}</strong></div>`).join('')}</div>`;
 }
 
 async function refreshReconciledLoan(loanId, reconciliation = {}) {
-  await Promise.allSettled([loadAdminLoans(true), loadAdmin(), loadAdminLoanLedger(true)]);
+  await Promise.allSettled([loadAdminLoans(true), loadAdmin(), loadAdminLoanLedger(true), loadFinancialReports(), accountingLoadJournals()]);
   const refreshedLoan = adminLoansState.loans.find((item) => Number(item.id ?? item.loan_id) === loanId);
   adminLoansState.selectedLoan = refreshedLoan || { ...adminLoansState.selectedLoan, ...reconciliation, id: loanId };
   adminLoansState.ledgerLoadedLoanId = null;
@@ -3142,11 +3153,7 @@ async function openLoanReconciliationPreview(button) {
   if (loanReconciliationInProgress) return;
   const loan = adminLoansState.selectedLoan || {};
   const loanId = Number(loan.id ?? loan.loan_id);
-  if (!Number.isInteger(loanId) || loanId <= 0) {
-    setInlineAlert(adminLoanDetailMessage, 'A valid loan ID is required for reconciliation.', 'error');
-    return;
-  }
-
+  if (!Number.isInteger(loanId) || loanId <= 0) { setInlineAlert(adminLoanDetailMessage, 'A valid loan ID is required for reconciliation.', 'error'); return; }
   loanReconciliationInProgress = true;
   button.disabled = true;
   const previewPath = `/admin/loans/${loanId}/settlement-reconciliation/preview`;
@@ -3154,69 +3161,59 @@ async function openLoanReconciliationPreview(button) {
   let modal;
   const close = () => { loanReconciliationInProgress = false; button.disabled = false; modal?.remove(); };
   const renderPreview = (preview) => {
-    const { remainingBalance, proposedCredit, proposedStatus, canSettle, hasRemainingBalance, settlementTolerance } = settlementPreviewState(preview);
-    console.log('Settlement preview normalized', {
-      rawRemaining: preview.remaining_balance,
-      remainingBalance,
-      proposedCredit,
-      proposedStatus,
-      canSettle
-    });
-    const confirmationLabel = proposedCredit > settlementTolerance ? 'Confirm Settlement & Create Credit' : 'Confirm Settlement';
-    const outstandingMessage = hasRemainingBalance
-      ? `<div class="alert error">The loan cannot be settled because an amount remains outstanding.<br>Remaining balance: ${formatCurrency(remainingBalance)}</div>`
-      : '';
-    modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Reconcile Loan</h2><button class="icon-button" data-close>×</button></div><p>Review the settlement reconciliation before posting.</p>${renderLoanReconciliationValues(preview, loan)}<div id="loan-reconciliation-message">${outstandingMessage}</div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" id="confirm-loan-reconciliation" ${canSettle ? '' : 'disabled'}>${confirmationLabel}</button></div>`;
+    let posting = false;
+    const initial = settlementPreviewState(preview);
+    const accountingReady = reconciliationAccountingReady(preview);
+    modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Reconcile Loan</h2><button class="icon-button" data-close>×</button></div><p>Review the settlement reconciliation before posting.</p><div class="reconciliation-values"></div><div class="subcard"><label><input type="checkbox" name="waive_delay_interest"> Waive Remaining Delay Interest</label><div class="delay-interest-waiver-fields hidden"><div class="accounting-grid"><label>Delay Interest Waiver Amount<input name="delay_interest_waiver_amount" type="number" min="0" max="${initial.delayOutstanding.toFixed(2)}" step="0.01" value="${initial.delayOutstanding.toFixed(2)}"></label><label>Approval Reference<input name="approval_reference"></label><label>Reason<textarea name="reason"></textarea></label></div></div></div><div class="subcard reconciliation-posting-preview"></div><div id="loan-reconciliation-message"></div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" id="confirm-loan-reconciliation" disabled>Confirm Reclassification, Waiver &amp; Settlement</button></div>`;
     modal.querySelectorAll('[data-close]').forEach((closeButton) => { closeButton.onclick = close; });
-    const confirmButton = modal.querySelector('#confirm-loan-reconciliation');
-    const message = modal.querySelector('#loan-reconciliation-message');
+    const values = modal.querySelector('.reconciliation-values'), waiverCheckbox = modal.querySelector('[name=waive_delay_interest]'), waiverFields = modal.querySelector('.delay-interest-waiver-fields'), waiverInput = modal.querySelector('[name=delay_interest_waiver_amount]'), approvalInput = modal.querySelector('[name=approval_reference]'), reasonInput = modal.querySelector('[name=reason]'), journalPreview = modal.querySelector('.reconciliation-posting-preview'), message = modal.querySelector('#loan-reconciliation-message'), confirmButton = modal.querySelector('#confirm-loan-reconciliation');
+    const validate = () => {
+      const waiver = waiverCheckbox.checked ? toMoneyNumber(waiverInput.value) : 0;
+      const state = settlementPreviewState(preview, waiver);
+      const waiverInvalid = waiverCheckbox.checked && (waiver < 0 || waiver > initial.delayOutstanding + state.settlementTolerance);
+      const requiredMissing = waiverCheckbox.checked && (!approvalInput.value.trim() || !reasonInput.value.trim());
+      waiverFields.classList.toggle('hidden', !waiverCheckbox.checked);
+      values.innerHTML = renderLoanReconciliationValues(preview, loan, waiver);
+      journalPreview.innerHTML = `<h3>Posting Preview</h3>${initial.reclassification > state.settlementTolerance ? `<p><strong>Reclassification</strong><br>Dr Customer Advances / Credit Balances<br>Cr Penalty / Delay Interest Receivable<br>${formatCurrency(initial.reclassification)}</p>` : ''}${waiverCheckbox.checked && waiver > 0 ? `<p><strong>Waiver</strong><br>Dr Delay Interest Waiver Expense<br>Cr Penalty / Delay Interest Receivable<br>${formatCurrency(waiver)}</p>` : ''}<p><strong>No additional cash or bank entry will be posted.</strong></p>`;
+      const errors = [];
+      if (!accountingReady) errors.push('Required accounting accounts are not configured.');
+      if (waiverInvalid) errors.push('Delay interest waiver cannot exceed outstanding delay interest.');
+      if (requiredMissing) errors.push('Approval Reference and Reason are required for a delay-interest waiver.');
+      if (state.hasRemainingBalance) errors.push(`Remaining balance: ${formatCurrency(state.remainingBalance)}. Waive the remaining delay interest to settle this loan.`);
+      message.innerHTML = errors.length ? `<div class="alert error">${errors.map(escapeHtml).join('<br>')}</div>` : `<div class="alert success">Proposed status: <strong>${state.proposedStatus}</strong></div>`;
+      confirmButton.disabled = posting || !accountingReady || waiverInvalid || requiredMissing || state.hasRemainingBalance;
+      return { waiver, state, valid: !confirmButton.disabled };
+    };
+    [waiverCheckbox, waiverInput, approvalInput, reasonInput].forEach((input) => input.addEventListener('input', validate));
+    waiverCheckbox.addEventListener('change', validate);
     confirmButton.onclick = async () => {
-      if (!canSettle || confirmButton.disabled) return;
+      const validation = validate();
+      if (!validation.valid || confirmButton.disabled) return;
+      posting = true;
       confirmButton.disabled = true;
       try {
-        const reconciliation = await api(postPath, { method: 'POST', body: { confirm: true } });
-        const result = settlementPreviewState({
-          ...reconciliation,
-          proposed_status: reconciliation.new_status ?? reconciliation.loan_status ?? reconciliation.proposed_status
-        });
-        if (!result.canSettle) {
-          message.innerHTML = result.hasRemainingBalance
-            ? `<div class="alert error">The loan cannot be settled because an amount remains outstanding.<br>Remaining balance: ${formatCurrency(result.remainingBalance)}</div>`
-            : '<div class="alert error">The loan settlement could not be confirmed. Please review the reconciliation and try again.</div>';
-          return;
-        }
+        const body = { confirm: true, waive_delay_interest: waiverCheckbox.checked, delay_interest_waiver_amount: validation.waiver, approval_reference: approvalInput.value.trim(), reason: reasonInput.value.trim() };
+        const reconciliation = await api(postPath, { method: 'POST', body });
+        const result = settlementPreviewState({ ...reconciliation, proposed_status: reconciliation.new_status ?? reconciliation.loan_status ?? reconciliation.proposed_status });
+        if (!result.canSettle) { message.innerHTML = '<div class="alert error">The loan settlement could not be confirmed. Review the updated reconciliation before trying again.</div>'; return; }
         modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Loan Settled Successfully</h2><button class="icon-button" data-close-success>×</button></div>${renderLoanReconciliationSuccess(reconciliation, loan)}<div class="modal-actions sticky-modal-footer"><button type="button" data-close-success>Close</button></div>`;
         modal.querySelectorAll('[data-close-success]').forEach((closeButton) => { closeButton.onclick = close; });
         await refreshReconciledLoan(loanId, reconciliation);
       } catch (error) {
         if (reconciliationPreviewChanged(error)) {
-          try {
-            const updatedPreview = await api(previewPath, { method: 'POST', body: {} });
-            renderPreview(updatedPreview);
-            modal.querySelector('#loan-reconciliation-message').innerHTML = '<div class="alert warning">The loan balances changed after preview. Review the updated reconciliation before confirming.</div>';
-          } catch (previewError) {
-            message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(previewError))}</div>`;
-          }
+          try { renderPreview(await api(previewPath, { method: 'POST', body: {} })); modal.querySelector('#loan-reconciliation-message').innerHTML = '<div class="alert warning">The preview is stale because loan balances changed. Review the updated reconciliation before confirming.</div>'; }
+          catch (previewError) { message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(previewError))}</div>`; }
           return;
         }
         message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(error))}</div>`;
-      } finally {
-        if (modal.isConnected && modal.querySelector('#confirm-loan-reconciliation')) confirmButton.disabled = false;
-      }
+      } finally { posting = false; if (modal.isConnected && modal.querySelector('#confirm-loan-reconciliation')) validate(); }
     };
+    validate();
   };
   try {
     const preview = await api(previewPath, { method: 'POST', body: {} });
-    modal = document.createElement('div');
-    modal.className = 'modal-overlay historical-accounting-modal';
-    modal.innerHTML = '<div class="modal-card wide"></div>';
-    document.body.appendChild(modal);
-    renderPreview(preview);
-  } catch (error) {
-    setInlineAlert(adminLoanDetailMessage, loanReconciliationErrorMessage(error), 'error');
-    loanReconciliationInProgress = false;
-    button.disabled = false;
-  }
+    modal = document.createElement('div'); modal.className = 'modal-overlay historical-accounting-modal'; modal.innerHTML = '<div class="modal-card wide"></div>'; document.body.appendChild(modal); renderPreview(preview);
+  } catch (error) { setInlineAlert(adminLoanDetailMessage, loanReconciliationErrorMessage(error), 'error'); loanReconciliationInProgress = false; button.disabled = false; }
 }
 
 async function openManualInterestAccrualDialog(loanOnly = true) {
@@ -3252,6 +3249,8 @@ function renderLoanDetailFields(loan) {
   const totalPayable = totals.totalPayable;
   const startDate = resolved.startDate;
   const maturityDate = resolved.maturityDate;
+  const actualCashPaid = getActualCustomerCashPaid(loan, totals.totalPaid);
+  const settlementAdjustment = getDelayInterestSettlementAdjustment(loan);
   const fields = [
     ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference'])],
     ['Customer', getCustomerDisplayNameFromLoan(loan)],
@@ -3263,7 +3262,8 @@ function renderLoanDetailFields(loan) {
     ['Installment amount', loanHasValue(installmentAmount) ? formatCurrency(installmentAmount) : 'Missing'],
     ['Total Interest', formatCurrency(totalInterest)],
     ['Total Payable', formatCurrency(totalPayable)],
-    ['Total Paid', formatCurrency(totals.totalPaid)],
+    ['Total Paid', formatCurrency(actualCashPaid)],
+    ...(settlementAdjustment > 0 ? [['Settlement Adjustments', formatCurrency(settlementAdjustment)]] : []),
     ['Outstanding', formatCurrency(Math.max(0, Number(totals.outstanding) || 0))],
     ...(getCustomerCreditAmount(loan) > 0 ? [['Customer Credit', formatCurrency(getCustomerCreditAmount(loan))]] : []),
     ...(getLoanStatus(loan) === 'SETTLED' ? [
@@ -3341,11 +3341,14 @@ function renderLoanLedger() {
   ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>`;
   const totals = calculateLedgerDisplayTotals(entries, adminLoansState.ledgerTotals);
   const credit = getCustomerCreditAmount(loan);
+  const actualCashPaid = getActualCustomerCashPaid(adminLoansState.ledgerTotals || loan, totals.totalPaid);
+  const settlementAdjustment = getDelayInterestSettlementAdjustment(adminLoansState.ledgerTotals || loan) || getDelayInterestSettlementAdjustment(loan);
   const totalsHtml = [
     ['Total Principal', totals.totalPrincipal],
     ['Total Interest', totals.totalInterest],
     ['Total Payable', totals.totalPayable],
-    ['Total Paid', totals.totalPaid],
+    ['Total Paid', actualCashPaid],
+    ...(settlementAdjustment > 0 ? [['Settlement Adjustments', settlementAdjustment]] : []),
     ['Outstanding', Math.max(0, Number(totals.outstanding) || 0)],
     ['Delay Interest', totals.totalDelayInterest],
   ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('') + (credit > 0 ? `<div class="loan-detail-stat"><span>Customer Credit</span><strong>${formatCurrency(credit)}</strong></div>` : '');
@@ -3374,7 +3377,7 @@ function renderLoanLedger() {
       <td>${escapeHtml(formatDate(getLedgerField(entry, ['interest_accrued_date','interestAccruedDate','accrual_date','accrualDate'], '')) || getLedgerField(entry, ['interest_accrued_date','interestAccruedDate','accrual_date','accrualDate'], '—'))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['interest_paid', 'interestPaid'], 0))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['principal_paid', 'principalPaid', 'principal_collected'], getLedgerField(entry, ['paid_principal'], 0)))}</td>
-      <td>${formatCurrency(getLedgerField(entry, ['principal', 'principal_amount', 'principalAmount'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['principal', 'principal_amount', 'principalAmount', 'principal_due', 'principalDue'], 0))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['installment_amount', 'installmentAmount', 'amount_due', 'amountDue'], 0))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['closing_balance', 'closingBalance'], 0))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0))}</td>
