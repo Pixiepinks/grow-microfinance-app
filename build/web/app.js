@@ -2863,6 +2863,121 @@ function renderLoanReconciliationSection(data = {}) {
   return `<div class="subcard"><h3>Reconciliation</h3><div class="accounting-grid">${rows.map(([title,obj,keys])=>{ const diff=Number(obj.difference||0); const status=obj.status || (Math.abs(diff)<0.01?'Balanced':'Mismatch'); return `<div class="loan-detail-stat"><span>${escapeHtml(title)}</span><strong>${escapeHtml(status)}</strong>${keys.map(k=>`<p>${escapeHtml(k.replaceAll('_',' '))}: ${formatCurrency(obj[k]||0)}</p>`).join('')}</div>`; }).join('')}</div></div>`;
 }
 
+
+let loanReconciliationInProgress = false;
+
+function loanReconciliationErrorMessage(error) {
+  const message = String(error?.message || '');
+  const normalized = message.toLowerCase();
+  if (normalized.includes('loan_not_found')) return 'The selected loan no longer exists.';
+  if (normalized.includes('confirmation_required')) return 'Confirm the reconciliation before posting.';
+  if (normalized.includes('not_found') || normalized.includes('the requested url was not found') || normalized.includes('status 404')) {
+    return 'The loan reconciliation API endpoint is unavailable. Deploy the matching API route and try again.';
+  }
+  return 'Loan reconciliation failed. Please try again.';
+}
+
+function reconciliationWarnings(data = {}) {
+  const warnings = data.warnings || data.warning || [];
+  return (Array.isArray(warnings) ? warnings : [warnings]).filter(Boolean).map((warning) => (
+    typeof warning === 'string' ? warning : warning.message || warning.description || warning.code || ''
+  )).filter(Boolean);
+}
+
+function reconciliationValue(data, keys, fallback = '—') {
+  for (const key of keys) {
+    if (data?.[key] !== undefined && data[key] !== null && data[key] !== '') return data[key];
+  }
+  return fallback;
+}
+
+function renderLoanReconciliationValues(data = {}, loan = {}) {
+  const warnings = reconciliationWarnings(data);
+  const fields = [
+    ['Current Status', reconciliationValue(data, ['current_status', 'previous_status', 'old_status'], getLoanStatus(loan))],
+    ['Proposed Status', reconciliationValue(data, ['proposed_status', 'new_status'], '—')],
+    ['Total Payable', formatCurrency(reconciliationValue(data, ['total_payable', 'totalPayable'], getLoanField(loan, ['total_payable', 'totalPayable'], 0)))],
+    ['Total Paid', formatCurrency(reconciliationValue(data, ['total_paid', 'totalPaid'], getLoanField(loan, ['total_paid', 'totalPaid'], 0)))],
+    ['Remaining Balance', formatCurrency(reconciliationValue(data, ['remaining_balance', 'outstanding', 'outstanding_balance'], getLoanOutstanding(loan)))],
+    ['Proposed Customer Credit', formatCurrency(reconciliationValue(data, ['proposed_customer_credit', 'customer_credit', 'customer_credit_amount'], 0))],
+    ['Settlement Date', formatDate(reconciliationValue(data, ['settlement_date', 'settled_date'], '')) || reconciliationValue(data, ['settlement_date', 'settled_date'], '—')],
+  ];
+  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
+}
+
+
+function renderLoanReconciliationSuccess(data = {}, loan = {}) {
+  const settledDate = reconciliationValue(data, ['settled_date', 'settlement_date'], getSettlementDate(loan));
+  const fields = [
+    ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference', 'id'])],
+    ['Previous Status', reconciliationValue(data, ['previous_status', 'current_status', 'old_status'], getLoanStatus(loan))],
+    ['New Status', reconciliationValue(data, ['new_status', 'proposed_status'], 'SETTLED')],
+    ['Settled Date', formatDate(settledDate) || settledDate || '—'],
+    ['Outstanding', formatCurrency(reconciliationValue(data, ['outstanding', 'remaining_balance', 'outstanding_balance'], 0))],
+    ['Customer Credit', formatCurrency(reconciliationValue(data, ['customer_credit', 'customer_credit_amount', 'proposed_customer_credit'], 0))],
+  ];
+  const warnings = reconciliationWarnings(data);
+  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>${warnings.length ? `<div class="alert warning"><strong>Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}`;
+}
+
+async function refreshReconciledLoan(loanId, reconciliation = {}) {
+  await Promise.allSettled([loadAdminLoans(true), loadAdmin(), loadAdminLoanLedger(true)]);
+  const refreshedLoan = adminLoansState.loans.find((item) => Number(item.id ?? item.loan_id) === loanId);
+  adminLoansState.selectedLoan = refreshedLoan || { ...adminLoansState.selectedLoan, ...reconciliation, id: loanId };
+  adminLoansState.ledgerLoadedLoanId = null;
+  renderAdminLoanDetail();
+}
+
+async function openLoanReconciliationPreview(button) {
+  if (loanReconciliationInProgress) return;
+  const loan = adminLoansState.selectedLoan || {};
+  const loanId = Number(loan.id ?? loan.loan_id);
+  if (!Number.isInteger(loanId) || loanId <= 0) {
+    setInlineAlert(adminLoanDetailMessage, 'A valid loan ID is required for reconciliation.', 'error');
+    return;
+  }
+
+  loanReconciliationInProgress = true;
+  button.disabled = true;
+  const previewPath = `/admin/loans/${loanId}/settlement-reconciliation/preview`;
+  const postPath = `/admin/loans/${loanId}/settlement-reconciliation`;
+  console.log('Loan reconciliation request', { loanId, path: postPath });
+  try {
+    const preview = await api(previewPath, { method: 'POST', body: { confirm: true } });
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay historical-accounting-modal';
+    modal.innerHTML = `<div class="modal-card wide"><div class="modal-header"><h2>Reconcile Loan</h2><button class="icon-button" data-close>×</button></div><p>Review the settlement reconciliation before posting.</p>${renderLoanReconciliationValues(preview, loan)}<div id="loan-reconciliation-message"></div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" id="confirm-loan-reconciliation">Confirm Reconciliation</button></div></div>`;
+    document.body.appendChild(modal);
+    const close = () => { loanReconciliationInProgress = false; button.disabled = false; modal.remove(); };
+    modal.querySelectorAll('[data-close]').forEach((closeButton) => { closeButton.onclick = close; });
+    const confirmButton = modal.querySelector('#confirm-loan-reconciliation');
+    const message = modal.querySelector('#loan-reconciliation-message');
+    confirmButton.onclick = async () => {
+      if (confirmButton.disabled) return;
+      confirmButton.disabled = true;
+      try {
+        const reconciliation = await api(postPath, { method: 'POST', body: { confirm: true } });
+        const settled = reconciliation.loan_settled === true || String(reconciliation.new_status || '').toUpperCase() === 'SETTLED';
+        if (!settled) {
+          message.innerHTML = `<div class="alert error">The loan cannot be settled because an amount remains outstanding.<br>Remaining balance: ${formatCurrency(reconciliationValue(reconciliation, ['remaining_balance', 'outstanding', 'outstanding_balance'], getLoanOutstanding(loan)))}</div>`;
+          return;
+        }
+        modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Loan Reconciled Successfully</h2><button class="icon-button" data-close-success>×</button></div>${renderLoanReconciliationSuccess(reconciliation, loan)}<div class="modal-actions sticky-modal-footer"><button type="button" data-close-success>Close</button></div>`;
+        modal.querySelectorAll('[data-close-success]').forEach((closeButton) => { closeButton.onclick = close; });
+        await refreshReconciledLoan(loanId, reconciliation);
+      } catch (error) {
+        message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(error))}</div>`;
+      } finally {
+        if (modal.isConnected && modal.querySelector('#confirm-loan-reconciliation')) confirmButton.disabled = false;
+      }
+    };
+  } catch (error) {
+    setInlineAlert(adminLoanDetailMessage, loanReconciliationErrorMessage(error), 'error');
+    loanReconciliationInProgress = false;
+    button.disabled = false;
+  }
+}
+
 async function openManualInterestAccrualDialog(loanOnly = true) {
   const loanId = loanOnly ? getLoanId(adminLoansState.selectedLoan) : '';
   const modal = document.createElement('div'); modal.className='modal-overlay historical-accounting-modal';
@@ -8849,7 +8964,8 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('[data-reverse-disbursement]')) { event.preventDefault(); reverseLoanDisbursementDialog(); return; }
   if (event.target.closest('[data-view-disbursement-journal]')) { event.preventDefault(); showAdminSection('accounting-journals'); return; }
   if (event.target.closest('[data-view-interest-journals]')) { event.preventDefault(); showAdminSection('accounting-journals'); return; }
-  if (event.target.closest('[data-reconcile-loan]')) { event.preventDefault(); const loanId=getLoanId(adminLoansState.selectedLoan); api(`/admin/loans/${encodeURIComponent(loanId)}/reconciliation`).then(data=>{ adminLoanDetailContent.insertAdjacentHTML('afterbegin', renderLoanReconciliationSection(data)); }).catch(e=>setInlineAlert(adminLoanDetailMessage,e.message||'Failed to reconcile loan.','error')); return; }
+  const reconcileLoanButton = event.target.closest('[data-reconcile-loan]');
+  if (reconcileLoanButton) { event.preventDefault(); openLoanReconciliationPreview(reconcileLoanButton); return; }
   const paymentDetailBtn = event.target.closest('[data-payment-detail]');
   if (paymentDetailBtn) { event.preventDefault(); openPaymentDetailDialog(paymentDetailBtn.dataset.paymentDetail); return; }
 });
