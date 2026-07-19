@@ -2598,6 +2598,30 @@ function displayLoanOutstanding(loan = {}) { return Math.max(0, getLoanOutstandi
 function getCustomerCreditAmount(source = {}) { return Math.max(0, Number(getLoanField(source, ['customer_credit', 'customerCredit', 'customer_credit_amount', 'customerCreditAmount', 'credit_amount', 'creditAmount', 'overpayment_credit', 'overpaymentCredit'], 0)) || 0); }
 function getActualCustomerCashPaid(source = {}, fallback = 0) { return Number(getLoanField(source, ['cash_received', 'cashReceived', 'total_cash_received', 'totalCashReceived', 'actual_cash_received', 'actualCashReceived', 'customer_cash_received', 'customerCashReceived'], fallback)) || 0; }
 function getDelayInterestSettlementAdjustment(source = {}) { return Number(getLoanField(source, ['delay_interest_waived', 'delayInterestWaived', 'delay_interest_waiver_amount', 'delayInterestWaiverAmount', 'settlement.delay_interest_waiver_amount'], 0)) || 0; }
+function getSettlementDisplayValue(sources = [], keys = []) {
+  for (const source of sources) {
+    const value = getLoanField(source || {}, keys, null);
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+}
+function getSettlementDisplaySummary(...sources) {
+  const totalPaid = getSettlementDisplayValue(sources, ['total_paid', 'totalPaid']);
+  const cashPaid = getSettlementDisplayValue(sources, ['cash_paid', 'cashPaid']);
+  const delayInterestPaid = getSettlementDisplayValue(sources, ['delay_interest_paid', 'delayInterestPaid']);
+  const delayInterestWaived = getSettlementDisplayValue(sources, ['delay_interest_waived', 'delayInterestWaived']);
+  const settlementAdjustments = getSettlementDisplayValue(sources, ['settlement_adjustments', 'settlementAdjustments']);
+  const grossSatisfiedAmount = getSettlementDisplayValue(sources, ['gross_satisfied_amount', 'grossSatisfiedAmount']);
+  return {
+    totalPaid: Number(totalPaid ?? cashPaid ?? 0) || 0,
+    delayInterestPaid,
+    delayInterestWaived,
+    settlementAdjustments,
+    grossSatisfiedAmount,
+    breakdownAvailable: [delayInterestPaid, delayInterestWaived, settlementAdjustments, grossSatisfiedAmount]
+      .every((value) => value !== undefined && value !== null && value !== ''),
+  };
+}
 function getLoanCustomerId(loan = {}) { return getLoanField(loan, ['customer_id', 'customerId', 'customer.id', 'borrower_id', 'borrowerId', 'borrower.id'], ''); }
 function getSettlementDate(loan = {}) { return getLoanField(loan, ['settled_date', 'settledDate', 'settlement_date', 'settlementDate', 'closed_date', 'closedDate'], ''); }
 
@@ -3249,8 +3273,14 @@ function renderLoanDetailFields(loan) {
   const totalPayable = totals.totalPayable;
   const startDate = resolved.startDate;
   const maturityDate = resolved.maturityDate;
-  const actualCashPaid = getActualCustomerCashPaid(loan, totals.totalPaid);
-  const settlementAdjustment = getDelayInterestSettlementAdjustment(loan);
+  const settled = getLoanStatus(loan) === 'SETTLED';
+  const settlementDisplay = getSettlementDisplaySummary(ledgerSummary || {}, loan);
+  const settlementBreakdownFields = settled && settlementDisplay.breakdownAvailable ? [
+    ['Delay Interest Paid', formatCurrency(settlementDisplay.delayInterestPaid)],
+    ['Delay Interest Waived', formatCurrency(settlementDisplay.delayInterestWaived)],
+    ['Settlement Adjustments', formatCurrency(settlementDisplay.settlementAdjustments)],
+    ['Gross Amount Satisfied', formatCurrency(settlementDisplay.grossSatisfiedAmount)],
+  ] : [];
   const fields = [
     ['Loan Number', getLoanField(loan, ['loan_number', 'loanNumber', 'number', 'reference'])],
     ['Customer', getCustomerDisplayNameFromLoan(loan)],
@@ -3262,11 +3292,11 @@ function renderLoanDetailFields(loan) {
     ['Installment amount', loanHasValue(installmentAmount) ? formatCurrency(installmentAmount) : 'Missing'],
     ['Total Interest', formatCurrency(totalInterest)],
     ['Total Payable', formatCurrency(totalPayable)],
-    ['Total Paid', formatCurrency(actualCashPaid)],
-    ...(settlementAdjustment > 0 ? [['Settlement Adjustments', formatCurrency(settlementAdjustment)]] : []),
+    ['Total Paid', formatCurrency(settlementDisplay.totalPaid)],
+    ...settlementBreakdownFields,
     ['Outstanding', formatCurrency(Math.max(0, Number(totals.outstanding) || 0))],
     ...(getCustomerCreditAmount(loan) > 0 ? [['Customer Credit', formatCurrency(getCustomerCreditAmount(loan))]] : []),
-    ...(getLoanStatus(loan) === 'SETTLED' ? [
+    ...(settled ? [
       ['Original Total Payable', formatCurrency(getLoanField(loan, ['original_total_payable', 'originalTotalPayable', 'contractual_total_payable', 'contractualTotalPayable', 'total_payable', 'totalPayable'], 0))],
       ['Interest Rebate', formatCurrency(getLoanField(loan, ['interest_rebate', 'interestRebate', 'settlement.interest_rebate'], 0))],
       ['Final Settlement Amount', formatCurrency(getLoanField(loan, ['final_settlement_amount', 'finalSettlementAmount', 'settlement.final_settlement_amount'], 0))],
@@ -3285,7 +3315,7 @@ function renderLoanDetailFields(loan) {
     buildScheduleValidationWarning(loan, ledgerRows, ledgerSummary),
   ].join('');
   const repairAction = renderLoanRepairAction(loan);
-  const settlementSummary = getLoanStatus(loan) === 'SETTLED' ? `<div class="subcard"><h3>Settlement Summary</h3><p>The loan has been fully settled.</p><div class="action-row"><button type="button" class="secondary" data-view-customer-credit>View Customer Credit</button>${getCustomerCreditAmount(loan)>0 ? '<button type="button" class="secondary" data-refund-customer-credit>Refund Credit</button><button type="button" class="secondary" data-apply-customer-credit>Apply Credit to Another Loan</button>' : ''}</div></div>` : '';
+  const settlementSummary = settled ? `<div class="subcard"><h3>Settlement Summary</h3><p>The loan has been fully settled.</p><p>Total Paid represents actual customer payments only. Waivers and settlement adjustments are shown separately.</p>${settlementDisplay.breakdownAvailable ? '' : '<p class="muted">Settlement breakdown unavailable</p>'}<div class="action-row"><button type="button" class="secondary" data-view-customer-credit>View Customer Credit</button>${getCustomerCreditAmount(loan)>0 ? '<button type="button" class="secondary" data-refund-customer-credit>Refund Credit</button><button type="button" class="secondary" data-apply-customer-credit>Apply Credit to Another Loan</button>' : ''}</div></div>` : '';
   const legacyWarning = getLoanOutstanding(loan) < 0 ? '<div class="alert warning">Settlement reconciliation required <button type="button" class="secondary" data-reconcile-loan>Reconcile Loan</button></div>' : '';
   adminLoanDetailContent.innerHTML = `${warnings}${legacyWarning}${settlementSummary}${renderAccountingSummarySection(loan)}${repairAction ? `<div class="loan-detail-actions">${repairAction}</div>` : ''}<div class="loan-detail-grid">${fields
     .map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
@@ -3341,17 +3371,22 @@ function renderLoanLedger() {
   ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>`;
   const totals = calculateLedgerDisplayTotals(entries, adminLoansState.ledgerTotals);
   const credit = getCustomerCreditAmount(loan);
-  const actualCashPaid = getActualCustomerCashPaid(adminLoansState.ledgerTotals || loan, totals.totalPaid);
-  const settlementAdjustment = getDelayInterestSettlementAdjustment(adminLoansState.ledgerTotals || loan) || getDelayInterestSettlementAdjustment(loan);
+  const settled = getLoanStatus(loan) === 'SETTLED';
+  const settlementDisplay = getSettlementDisplaySummary(adminLoansState.ledgerTotals || {}, loan);
   const totalsHtml = [
     ['Total Principal', totals.totalPrincipal],
     ['Total Interest', totals.totalInterest],
     ['Total Payable', totals.totalPayable],
-    ['Total Paid', actualCashPaid],
-    ...(settlementAdjustment > 0 ? [['Settlement Adjustments', settlementAdjustment]] : []),
+    ['Total Paid', settlementDisplay.totalPaid],
+    ...(settled && settlementDisplay.breakdownAvailable ? [
+      ['Delay Interest Paid', settlementDisplay.delayInterestPaid],
+      ['Delay Interest Waived', settlementDisplay.delayInterestWaived],
+      ['Settlement Adjustments', settlementDisplay.settlementAdjustments],
+      ['Gross Amount Satisfied', settlementDisplay.grossSatisfiedAmount],
+    ] : []),
     ['Outstanding', Math.max(0, Number(totals.outstanding) || 0)],
     ['Delay Interest', totals.totalDelayInterest],
-  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('') + (credit > 0 ? `<div class="loan-detail-stat"><span>Customer Credit</span><strong>${formatCurrency(credit)}</strong></div>` : '');
+  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('') + (credit > 0 ? `<div class="loan-detail-stat"><span>Customer Credit</span><strong>${formatCurrency(credit)}</strong></div>` : '') + (settled ? `<p class="ledger-settlement-explanation">Total Paid represents actual customer payments only. Waivers and settlement adjustments are shown separately.</p>${settlementDisplay.breakdownAvailable ? '' : '<p class="muted">Settlement breakdown unavailable</p>'}` : '');
 
   if (!entries.length) {
     adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div><p class="muted">No ledger entries found for this loan.</p>`;
@@ -3386,6 +3421,7 @@ function renderLoanLedger() {
       <td>${formatCurrency(getLedgerField(entry, ['delay_interest', 'delayInterest', 'late_interest', 'lateInterest'], 0))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['delay_interest_accrued','delayInterestAccrued'], 0))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['delay_interest_paid','delayInterestPaid'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['delay_interest_waived','delayInterestWaived'], 0))}</td>
       <td>${renderStatusBadge(deriveLedgerAccountingStatus(entry))}<br>${renderLedgerJournalLink(entry)}</td>
       <td>${canRecordPayment ? `<button type="button" class="secondary" data-admin-ledger-payment="${escapeHtml(entryId)}">Record Payment</button>` : '<span class="muted">—</span>'} ${getLedgerField(entry, ['payment_id','paymentId'], '') ? `<button type="button" class="secondary" data-payment-detail="${escapeHtml(getLedgerField(entry, ['payment_id','paymentId'], ''))}">Payment Details</button>` : ''}</td>
     </tr>`;
@@ -3393,7 +3429,7 @@ function renderLoanLedger() {
 
   adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div>
     <div class="ledger-table-scroll"><table class="placeholder-table loan-table"><thead><tr>
-      <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Original Interest</th><th>Interest Rebate</th><th>Revised Interest</th><th>Waiver Status</th><th>Interest Accrued</th><th>Interest Accrued Date</th><th>Interest Paid</th><th>Principal Paid</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Delay Interest Accrued</th><th>Delay Interest Paid</th><th>Journal Status</th><th>Actions</th>
+      <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Original Interest</th><th>Interest Rebate</th><th>Revised Interest</th><th>Waiver Status</th><th>Interest Accrued</th><th>Interest Accrued Date</th><th>Interest Paid</th><th>Principal Paid</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Delay Interest Accrued</th><th>Delay Interest Paid</th><th>Delay Interest Waived</th><th>Journal Status</th><th>Actions</th>
     </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
