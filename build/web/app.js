@@ -2844,7 +2844,9 @@ function renderAccountingSummarySection(loan = {}) {
   const flags = loan.accounting_actions || loan.accountingActions || loan.permissions || {};
   const show = (key, fallback = true) => flags[key] === undefined ? fallback : boolFromBackend(flags[key], fallback);
   const settled = getLoanStatus(loan) === 'SETTLED';
+  const eligibleForEarlySettlement = ['ACTIVE', 'OVERDUE'].includes(getLoanStatus(loan));
   const actions = [
+    eligibleForEarlySettlement ? '<button type="button" class="secondary" data-early-settlement>Early Settlement</button>' : '',
     !settled && show('can_accrue_interest') ? '<button type="button" class="secondary" data-loan-accrue-interest>Accrue Interest</button>' : '',
     show('can_view_disbursement_journal') ? '<button type="button" class="secondary" data-view-disbursement-journal>View Disbursement Journal</button>' : '',
     show('can_view_interest_journals') ? '<button type="button" class="secondary" data-view-interest-journals>View Interest Journals</button>' : '',
@@ -2852,6 +2854,133 @@ function renderAccountingSummarySection(loan = {}) {
     show('can_reconcile_loan') ? '<button type="button" class="secondary" data-reconcile-loan>Reconcile Loan</button>' : '',
   ].filter(Boolean).join(' ');
   return `<div class="subcard"><div class="card-header"><div><div class="eyebrow">Accounting</div><h3>Accounting Summary</h3></div></div><div class="loan-detail-grid accounting-summary-cards">${fields.map(([label,value])=>`<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div><div class="action-row">${actions}</div></div>`;
+}
+
+// Early settlement deliberately remains separate from reconciliation: this flow asks the
+// server to calculate and approve a concession; reconciliation only corrects past settlement.
+let earlySettlementInProgress = false;
+
+function earlySettlementValue(data = {}, keys = [], fallback = 0) {
+  return toMoneyNumber(reconciliationValue(data, keys, fallback));
+}
+
+function earlySettlementErrorMessage(error) {
+  const message = String(error?.message || '');
+  const normalized = message.toLowerCase();
+  if (error?.status === 401 || error?.status === 403) return 'You do not have permission to approve an early settlement.';
+  if (normalized.includes('rebate account') || normalized.includes('concession account') || normalized.includes('interest_rebate_account')) return 'Configure the Interest Rebate / Loan Concession account before posting.';
+  if (error?.status >= 500) return 'Early settlement could not be completed. No changes were posted.';
+  return message || 'Early settlement could not be completed. No changes were posted.';
+}
+
+function earlySettlementPreviewChanged(error) {
+  return error?.status === 409 || ['stale_preview', 'preview stale', 'preview_changed', 'balance changed'].some((text) => String(error?.message || '').toLowerCase().includes(text));
+}
+
+function renderEarlySettlementPreview(preview = {}) {
+  const fields = [
+    ['Principal Outstanding', earlySettlementValue(preview, ['principal_outstanding', 'principalOutstanding'])],
+    ['Accrued Interest Outstanding', earlySettlementValue(preview, ['accrued_interest_outstanding', 'accruedInterestOutstanding', 'interest_outstanding', 'interestOutstanding'])],
+    ['Future Unearned Interest', earlySettlementValue(preview, ['future_unearned_interest', 'futureUnearnedInterest'])],
+    ['Penalty Outstanding', earlySettlementValue(preview, ['penalty_outstanding', 'penaltyOutstanding', 'penalties'])],
+    ['Delay Interest Outstanding', earlySettlementValue(preview, ['delay_interest_outstanding', 'delayInterestOutstanding'])],
+    ['Fee Outstanding', earlySettlementValue(preview, ['fee_outstanding', 'feeOutstanding', 'fees'])],
+    ['Maximum Eligible Interest Rebate', earlySettlementValue(preview, ['maximum_interest_rebate', 'maximumInterestRebate'])],
+    ['Approved/Requested Interest Rebate', earlySettlementValue(preview, ['approved_interest_rebate', 'requested_interest_rebate', 'interest_rebate', 'interestRebate'])],
+    ['Final Settlement Amount', earlySettlementValue(preview, ['final_settlement_amount', 'finalSettlementAmount', 'settlement_amount'])],
+    ['Customer Credit', earlySettlementValue(preview, ['customer_credit', 'customerCredit'])],
+    ['Proposed Status', String(reconciliationValue(preview, ['proposed_status', 'new_status', 'status'], '—')).toUpperCase()],
+  ];
+  const journals = preview.journal_preview || preview.journalPreview || preview.accounting_preview || preview.accountingPreview || preview.journals || [];
+  const journalItems = Array.isArray(journals) ? journals : (journals.entries || journals.lines || [journals]);
+  const futureCancelled = earlySettlementValue(preview, ['future_unearned_interest_cancelled', 'futureUnearnedInterestCancelled', 'cancelled_future_unearned_interest']);
+  return `<div class="loan-detail-grid">${fields.map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${typeof value === 'number' ? formatCurrency(value) : escapeHtml(value)}</strong></div>`).join('')}</div>
+    <div class="subcard"><h3>Accounting Preview</h3>${journalItems.filter((item) => item && typeof item === 'object').length ? journalItems.filter((item) => item && typeof item === 'object').map((item) => {
+      const debit = item.debit_account_name || item.debit_account || item.dr_account || item.debit || '—';
+      const credit = item.credit_account_name || item.credit_account || item.cr_account || item.credit || '—';
+      const amount = earlySettlementValue(item, ['amount', 'debit_amount', 'credit_amount']);
+      return `<p><strong>Dr ${escapeHtml(String(debit))}</strong><br>Cr ${escapeHtml(String(credit))}<br>${formatCurrency(amount)}</p>`;
+    }).join('') : '<p class="muted">No accounting expense journal is required for unrecognized future interest.</p>'}
+    <p>Future unearned interest cancelled: <strong>${formatCurrency(futureCancelled)}</strong></p></div>`;
+}
+
+async function refreshEarlySettledLoan(loanId, result = {}) {
+  await Promise.allSettled([loadAdminLoans(true), loadAdmin(), loadAdminLoanLedger(true)]);
+  const refreshedLoan = adminLoansState.loans.find((item) => String(getLoanId(item)) === String(loanId));
+  adminLoansState.selectedLoan = refreshedLoan || { ...adminLoansState.selectedLoan, ...result, id: loanId, status: 'SETTLED' };
+  adminLoansState.ledgerLoadedLoanId = null;
+  renderAdminLoanDetail();
+}
+
+async function openEarlySettlementDialog(button) {
+  if (earlySettlementInProgress) return;
+  const loan = adminLoansState.selectedLoan || {};
+  const loanId = getLoanId(loan);
+  if (!loanId || !['ACTIVE', 'OVERDUE'].includes(getLoanStatus(loan))) return;
+  earlySettlementInProgress = true;
+  button.disabled = true;
+  let controller = null, timer = null, latestPreview = null, modal;
+  const close = () => { if (timer) clearTimeout(timer); controller?.abort(); earlySettlementInProgress = false; button.disabled = false; modal?.remove(); };
+  modal = document.createElement('div');
+  modal.className = 'modal-overlay historical-accounting-modal';
+  modal.innerHTML = `<div class="modal-card wide"><div class="modal-header"><h2>Early Settlement</h2><button class="icon-button" data-close>×</button></div><div class="early-settlement-message"></div><div class="accounting-grid">
+    <label>Settlement Date<input name="settlement_date" type="date" value="${todayDateOnly()}" required></label>
+    <label>Requested Interest Rebate<input name="interest_rebate" type="number" min="0" step="0.01" value="0" required></label>
+    <label>Penalty Waiver<input name="penalty_waiver" type="number" min="0" step="0.01" value="0" required></label>
+    <label>Approval Reference<input name="approval_reference" type="text"></label>
+    <label>Reason<textarea name="reason"></textarea></label>
+  </div><div class="early-settlement-preview"><p class="muted">Loading settlement preview...</p></div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" data-early-settlement-confirm disabled>Approve &amp; Settle Loan</button></div></div>`;
+  document.body.appendChild(modal);
+  modal.querySelectorAll('[data-close]').forEach((element) => { element.onclick = close; });
+  const dateInput = modal.querySelector('[name=settlement_date]'), rebateInput = modal.querySelector('[name=interest_rebate]'), waiverInput = modal.querySelector('[name=penalty_waiver]');
+  const message = modal.querySelector('.early-settlement-message'), previewBox = modal.querySelector('.early-settlement-preview'), confirmButton = modal.querySelector('[data-early-settlement-confirm]');
+  const payload = () => ({ settlement_date: dateInput.value, interest_rebate: toMoneyNumber(rebateInput.value), penalty_waiver: toMoneyNumber(waiverInput.value) });
+  const render = (preview) => {
+    latestPreview = preview;
+    const maximum = earlySettlementValue(preview, ['maximum_interest_rebate', 'maximumInterestRebate']);
+    const requested = payload().interest_rebate;
+    const finalAmount = earlySettlementValue(preview, ['final_settlement_amount', 'finalSettlementAmount', 'settlement_amount']);
+    const invalid = requested < 0 || requested > maximum + 0.01;
+    rebateInput.max = String(maximum);
+    message.innerHTML = invalid ? '<div class="alert error">The interest rebate cannot exceed eligible unpaid interest.</div>' : (finalAmount <= 0.01 ? '<div class="alert success">No additional payment is required.</div>' : `<div class="alert warning">${formatCurrency(finalAmount)} must be collected before settlement.</div>`);
+    previewBox.innerHTML = renderEarlySettlementPreview(preview);
+    confirmButton.textContent = finalAmount <= 0.01 ? 'Approve & Settle Loan' : 'Proceed to Final Payment';
+    confirmButton.disabled = invalid || String(reconciliationValue(preview, ['proposed_status', 'new_status'], '')).toUpperCase() !== 'SETTLED';
+  };
+  const loadPreview = async () => {
+    controller?.abort(); controller = new AbortController();
+    confirmButton.disabled = true; message.innerHTML = '';
+    try { const preview = await api(`/admin/loans/${encodeURIComponent(loanId)}/early-settlement/preview`, { method: 'POST', body: payload(), signal: controller.signal }); if (!controller.signal.aborted) render(preview); }
+    catch (error) { if (error.name !== 'AbortError') message.innerHTML = `<div class="alert error">${escapeHtml(earlySettlementErrorMessage(error))}</div>`; }
+  };
+  const debouncePreview = () => { if (timer) clearTimeout(timer); timer = setTimeout(loadPreview, 300); };
+  [dateInput, rebateInput, waiverInput].forEach((input) => input.addEventListener('input', debouncePreview));
+  confirmButton.onclick = async () => {
+    if (confirmButton.disabled || !latestPreview) return;
+    const finalAmount = earlySettlementValue(latestPreview, ['final_settlement_amount', 'finalSettlementAmount', 'settlement_amount']);
+    const requestPayload = { ...payload(), approval_reference: approvalInput.value.trim(), reason: reasonInput.value.trim() };
+    const confirmation = `<div class="modal-header"><h2>Early Settlement Confirmation</h2><button class="icon-button" data-cancel-confirm>×</button></div><div class="loan-detail-grid">${[
+      ['Original total payable', earlySettlementValue(latestPreview, ['original_total_payable', 'total_payable'], getLoanField(loan, ['total_payable', 'totalPayable'], 0))],
+      ['Total already paid', earlySettlementValue(latestPreview, ['total_paid', 'total_already_paid'], getLoanField(loan, ['total_paid', 'totalPaid'], 0))],
+      ['Interest rebate', requestPayload.interest_rebate], ['Final payment required', finalAmount], ['Status after posting', 'SETTLED']
+    ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${typeof value === 'number' ? formatCurrency(value) : escapeHtml(value)}</strong></div>`).join('')}</div><div class="modal-actions sticky-modal-footer"><button class="secondary" data-cancel-confirm>Back</button><button data-post-early-settlement>Confirm Early Settlement</button></div>`;
+    modal.querySelector('.modal-card').innerHTML = confirmation;
+    modal.querySelectorAll('[data-cancel-confirm]').forEach((element) => { element.onclick = close; });
+    modal.querySelector('[data-post-early-settlement]').onclick = async (event) => {
+      const postButton = event.currentTarget; postButton.disabled = true;
+      try {
+        const result = await api(`/admin/loans/${encodeURIComponent(loanId)}/early-settlement`, { method: 'POST', body: { confirm: true, ...requestPayload } });
+        const settlementDate = result.settlement_date || result.settled_date || dateInput.value;
+        modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Loan Settled Early</h2><button class="icon-button" data-close-success>×</button></div><div class="loan-detail-grid">${[['Settlement Type', 'EARLY_SETTLEMENT'], ['Interest Rebate', requestPayload.interest_rebate], ['Final Payment', earlySettlementValue(result, ['final_settlement_amount', 'final_payment'], finalAmount)], ['Customer Credit', earlySettlementValue(result, ['customer_credit'], 0)], ['Settlement Date', formatDate(settlementDate) || settlementDate], ['Status', 'SETTLED']].map(([label, value]) => `<div class="loan-detail-stat"><span>${label}</span><strong>${typeof value === 'number' ? formatCurrency(value) : escapeHtml(String(value))}</strong></div>`).join('')}</div><div class="modal-actions sticky-modal-footer"><button data-close-success>Close</button></div>`;
+        modal.querySelector('[data-close-success]').onclick = close; await refreshEarlySettledLoan(loanId, result);
+      } catch (error) {
+        if (earlySettlementPreviewChanged(error)) { close(); openEarlySettlementDialog(button); setInlineAlert(adminLoanDetailMessage, 'Loan balances changed. Review the updated preview and confirm again.', 'warning'); return; }
+        postButton.disabled = false; modal.querySelector('.modal-card').insertAdjacentHTML('afterbegin', `<div class="alert error">${escapeHtml(earlySettlementErrorMessage(error))}</div>`);
+      }
+    };
+  };
+  const approvalInput = modal.querySelector('[name=approval_reference]'), reasonInput = modal.querySelector('[name=reason]');
+  await loadPreview();
 }
 
 function renderLoanReconciliationSection(data = {}) {
@@ -3089,7 +3218,16 @@ function renderLoanDetailFields(loan) {
     ['Total Paid', formatCurrency(totals.totalPaid)],
     ['Outstanding', formatCurrency(Math.max(0, Number(totals.outstanding) || 0))],
     ...(getCustomerCreditAmount(loan) > 0 ? [['Customer Credit', formatCurrency(getCustomerCreditAmount(loan))]] : []),
-    ...(getLoanStatus(loan) === 'SETTLED' ? [['Settled Date', formatDate(getSettlementDate(loan)) || getSettlementDate(loan) || '—'], ['Final Payment', getLoanField(loan, ['final_payment_receipt_number', 'finalPaymentReceiptNumber', 'settlement_receipt_number', 'settlementReceiptNumber', 'receipt_number'], '—')]] : []),
+    ...(getLoanStatus(loan) === 'SETTLED' ? [
+      ['Original Total Payable', formatCurrency(getLoanField(loan, ['original_total_payable', 'originalTotalPayable', 'contractual_total_payable', 'contractualTotalPayable', 'total_payable', 'totalPayable'], 0))],
+      ['Interest Rebate', formatCurrency(getLoanField(loan, ['interest_rebate', 'interestRebate', 'settlement.interest_rebate'], 0))],
+      ['Final Settlement Amount', formatCurrency(getLoanField(loan, ['final_settlement_amount', 'finalSettlementAmount', 'settlement.final_settlement_amount'], 0))],
+      ['Settlement Type', getLoanField(loan, ['settlement_type', 'settlementType', 'settlement.type'], '—')],
+      ['Settlement Date', formatDate(getSettlementDate(loan)) || getSettlementDate(loan) || '—'],
+      ['Approval Reference', getLoanField(loan, ['approval_reference', 'approvalReference', 'settlement.approval_reference'], '—')],
+      ['Reason', getLoanField(loan, ['settlement_reason', 'reason', 'settlement.reason'], '—')],
+      ['Final Payment', getLoanField(loan, ['final_payment_receipt_number', 'finalPaymentReceiptNumber', 'settlement_receipt_number', 'settlementReceiptNumber', 'receipt_number'], '—')],
+    ] : []),
     ['Start date', loanHasValue(startDate) ? (formatDate(startDate) || startDate) : 'Missing'],
     ['Maturity date', loanHasValue(maturityDate) ? (formatDate(maturityDate) || maturityDate) : 'Missing'],
     ['Status', getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN')],
@@ -3181,6 +3319,9 @@ function renderLoanLedger() {
       <td>${escapeHtml(getLedgerField(entry, ['days', 'period_days', 'periodDays'], '—'))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['opening_balance', 'openingBalance'], 0))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['interest', 'interest_amount', 'interestAmount'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['interest_rebate', 'interestRebate', 'waived_interest', 'waivedInterest'], 0))}</td>
+      <td>${formatCurrency(getLedgerField(entry, ['revised_interest', 'revisedInterest'], getLedgerField(entry, ['interest', 'interest_amount', 'interestAmount'], 0) - getLedgerField(entry, ['interest_rebate', 'interestRebate', 'waived_interest', 'waivedInterest'], 0)))}</td>
+      <td>${escapeHtml(String(getLedgerField(entry, ['waiver_status', 'waiverStatus'], toMoneyNumber(getLedgerField(entry, ['interest_rebate', 'interestRebate', 'waived_interest', 'waivedInterest'], 0)) > 0 ? 'WAIVED' : '—')))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['interest_accrued', 'interestAccrued'], 0))}</td>
       <td>${escapeHtml(formatDate(getLedgerField(entry, ['interest_accrued_date','interestAccruedDate','accrual_date','accrualDate'], '')) || getLedgerField(entry, ['interest_accrued_date','interestAccruedDate','accrual_date','accrualDate'], '—'))}</td>
       <td>${formatCurrency(getLedgerField(entry, ['interest_paid', 'interestPaid'], 0))}</td>
@@ -3201,7 +3342,7 @@ function renderLoanLedger() {
 
   adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div>
     <div class="ledger-table-scroll"><table class="placeholder-table loan-table"><thead><tr>
-      <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Interest Amount</th><th>Interest Accrued</th><th>Interest Accrued Date</th><th>Interest Paid</th><th>Principal Paid</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Delay Interest Accrued</th><th>Delay Interest Paid</th><th>Journal Status</th><th>Actions</th>
+      <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Original Interest</th><th>Interest Rebate</th><th>Revised Interest</th><th>Waiver Status</th><th>Interest Accrued</th><th>Interest Accrued Date</th><th>Interest Paid</th><th>Principal Paid</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Delay Interest Accrued</th><th>Delay Interest Paid</th><th>Journal Status</th><th>Actions</th>
     </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -9028,6 +9169,8 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('[data-reverse-disbursement]')) { event.preventDefault(); reverseLoanDisbursementDialog(); return; }
   if (event.target.closest('[data-view-disbursement-journal]')) { event.preventDefault(); showAdminSection('accounting-journals'); return; }
   if (event.target.closest('[data-view-interest-journals]')) { event.preventDefault(); showAdminSection('accounting-journals'); return; }
+  const earlySettlementButton = event.target.closest('[data-early-settlement]');
+  if (earlySettlementButton) { event.preventDefault(); openEarlySettlementDialog(earlySettlementButton); return; }
   const reconcileLoanButton = event.target.closest('[data-reconcile-loan]');
   if (reconcileLoanButton) { event.preventDefault(); openLoanReconciliationPreview(reconcileLoanButton); return; }
   const paymentDetailBtn = event.target.closest('[data-payment-detail]');
