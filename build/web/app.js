@@ -667,6 +667,7 @@ const adminLoansState = {
   ledgerLoading: false,
   ledgerError: null,
   ledgerLoadedLoanId: null,
+  selectedStatus: 'ALL',
 };
 const adminCustomersState = {
   customers: [],
@@ -2205,6 +2206,12 @@ function renderStatusBadge(status) {
     IN_PROGRESS: 'badge-info',
     CONVERTED: 'badge-success',
     LOST: 'badge-neutral',
+    DISBURSED: 'badge-info',
+    ACTIVE: 'badge-info',
+    OVERDUE: 'badge-warning',
+    SETTLED: 'badge-success',
+    WRITTEN_OFF: 'badge-danger',
+    CANCELLED: 'badge-neutral',
   };
 
   const badgeClass = badgeClassMap[normalized] || 'badge-neutral';
@@ -2397,6 +2404,7 @@ function ensureAdminLoansUI() {
         </div>
       </div>
       <p id="admin-loans-message" class="alert hidden" aria-live="polite"></p>
+      <div class="filter-bar accounting-filters"><label>Loan status<select id="admin-loans-status-filter"><option value="ALL">All</option><option value="ACTIVE">Active</option><option value="OVERDUE">Overdue</option><option value="SETTLED">Settled</option><option value="WRITTEN_OFF">Written Off</option><option value="CANCELLED">Cancelled</option></select></label></div>
       <div class="loan-table-wrapper">
         <table id="admin-loans-table" class="placeholder-table loan-table">
           <thead>
@@ -2407,6 +2415,8 @@ function ensureAdminLoansUI() {
               <th>Total Payable</th>
               <th>Total Paid</th>
               <th>Outstanding</th>
+              <th>Customer Credit</th>
+              <th>Settled Date</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -2421,6 +2431,8 @@ function ensureAdminLoansUI() {
   adminLoansMessage = adminLoansSection.querySelector('#admin-loans-message');
   adminLoansTableBody = adminLoansSection.querySelector('#admin-loans-table-body');
   adminRefreshLoansBtn = adminLoansSection.querySelector('#admin-refresh-loans');
+  const statusFilter = adminLoansSection.querySelector('#admin-loans-status-filter');
+  if (statusFilter) { statusFilter.value = adminLoansState.selectedStatus; statusFilter.addEventListener('change', () => { adminLoansState.selectedStatus = statusFilter.value || 'ALL'; loadAdminLoans(true); }); }
 
   adminRefreshLoansBtn?.addEventListener('click', () => loadAdminLoans(true));
 
@@ -2531,6 +2543,13 @@ function getLoanField(loan, keys, fallback = '—') {
 function getLoanId(loan) {
   return getLoanField(loan, ['id', 'loan_id', 'loanId', 'uuid', 'loan.uuid'], '');
 }
+
+function getLoanStatus(loan = {}) { return String(getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN')).toUpperCase(); }
+function getLoanOutstanding(loan = {}) { return Number(getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0)) || 0; }
+function displayLoanOutstanding(loan = {}) { return Math.max(0, getLoanOutstanding(loan)); }
+function getCustomerCreditAmount(source = {}) { return Math.max(0, Number(getLoanField(source, ['customer_credit', 'customerCredit', 'customer_credit_amount', 'customerCreditAmount', 'credit_amount', 'creditAmount', 'overpayment_credit', 'overpaymentCredit'], 0)) || 0); }
+function getLoanCustomerId(loan = {}) { return getLoanField(loan, ['customer_id', 'customerId', 'customer.id', 'borrower_id', 'borrowerId', 'borrower.id'], ''); }
+function getSettlementDate(loan = {}) { return getLoanField(loan, ['settled_date', 'settledDate', 'settlement_date', 'settlementDate', 'closed_date', 'closedDate'], ''); }
 
 function getLoanCustomerField(loan, keys, fallback = '') {
   const customer = loan?.customer || loan?.borrower || loan?.applicant || {};
@@ -2789,7 +2808,7 @@ function calculateLedgerDisplayTotals(entries, backendTotals) {
       totalInterest: getLoanField(backendTotals, ['total_interest', 'totalInterest', 'interest'], 0),
       totalPayable: getLoanField(backendTotals, ['total_payable', 'totalPayable', 'payable'], 0),
       totalPaid: getLoanField(backendTotals, ['total_paid', 'totalPaid', 'paid'], 0),
-      outstanding: getLoanField(backendTotals, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'balance'], 0),
+      outstanding: Math.max(0, Number(getLoanField(backendTotals, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'balance'], 0)) || 0),
       totalDelayInterest: getLoanField(backendTotals, ['total_delay_interest', 'totalDelayInterest', 'delay_interest', 'delayInterest'], 0),
     };
   }
@@ -2800,7 +2819,7 @@ function calculateLedgerDisplayTotals(entries, backendTotals) {
     totalInterest: getLoanField(loan, ['total_interest', 'totalInterest', 'interest'], 0),
     totalPayable: getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0),
     totalPaid: getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0),
-    outstanding: getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0),
+    outstanding: displayLoanOutstanding(loan),
     totalDelayInterest: getLoanField(loan, ['total_delay_interest', 'totalDelayInterest', 'delay_interest', 'delayInterest'], 0),
   };
 }
@@ -2824,8 +2843,9 @@ function renderAccountingSummarySection(loan = {}) {
   ];
   const flags = loan.accounting_actions || loan.accountingActions || loan.permissions || {};
   const show = (key, fallback = true) => flags[key] === undefined ? fallback : boolFromBackend(flags[key], fallback);
+  const settled = getLoanStatus(loan) === 'SETTLED';
   const actions = [
-    show('can_accrue_interest') ? '<button type="button" class="secondary" data-loan-accrue-interest>Accrue Interest</button>' : '',
+    !settled && show('can_accrue_interest') ? '<button type="button" class="secondary" data-loan-accrue-interest>Accrue Interest</button>' : '',
     show('can_view_disbursement_journal') ? '<button type="button" class="secondary" data-view-disbursement-journal>View Disbursement Journal</button>' : '',
     show('can_view_interest_journals') ? '<button type="button" class="secondary" data-view-interest-journals>View Interest Journals</button>' : '',
     show('can_reverse_disbursement', false) ? '<button type="button" class="danger" data-reverse-disbursement>Reverse Disbursement</button>' : '',
@@ -2888,7 +2908,9 @@ function renderLoanDetailFields(loan) {
     ['Total Interest', formatCurrency(totalInterest)],
     ['Total Payable', formatCurrency(totalPayable)],
     ['Total Paid', formatCurrency(totals.totalPaid)],
-    ['Outstanding', formatCurrency(totals.outstanding)],
+    ['Outstanding', formatCurrency(Math.max(0, Number(totals.outstanding) || 0))],
+    ...(getCustomerCreditAmount(loan) > 0 ? [['Customer Credit', formatCurrency(getCustomerCreditAmount(loan))]] : []),
+    ...(getLoanStatus(loan) === 'SETTLED' ? [['Settled Date', formatDate(getSettlementDate(loan)) || getSettlementDate(loan) || '—'], ['Final Payment', getLoanField(loan, ['final_payment_receipt_number', 'finalPaymentReceiptNumber', 'settlement_receipt_number', 'settlementReceiptNumber', 'receipt_number'], '—')]] : []),
     ['Start date', loanHasValue(startDate) ? (formatDate(startDate) || startDate) : 'Missing'],
     ['Maturity date', loanHasValue(maturityDate) ? (formatDate(maturityDate) || maturityDate) : 'Missing'],
     ['Status', getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN')],
@@ -2898,7 +2920,9 @@ function renderLoanDetailFields(loan) {
     buildScheduleValidationWarning(loan, ledgerRows, ledgerSummary),
   ].join('');
   const repairAction = renderLoanRepairAction(loan);
-  adminLoanDetailContent.innerHTML = `${warnings}${renderAccountingSummarySection(loan)}${repairAction ? `<div class="loan-detail-actions">${repairAction}</div>` : ''}<div class="loan-detail-grid">${fields
+  const settlementSummary = getLoanStatus(loan) === 'SETTLED' ? `<div class="subcard"><h3>Settlement Summary</h3><p>The loan has been fully settled.</p><div class="action-row"><button type="button" class="secondary" data-view-customer-credit>View Customer Credit</button>${getCustomerCreditAmount(loan)>0 ? '<button type="button" class="secondary" data-refund-customer-credit>Refund Credit</button><button type="button" class="secondary" data-apply-customer-credit>Apply Credit to Another Loan</button>' : ''}</div></div>` : '';
+  const legacyWarning = getLoanOutstanding(loan) < 0 ? '<div class="alert warning">Settlement reconciliation required <button type="button" class="secondary" data-reconcile-loan>Reconcile Loan</button></div>' : '';
+  adminLoanDetailContent.innerHTML = `${warnings}${legacyWarning}${settlementSummary}${renderAccountingSummarySection(loan)}${repairAction ? `<div class="loan-detail-actions">${repairAction}</div>` : ''}<div class="loan-detail-grid">${fields
     .map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join('')}</div>`;
 }
@@ -2951,14 +2975,15 @@ function renderLoanLedger() {
     ['Maturity date', loanHasValue(resolved.maturityDate) ? (formatDate(resolved.maturityDate) || resolved.maturityDate) : 'Missing'],
   ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('')}</div>`;
   const totals = calculateLedgerDisplayTotals(entries, adminLoansState.ledgerTotals);
+  const credit = getCustomerCreditAmount(loan);
   const totalsHtml = [
     ['Total Principal', totals.totalPrincipal],
     ['Total Interest', totals.totalInterest],
     ['Total Payable', totals.totalPayable],
     ['Total Paid', totals.totalPaid],
-    ['Outstanding', totals.outstanding],
+    ['Outstanding', Math.max(0, Number(totals.outstanding) || 0)],
     ['Delay Interest', totals.totalDelayInterest],
-  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('');
+  ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('') + (credit > 0 ? `<div class="loan-detail-stat"><span>Customer Credit</span><strong>${formatCurrency(credit)}</strong></div>` : '');
 
   if (!entries.length) {
     adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div><p class="muted">No ledger entries found for this loan.</p>`;
@@ -2969,7 +2994,7 @@ function renderLoanLedger() {
     const status = String(getLedgerField(entry, ['status', 'payment_status', 'paymentStatus'], 'UNKNOWN'));
     const entryId = getLedgerField(entry, ['id', 'entry_id', 'entryId', 'ledger_entry_id', 'ledgerEntryId'], '');
     const normalizedStatus = status.toLowerCase();
-    const canRecordPayment = entryId && !['paid', 'settled', 'complete', 'completed'].includes(normalizedStatus);
+    const canRecordPayment = getLoanStatus(loan) !== 'SETTLED' && entryId && !['paid', 'settled', 'complete', 'completed'].includes(normalizedStatus);
     return `<tr>
       <td>${escapeHtml(getLedgerField(entry, ['installment_number', 'installmentNumber', 'installment_no', 'installmentNo', 'number']))}</td>
       <td>${escapeHtml(formatDate(getLedgerPeriodStartDate(entry)) || getLedgerPeriodStartDate(entry) || '—')}</td>
@@ -3120,9 +3145,9 @@ async function recordAdminLedgerPayment(entryId) {
   collectorEl.onchange=()=>{ const c=selectedCollector(); const a=c&&collAccountFor(c); accountEl.value=a?.id||''; accountEl.disabled=methodEl.value==='CASH_COLLECTOR'; validate(); };
   const periodStatus=()=>String(settings.current_period_status||settings.accounting_period_status||settings.periodStatus||'Open');
   const validate=()=>{ const paidAmount=Number(amountEl.value||0); let error=''; let warning=''; const historical=isHistoricalDate(dateEl.value); if(disbursementDate && dateOnlyToEpoch(dateEl.value)<dateOnlyToEpoch(disbursementDate)) error='Payment date cannot be earlier than disbursement date.'; else if(isFutureDateOnly(dateEl.value)) error='Future payment dates are not supported.'; else if(historical && String(settings.allow_historical_collections ?? settings.allowHistoricalCollections ?? settings.allow_backdated_payment ?? true)==='false') error='Historical collections are disabled by accounting settings.'; if(historical){ const locked=String(settings.locked_period_posting||'').toUpperCase()==='BLOCK' || String(settings.accounting_period_locked||settings.periodLocked)==='true'; if(locked) error='Backend error: selected accounting period is locked.'; warning=`<div class="alert warning"><strong>Historical payment</strong><br>This payment will be posted using the selected historical accounting date.<div class="accounting-grid"><div><strong>Loan disbursement date</strong><br>${escapeHtml(formatDateOnlyDisplay(disbursementDate)||'—')}</div><div><strong>Selected payment date</strong><br>${escapeHtml(formatDateOnlyDisplay(dateEl.value))}</div><div><strong>Interest accruals required through payment date</strong><br>${escapeHtml(settings.historical_payments_auto_accrue===false?'Manual accrual required':'Will be calculated by backend')}</div><div><strong>Accounting-period status</strong><br>${escapeHtml(periodStatus())}</div></div></div>`; }
-    hist.innerHTML=warning; const interest=Math.min(paidAmount, Number(getLedgerField(ledgerEntry, ['interest','interest_amount','interestAmount'], paidAmount*0.2))||0); const principal=Math.max(0, paidAmount-interest); const selectedAccount = methodEl.value==='BANK_TRANSFER' ? accounts.find(a=>String(a.id)===bankEl.value) : accounts.find(a=>String(a.id)===accountEl.value); const collectorCash=methodEl.value==='CASH_COLLECTOR'; const collectorAccountMissing=collectorCash && collectorEl.value && !accountReady(selectedAccount); preview.innerHTML=`<h3>Allocation Preview</h3><p><strong>Payment:</strong> ${formatCurrency(paidAmount)}</p><ul><li>Delay interest: ${formatCurrency(0)}</li><li>Interest: ${formatCurrency(interest)}</li><li>Principal: ${formatCurrency(principal)}</li><li>Unapplied: ${formatCurrency(0)}</li></ul>${collectorCash&&accountReady(selectedAccount)?`<div class="alert warning"><strong>Cash destination:</strong><br>${escapeHtml(accountName(selectedAccount))}<br>This payment will be posted to ${escapeHtml((accountName(selectedAccount)||'Collection Account').replace(/^\d+\s*[—-]?\s*/,''))} until deposited to a company bank account.</div>`:''}`; if(methodEl.value==='BANK_TRANSFER'&&!bankEl.value) error='Select a bank account for a direct transfer.'; if(methodEl.value==='CASH_COLLECTOR'&&!collectorEl.value) error='Select a collector.'; if(collectorAccountMissing) error='Collector has no posting collection account.'; if(methodEl.value!=='BANK_TRANSFER'&&selectedAccount&&isControlAccount(selectedAccount)) error='The control account cannot be used for customer payments.'; if(methodEl.value!=='BANK_TRANSFER'&&!accountEl.value) error=methodEl.value==='CASH_COLLECTOR'?error:'Select a collection account.'; if(error) err.innerHTML=`<div class="alert error">${escapeHtml(error)}</div>${collectorAccountMissing?createAccountButton:''}`; else err.innerHTML=''; btn.disabled=!!error || !(paidAmount>0 && dateEl.value && methodEl.value); };
-  modal.querySelector('[data-setup-collector]')?.addEventListener('click',()=>{ modal.remove(); showAdminSection('collections-collectors'); setTimeout(()=>openCollectorSetupWizard({fromPayment:true}),50); }); [dateEl,amountEl,methodEl,collectorEl,accountEl,bankEl,bankRefEl,refEl,remarksEl].forEach(el=>el.addEventListener('input',validate)); methodEl.addEventListener('change',applyMethod); err.addEventListener('click',e=>{ if(e.target.closest('[data-create-payment-collector-account]')){ const c=selectedCollector(); modal.remove(); showAdminSection('collections-collectors'); setTimeout(()=>openCollectionAccountForm({collector_id:collectorId(c)||collectorEl.value,account_name:'Collection Account – '+(collectionCollectorName(c)||'Collector')}),50); } }); applyMethod(); validate();
-  btn.onclick=async()=>{ if(btn.disabled)return; const method=methodEl.value; const paidAmount=Number(amountEl.value); if(!Number.isFinite(paidAmount)||paidAmount<=0){ err.innerHTML='<div class="alert error">Enter a payment amount greater than zero.</div>'; return; } const selectedCollectorId=collectorEl.value; const selectedCollectionAccountId=method==='BANK_TRANSFER'?bankEl.value:accountEl.value; const account=method==='BANK_TRANSFER'?accounts.find(a=>String(a.id)===bankEl.value):accounts.find(a=>String(a.id)===accountEl.value); btn.disabled=true; err.innerHTML=''; try{ const body={ paid_amount:paidAmount, payment_date:dateEl.value, payment_method:method, collection_method:method, collector_id:method==='CASH_COLLECTOR'?Number(selectedCollectorId)||undefined:undefined, collection_account_id:selectedCollectionAccountId?Number(selectedCollectionAccountId):undefined, reference:refEl.value.trim()||bankRefEl.value.trim(), remarks:remarksEl.value.trim(), bank_account_id: method==='BANK_TRANSFER'?Number(bankEl.value)||undefined:undefined, bank_reference:bankRefEl.value.trim() }; console.log('Ledger payment payload', body); const res=await api(`/admin/loans/${encodeURIComponent(loanId)}/ledger/${encodeURIComponent(entryId)}/payment`, { method:'POST', body }); const paymentId=res.payment_id||res.paymentId||res.id; const journalId=res.journal_entry_id||res.journalEntryId; const journalNo=res.journal_number||res.journalNumber||res.journal_no||res.journalNo; if(!(paymentId&&journalId&&journalNo)){ const unposted=String(res.accounting_status||res.accountingStatus||'').toUpperCase()==='UNPOSTED'; err.innerHTML=`<div class="alert error">Payment was not posted because the accounting journal was not created.</div>${unposted?`<button type="button" id="repair-payment-accounting">Repair Accounting</button>`:''}`; const repair=err.querySelector('#repair-payment-accounting'); if(repair) repair.onclick=async()=>{ if(!confirm('This will create the missing accounting journal for the existing payment. The payment amount will not be entered again.'))return; repair.disabled=true; try{ await api(`/admin/payments/${encodeURIComponent(paymentId)}/repair-accounting`,{method:'POST',body:{}}); err.innerHTML='<div class="alert success">Accounting repair requested. Reopen the payment details to confirm the journal.</div>'; await loadAdminLoanLedger(true); }catch(e){ err.innerHTML=`<div class="alert error">${escapeHtml(e.message||'Failed to repair accounting.')}</div>`; } }; return; } modal.querySelector('.modal-card').innerHTML=`<div class="modal-header"><h2>Payment Recorded</h2><button class="icon-button" data-close-success>×</button></div><div class="alert success">${escapeHtml(`Payment recorded and Journal ${journalNo} posted successfully.`)}</div><div class="loan-detail-grid">${[['Receipt number',res.receipt_number||res.receiptNo||paymentId||'—'],['Journal number',journalNo],['Collector account',accountName(account)||'—'],['Interest allocation',formatCurrency(res.interest_allocation||res.interestAllocation||0)],['Principal allocation',formatCurrency(res.principal_allocation||res.principalAllocation||0)],['Deposit status',method==='CASH_COLLECTOR'?'Undeposited':(res.deposit_status||'Not required')]].map(([l,v])=>`<div class="loan-detail-stat"><span>${escapeHtml(l)}</span><strong>${escapeHtml(String(v))}</strong></div>`).join('')}</div><button data-close-success>Close</button>`; modal.querySelectorAll('[data-close-success]').forEach(b=>b.onclick=()=>modal.remove()); setInlineAlert(adminLoanDetailMessage,`Payment recorded and Journal ${journalNo} posted successfully.`,'success'); await Promise.allSettled([loadAdminLoanLedger(true), loadAdminLoans(true), loadUndepositedCollections(), loadCollectorBalances(), loadFinancialReports(), accountingLoadJournals()]); }catch(error){ console.error('Failed to record ledger payment', error); err.innerHTML=`<div class="alert error">${escapeHtml(error?.message || 'Failed to record payment.')}</div>`; }finally{ validate(); } };
+    hist.innerHTML=warning; const amountDue=Math.max(0, getLoanOutstanding(loan)); const creditToCreate=Math.max(0, paidAmount-amountDue); const overpaymentAllowed=String(settings.allow_customer_credits ?? settings.allowCustomerCredits ?? true)!=='false'; if(creditToCreate>0){ warning += `<div class="alert warning"><strong>Payment exceeds the loan balance</strong><br>Amount due: ${formatCurrency(amountDue)}<br>Payment entered: ${formatCurrency(paidAmount)}<br>Customer credit to be created: ${formatCurrency(creditToCreate)}<br><strong>Confirm Payment and Create Credit</strong></div>`; } hist.innerHTML=warning; const interest=Math.min(paidAmount, Number(getLedgerField(ledgerEntry, ['interest','interest_amount','interestAmount'], paidAmount*0.2))||0); const principal=Math.max(0, paidAmount-interest); const selectedAccount = methodEl.value==='BANK_TRANSFER' ? accounts.find(a=>String(a.id)===bankEl.value) : accounts.find(a=>String(a.id)===accountEl.value); const collectorCash=methodEl.value==='CASH_COLLECTOR'; const collectorAccountMissing=collectorCash && collectorEl.value && !accountReady(selectedAccount); preview.innerHTML=`<h3>Allocation Preview</h3><p><strong>Payment:</strong> ${formatCurrency(paidAmount)}</p><ul><li>Delay interest: ${formatCurrency(0)}</li><li>Interest: ${formatCurrency(interest)}</li><li>Principal: ${formatCurrency(principal)}</li><li>Unapplied: ${formatCurrency(0)}</li></ul>${collectorCash&&accountReady(selectedAccount)?`<div class="alert warning"><strong>Cash destination:</strong><br>${escapeHtml(accountName(selectedAccount))}<br>This payment will be posted to ${escapeHtml((accountName(selectedAccount)||'Collection Account').replace(/^\d+\s*[—-]?\s*/,''))} until deposited to a company bank account.</div>`:''}`; if(methodEl.value==='BANK_TRANSFER'&&!bankEl.value) error='Select a bank account for a direct transfer.'; if(methodEl.value==='CASH_COLLECTOR'&&!collectorEl.value) error='Select a collector.'; if(collectorAccountMissing) error='Collector has no posting collection account.'; if(methodEl.value!=='BANK_TRANSFER'&&selectedAccount&&isControlAccount(selectedAccount)) error='The control account cannot be used for customer payments.'; if(methodEl.value!=='BANK_TRANSFER'&&!accountEl.value) error=methodEl.value==='CASH_COLLECTOR'?error:'Select a collection account.'; if(error) err.innerHTML=`<div class="alert error">${escapeHtml(error)}</div>${collectorAccountMissing?createAccountButton:''}`; else err.innerHTML=''; if(creditToCreate>0&&!overpaymentAllowed) error='Customer credits are not enabled for this payment.'; if(creditToCreate>0&&!btn.dataset.overpaymentConfirmed) btn.textContent='Confirm Payment and Create Credit'; else btn.textContent='Record Payment'; btn.disabled=!!error || !(paidAmount>0 && dateEl.value && methodEl.value); };
+  modal.querySelector('[data-setup-collector]')?.addEventListener('click',()=>{ modal.remove(); showAdminSection('collections-collectors'); setTimeout(()=>openCollectorSetupWizard({fromPayment:true}),50); }); [dateEl,amountEl,methodEl,collectorEl,accountEl,bankEl,bankRefEl,remarksEl].forEach(el=>el.addEventListener('input',()=>{ delete btn.dataset.overpaymentConfirmed; validate(); })); methodEl.addEventListener('change',applyMethod); err.addEventListener('click',e=>{ if(e.target.closest('[data-create-payment-collector-account]')){ const c=selectedCollector(); modal.remove(); showAdminSection('collections-collectors'); setTimeout(()=>openCollectionAccountForm({collector_id:collectorId(c)||collectorEl.value,account_name:'Collection Account – '+(collectionCollectorName(c)||'Collector')}),50); } }); applyMethod(); validate();
+  btn.onclick=async()=>{ if(btn.disabled)return; const method=methodEl.value; const paidAmount=Number(amountEl.value); const creditToCreate=Math.max(0,paidAmount-Math.max(0,getLoanOutstanding(loan))); if(creditToCreate>0&&!btn.dataset.overpaymentConfirmed){ btn.dataset.overpaymentConfirmed='true'; err.innerHTML=`<div class="alert warning">Payment exceeds the loan balance. ${formatCurrency(creditToCreate)} will be recorded as customer credit. Click <strong>Confirm Payment and Create Credit</strong> again to proceed, or Cancel.</div>`; validate(); return; } if(!Number.isFinite(paidAmount)||paidAmount<=0){ err.innerHTML='<div class="alert error">Enter a payment amount greater than zero.</div>'; return; } const selectedCollectorId=collectorEl.value; const selectedCollectionAccountId=method==='BANK_TRANSFER'?bankEl.value:accountEl.value; const account=method==='BANK_TRANSFER'?accounts.find(a=>String(a.id)===bankEl.value):accounts.find(a=>String(a.id)===accountEl.value); btn.disabled=true; err.innerHTML=''; try{ const body={ paid_amount:paidAmount, payment_date:dateEl.value, payment_method:method, collection_method:method, collector_id:method==='CASH_COLLECTOR'?Number(selectedCollectorId)||undefined:undefined, collection_account_id:selectedCollectionAccountId?Number(selectedCollectionAccountId):undefined, reference:refEl.value.trim()||bankRefEl.value.trim(), remarks:remarksEl.value.trim(), bank_account_id: method==='BANK_TRANSFER'?Number(bankEl.value)||undefined:undefined, bank_reference:bankRefEl.value.trim() }; console.log('Ledger payment payload', body); const res=await api(`/admin/loans/${encodeURIComponent(loanId)}/ledger/${encodeURIComponent(entryId)}/payment`, { method:'POST', body }); const paymentId=res.payment_id||res.paymentId||res.id; const journalId=res.journal_entry_id||res.journalEntryId; const journalNo=res.journal_number||res.journalNumber||res.journal_no||res.journalNo; if(!(paymentId&&journalId&&journalNo)){ const unposted=String(res.accounting_status||res.accountingStatus||'').toUpperCase()==='UNPOSTED'; err.innerHTML=`<div class="alert error">Payment was not posted because the accounting journal was not created.</div>${unposted?`<button type="button" id="repair-payment-accounting">Repair Accounting</button>`:''}`; const repair=err.querySelector('#repair-payment-accounting'); if(repair) repair.onclick=async()=>{ if(!confirm('This will create the missing accounting journal for the existing payment. The payment amount will not be entered again.'))return; repair.disabled=true; try{ await api(`/admin/payments/${encodeURIComponent(paymentId)}/repair-accounting`,{method:'POST',body:{}}); err.innerHTML='<div class="alert success">Accounting repair requested. Reopen the payment details to confirm the journal.</div>'; await loadAdminLoanLedger(true); }catch(e){ err.innerHTML=`<div class="alert error">${escapeHtml(e.message||'Failed to repair accounting.')}</div>`; } }; return; } const settled=String(res.loan_status||res.loanStatus||'').toUpperCase()==='SETTLED'; const customerCredit=getCustomerCreditAmount(res); modal.querySelector('.modal-card').innerHTML=`<div class="modal-header"><h2>${settled?'Loan Settled Successfully':'Payment Recorded'}</h2><button class="icon-button" data-close-success>×</button></div><div class="alert success">${settled?'The loan has been fully settled.':escapeHtml(`Payment recorded and Journal ${journalNo} posted successfully.`)}${settled&&customerCredit>0?`<br>${formatCurrency(customerCredit)} has been recorded as a customer credit balance.`:''}</div><div class="loan-detail-grid">${(settled?[['Receipt Number',res.receipt_number||res.receiptNo||paymentId||'—'],['Journal Number',journalNo],['Settlement Date',formatDate(res.settlement_date||res.settlementDate||dateEl.value)||dateEl.value],['Amount Applied to Loan',formatCurrency(res.amount_applied_to_loan||res.amountAppliedToLoan||paidAmount-customerCredit)],['Outstanding Balance',formatCurrency(0)],...(customerCredit>0?[['Customer Credit',formatCurrency(customerCredit)]]:[])]:[['Receipt number',res.receipt_number||res.receiptNo||paymentId||'—'],['Journal number',journalNo],['Collector account',accountName(account)||'—'],['Interest allocation',formatCurrency(res.interest_allocation||res.interestAllocation||0)],['Principal allocation',formatCurrency(res.principal_allocation||res.principalAllocation||0)],['Deposit status',method==='CASH_COLLECTOR'?'Undeposited':(res.deposit_status||'Not required')]]).map(([l,v])=>`<div class="loan-detail-stat"><span>${escapeHtml(l)}</span><strong>${escapeHtml(String(v))}</strong></div>`).join('')}</div><button data-close-success>Close</button>`; modal.querySelectorAll('[data-close-success]').forEach(b=>b.onclick=()=>modal.remove()); setInlineAlert(adminLoanDetailMessage,settled?'Loan Settled Successfully':`Payment recorded and Journal ${journalNo} posted successfully.`,'success'); await Promise.allSettled([loadAdminLoanLedger(true), loadAdminLoans(true), loadUndepositedCollections(), loadCollectorBalances(), loadFinancialReports(), accountingLoadJournals()]); }catch(error){ console.error('Failed to record ledger payment', error); const message=String(error?.message||''); err.innerHTML=`<div class="alert error">${escapeHtml(message.includes('customer_advance_account_missing')?'Configure the Customer Advances liability account before recording this overpayment.':(message||'Payment was not posted. The loan settlement could not be completed.'))}</div>`; }finally{ validate(); } };
 
 }
 
@@ -3157,12 +3182,12 @@ function renderAdminLoansTable(loans) {
   adminLoansTableBody.innerHTML = '';
 
   if (adminLoansState.loading) {
-    adminLoansTableBody.innerHTML = '<tr><td colspan="8" class="muted">Loading loans...</td></tr>';
+    adminLoansTableBody.innerHTML = '<tr><td colspan="10" class="muted">Loading loans...</td></tr>';
     return;
   }
 
   if (!loans.length) {
-    adminLoansTableBody.innerHTML = '<tr><td colspan="8" class="muted">No loans found</td></tr>';
+    adminLoansTableBody.innerHTML = '<tr><td colspan="10" class="muted">No loans found</td></tr>';
     return;
   }
 
@@ -3171,8 +3196,11 @@ function renderAdminLoansTable(loans) {
     const principal = getLoanField(loan, ['principal_amount', 'principalAmount', 'principal', 'amount', 'approved_amount', 'approvedAmount'], 0);
     const totalPayable = getLoanField(loan, ['total_payable', 'totalPayable', 'payable_amount', 'payableAmount', 'total_amount', 'totalAmount'], 0);
     const totalPaid = getLoanField(loan, ['total_paid', 'totalPaid', 'paid_amount', 'paidAmount', 'amount_paid', 'amountPaid'], 0);
-    const outstanding = getLoanField(loan, ['outstanding', 'outstanding_amount', 'outstandingAmount', 'outstanding_balance', 'outstandingBalance', 'balance'], 0);
-    const status = getLoanField(loan, ['status', 'loan_status', 'loanStatus'], 'UNKNOWN');
+    const rawOutstanding = getLoanOutstanding(loan);
+    const outstanding = Math.max(0, rawOutstanding);
+    const status = getLoanStatus(loan);
+    const credit = getCustomerCreditAmount(loan);
+    const settledDate = getSettlementDate(loan);
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -3181,7 +3209,9 @@ function renderAdminLoansTable(loans) {
       <td>${formatCurrency(principal)}</td>
       <td>${formatCurrency(totalPayable)}</td>
       <td>${formatCurrency(totalPaid)}</td>
-      <td>${formatCurrency(outstanding)}</td>
+      <td>${formatCurrency(outstanding)}${rawOutstanding < 0 ? '<br><span class="badge badge-warning">Credit balance detected</span><br><span class="muted">Settlement reconciliation required</span>' : ''}</td>
+      <td>${credit > 0 ? formatCurrency(credit) : '<span class="muted">—</span>'}</td>
+      <td>${settledDate ? escapeHtml(formatDate(settledDate) || settledDate) : '<span class="muted">—</span>'}</td>
       <td>${renderStatusBadge(status)}</td>
       <td><button type="button" class="secondary" data-admin-loan-view="${escapeHtml(getLoanId(loan))}">View</button></td>
     `;
@@ -3223,8 +3253,10 @@ async function loadAdminLoans(force = false) {
   renderAdminLoans();
 
   try {
-    const response = await api(endpoint('adminLoans'));
-    adminLoansState.loans = normalizeLoansResponse(response);
+    const status = adminLoansState.selectedStatus;
+    const url = status === 'ALL' ? endpoint('adminLoans') : `${endpoint('adminLoans')}${endpoint('adminLoans').includes('?') ? '&' : '?'}status=${encodeURIComponent(status)}`;
+    const response = await api(url);
+    adminLoansState.loans = normalizeLoansResponse(response).filter((loan) => status === 'ALL' || getLoanStatus(loan) === status);
     adminLoansState.hasLoaded = true;
   } catch (error) {
     console.error('Failed to load admin loans', error);
@@ -8761,6 +8793,31 @@ document.addEventListener('click', (event) => {
   if (action === 'open-apply-modal') openApplyLoanModal();
 });
 
+
+function openCustomerCreditDialog(mode = 'view') {
+  const loan = adminLoansState.selectedLoan || {};
+  const customerId = getLoanCustomerId(loan);
+  if (!customerId) { setInlineAlert(adminLoanDetailMessage, 'Customer credit is unavailable because this loan has no customer identifier.', 'error'); return; }
+  const modal = document.createElement('div'); modal.className = 'modal-overlay historical-accounting-modal';
+  modal.innerHTML = '<div class="modal-card wide"><div class="modal-header"><h2>Customer Credit</h2><button class="icon-button" data-close>×</button></div><div class="customer-credit-body">Loading customer credits...</div></div>';
+  document.body.appendChild(modal); modal.querySelector('[data-close]').onclick=()=>modal.remove();
+  const body=modal.querySelector('.customer-credit-body');
+  const money=v=>formatCurrency(Math.max(0, Number(v)||0));
+  const reload=async()=>{
+    try { const response=await api(`/admin/customers/${encodeURIComponent(customerId)}/credits`); const credits=normalizeLoansResponse(response); const selected=credits.find(c=>String(getLoanField(c,['id','credit_id','creditId']))===String(getLoanField(loan,['customer_credit_id','customerCreditId','credit_id','creditId'],''))) || credits.find(c=>(Number(getLoanField(c,['available_amount','availableAmount'],0))||0)>0) || credits[0];
+      body.innerHTML=`<div class="ledger-table-scroll"><table class="placeholder-table loan-table"><thead><tr><th>Credit Number</th><th>Date</th><th>Source Loan</th><th>Original Amount</th><th>Available Amount</th><th>Applied Amount</th><th>Refunded Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${credits.length?credits.map(c=>{const id=getLoanField(c,['id','credit_id','creditId']);const avail=Number(getLoanField(c,['available_amount','availableAmount'],0))||0;return `<tr><td>${escapeHtml(getLoanField(c,['credit_number','creditNumber','number'],id))}</td><td>${escapeHtml(formatDate(getLoanField(c,['date','credit_date','creditDate','created_at','createdAt'],''))||'—')}</td><td>${escapeHtml(getLoanField(c,['source_loan_number','sourceLoanNumber','loan_number','loanNumber'],'—'))}</td><td>${money(getLoanField(c,['original_amount','originalAmount','amount'],0))}</td><td>${money(avail)}</td><td>${money(getLoanField(c,['applied_amount','appliedAmount'],0))}</td><td>${money(getLoanField(c,['refunded_amount','refundedAmount'],0))}</td><td>${renderStatusBadge(getLoanField(c,['status'],'UNKNOWN'))}</td><td>${avail>0?`<button class="secondary" data-credit-refund="${escapeHtml(id)}">Refund</button> <button class="secondary" data-credit-apply="${escapeHtml(id)}">Apply to Loan</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="9" class="muted">No customer credits found.</td></tr>'}</tbody></table></div>`;
+      if (selected && mode !== 'view') openCreditTransactionForm(modal, selected, mode, customerId, reload);
+    } catch(e) { body.innerHTML=`<div class="alert error">${escapeHtml(e.message||'Failed to load customer credits.')}</div>`; }
+  };
+  body.addEventListener('click',e=>{const refund=e.target.closest('[data-credit-refund]'),apply=e.target.closest('[data-credit-apply]');if(refund){const c={id:refund.dataset.creditRefund,available_amount:refund.closest('tr').children[4].textContent.replace(/[^0-9.]/g,'')};openCreditTransactionForm(modal,c,'refund',customerId,reload)}if(apply){const c={id:apply.dataset.creditApply,available_amount:apply.closest('tr').children[4].textContent.replace(/[^0-9.]/g,'')};openCreditTransactionForm(modal,c,'apply',customerId,reload)}}); reload();
+}
+async function openCreditTransactionForm(parent, credit, mode, customerId, reload) {
+  const available=Math.max(0,Number(credit.available_amount||credit.availableAmount)||0); const isRefund=mode==='refund';
+  const form=document.createElement('div'); form.className='subcard'; form.innerHTML=`<h3>${isRefund?'Refund Customer Credit':'Apply Customer Credit to Another Loan'}</h3><div class="credit-form-message"></div><div class="accounting-grid">${isRefund?'<label>Cash/Bank Account<input name="account_id" required></label><label>Reference<input name="reference"></label>':'<label>Target Loan<select name="target_loan_id"><option>Loading active loans...</option></select></label>'}<label>Amount<input name="amount" type="number" min="0.01" max="${available}" step="0.01" required></label><label>${isRefund?'Refund Date':'Effective Date'}<input name="effective_date" type="date" value="${todayDateOnly()}" required></label><label>Remarks<textarea name="remarks"></textarea></label></div><div class="modal-actions"><button class="secondary" data-credit-cancel>Cancel</button><button data-credit-submit>${isRefund?'Confirm Refund':'Apply Credit'}</button></div>`;
+  parent.querySelector('.customer-credit-body').appendChild(form); if(!isRefund){try{const loans=normalizeLoansResponse(await api(endpoint('adminLoans'))).filter(l=>String(getLoanCustomerId(l))===String(customerId)&&['ACTIVE','OVERDUE','DISBURSED'].includes(getLoanStatus(l)));const select=form.querySelector('[name=target_loan_id]');select.innerHTML=`<option value="">Select active loan</option>${loans.map(l=>`<option value="${escapeHtml(getLoanId(l))}">${escapeHtml(getLoanField(l,['loan_number','loanNumber','id']))} — ${formatCurrency(displayLoanOutstanding(l))}</option>`).join('')}`;}catch(e){form.querySelector('.credit-form-message').innerHTML='<div class="alert error">Could not load this customer’s active loans.</div>';}}
+  form.querySelector('[data-credit-cancel]').onclick=()=>form.remove(); form.querySelector('[data-credit-submit]').onclick=async()=>{const amount=Number(form.querySelector('[name=amount]').value);const msg=form.querySelector('.credit-form-message');if(!(amount>0)||amount>available){msg.innerHTML='<div class="alert error">Amount cannot exceed the available customer credit.</div>';return;} const body={amount,remarks:form.querySelector('[name=remarks]').value.trim()};if(isRefund){body.refund_date=form.querySelector('[name=effective_date]').value;body.cash_bank_account_id=form.querySelector('[name=account_id]').value;body.reference=form.querySelector('[name=reference]').value.trim();}else{body.target_loan_id=form.querySelector('[name=target_loan_id]').value;body.effective_date=form.querySelector('[name=effective_date]').value;if(!body.target_loan_id){msg.innerHTML='<div class="alert error">Select an active loan for the same customer.</div>';return;}}try{await api(`/admin/customer-credits/${encodeURIComponent(credit.id||credit.credit_id)}/${isRefund?'refund':'apply-to-loan'}`,{method:'POST',body});msg.innerHTML=`<div class="alert success">Customer credit ${isRefund?'refunded':'applied'} successfully.</div>`;await Promise.allSettled([reload(),loadAdminLoans(true),loadAdminLoanLedger(true)]);}catch(e){msg.innerHTML=`<div class="alert error">${escapeHtml(e.message||'Customer credit transaction failed.')}</div>`;}};
+}
+
 document.addEventListener('click', (event) => {
   const viewBtn = event.target.closest('[data-admin-loan-view]');
   if (viewBtn) {
@@ -8770,6 +8827,10 @@ document.addEventListener('click', (event) => {
     if (loan) openAdminLoanDetail(loan);
     return;
   }
+
+  if (event.target.closest('[data-view-customer-credit]')) { event.preventDefault(); openCustomerCreditDialog('view'); return; }
+  if (event.target.closest('[data-refund-customer-credit]')) { event.preventDefault(); openCustomerCreditDialog('refund'); return; }
+  if (event.target.closest('[data-apply-customer-credit]')) { event.preventDefault(); openCustomerCreditDialog('apply'); return; }
 
   const paymentBtn = event.target.closest('[data-admin-ledger-payment]');
   if (paymentBtn) {
