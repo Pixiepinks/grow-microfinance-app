@@ -145,29 +145,77 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: Text(_error!),
             ),
           if (!_loading && _error == null && _data != null)
-            DashboardCard(
-              title: 'Key metrics',
-              icon: Icons.insights,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _data!.entries
-                    .map(
-                      (entry) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(entry.key),
-                            Text(entry.value.toString(),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                          ],
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
+            _buildMetricsGrid(_data!),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricsGrid(Map<String, dynamic> dashboard) {
+    final metrics = [
+      _DashboardMetric(
+        title: 'Total Customers',
+        value: dashboard['total_customers'],
+        subtitle: 'All customer records',
+        icon: Icons.people_outline,
+      ),
+      _DashboardMetric(
+        title: 'Total Loans',
+        value: dashboard['total_loans'],
+        subtitle: 'All loan records',
+        icon: Icons.account_balance_wallet_outlined,
+      ),
+      _DashboardMetric(
+        title: 'Active Loans',
+        value: dashboard['active_loans'],
+        subtitle: 'Currently active loans',
+        icon: Icons.trending_up,
+      ),
+      _DashboardMetric(
+        title: 'Payments Today',
+        value: dashboard['payments_today'],
+        subtitle: 'Payments received today',
+        icon: Icons.payments_outlined,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columnCount = constraints.maxWidth >= 1100
+            ? 4
+            : constraints.maxWidth >= 600
+                ? 2
+                : 1;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columnCount,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: columnCount == 1 ? 2.8 : 1.65,
+          ),
+          itemCount: metrics.length,
+          itemBuilder: (context, index) => _buildMetricCard(metrics[index]),
+        );
+      },
+    );
+  }
+
+  Widget _buildMetricCard(_DashboardMetric metric) {
+    return DashboardCard(
+      title: metric.title,
+      icon: metric.icon,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            metric.value?.toString() ?? '—',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 28),
+          ),
+          const SizedBox(height: 4),
+          Text(metric.subtitle),
         ],
       ),
     );
@@ -453,6 +501,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
   }
+}
+
+class _DashboardMetric {
+  const _DashboardMetric({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String title;
+  final dynamic value;
+  final String subtitle;
+  final IconData icon;
 }
 
 
