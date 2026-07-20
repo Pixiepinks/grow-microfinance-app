@@ -1222,6 +1222,44 @@ td:nth-last-child(-n+3), th:nth-last-child(-n+3) { font-variant-numeric: tabular
 /* Phase 2 accounting reports */
 .report-page{max-width:none;width:100%;overflow-x:hidden}.report-table th,.report-table td{white-space:nowrap}.report-table .money{text-align:right;font-variant-numeric:tabular-nums}.parent-row{font-weight:700;background:#fafafa}.link-button{background:none;border:0;color:#2563eb;text-decoration:underline;cursor:pointer}.modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:50}.modal-card{background:#fff;border-radius:16px;max-height:90vh;overflow:auto;padding:24px;max-width:720px}.modal-card.wide{max-width:min(1100px,96vw)}.icon-button{float:right}.alert.success{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}@media print{.app-header,.admin-sidebar,.admin-menu,.report-filters,.action-row,button{display:none!important}.app-main,.card,.admin-content{box-shadow:none!important;border:0!important}.admin-layout{display:block}.report-page{font-size:12px}.report-table{overflow:visible}.report-table table{width:100%;border-collapse:collapse}.report-table tr{break-inside:avoid}}
 
+/* Reconciliation is mounted in a document-body portal so the loan-detail dialog
+   cannot clip it or create a lower stacking context. */
+.reconciliation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow: auto;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.reconciliation-overlay.is-open {
+  display: flex;
+}
+
+.reconciliation-modal {
+  position: relative;
+  z-index: 3001;
+  width: min(900px, calc(100vw - 40px));
+  max-width: 900px;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .reconciliation-overlay { padding: 0; }
+  .reconciliation-modal {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+}
+
 /* Apply Loan modal: render wizard directly with a light, readable design. */
 #apply-loan-modal .app-modal-dialog {
   width: min(900px, calc(100vw - 32px));
