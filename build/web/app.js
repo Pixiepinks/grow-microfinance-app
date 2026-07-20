@@ -3097,6 +3097,25 @@ function renderLoanReconciliationSection(data = {}) {
 
 
 let loanReconciliationInProgress = false;
+let loanReconciliationState = null;
+
+function normalizeLoanReconciliationPreview(payload) {
+  const preview = payload?.preview ?? payload?.data?.preview ?? payload?.data ?? payload;
+  if (!preview || typeof preview !== 'object' || Array.isArray(preview)) {
+    throw new Error('Reconciliation preview data is missing.');
+  }
+  return preview;
+}
+
+function reconciliationModalRoot() {
+  let root = document.getElementById('reconciliation-modal-root');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'reconciliation-modal-root';
+    document.body.appendChild(root);
+  }
+  return root;
+}
 
 function loanReconciliationErrorMessage(error) {
   const message = String(error?.message || '');
@@ -3205,19 +3224,47 @@ async function refreshReconciledLoan(loanId, reconciliation = {}) {
 async function openLoanReconciliationPreview(button) {
   if (loanReconciliationInProgress) return;
   const loan = adminLoansState.selectedLoan || {};
-  const loanId = Number(loan.id ?? loan.loan_id);
-  if (!Number.isInteger(loanId) || loanId <= 0) { setInlineAlert(adminLoanDetailMessage, 'A valid loan ID is required for reconciliation.', 'error'); return; }
+  const loanId = Number(getLoanId(loan));
+  if (!Number.isInteger(loanId) || loanId <= 0) {
+    setInlineAlert(adminLoanDetailMessage, 'A valid loan ID is required for reconciliation.', 'error');
+    return;
+  }
+
   loanReconciliationInProgress = true;
   button.disabled = true;
+  const buttonLabel = button.textContent;
+  button.textContent = 'Loading reconciliation…';
   const previewPath = `/admin/loans/${loanId}/settlement-reconciliation/preview`;
   const postPath = `/admin/loans/${loanId}/settlement-reconciliation`;
   let modal;
-  const close = () => { loanReconciliationInProgress = false; button.disabled = false; modal?.remove(); };
+  const close = () => {
+    if (modal?.isConnected) modal.remove();
+    loanReconciliationState = null;
+    loanReconciliationInProgress = false;
+    button.disabled = false;
+    button.textContent = buttonLabel;
+    if (button.isConnected) button.focus();
+    restoreBodyScrollingIfNoOverlay();
+  };
+  const trapFocus = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
   const renderPreview = (preview) => {
     let posting = false;
     const initial = settlementPreviewState(preview);
     const accountingReady = reconciliationAccountingReady(preview);
-    modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Reconcile Loan</h2><button class="icon-button" data-close>×</button></div><p>Review the settlement reconciliation before posting.</p><div class="reconciliation-values"></div><div class="subcard"><label><input type="checkbox" name="waive_delay_interest"> Waive Remaining Delay Interest</label><div class="delay-interest-waiver-fields hidden"><div class="accounting-grid"><label>Delay Interest Waiver Amount<input name="delay_interest_waiver_amount" type="number" min="0" max="${initial.delayOutstanding.toFixed(2)}" step="0.01" value="${initial.delayOutstanding.toFixed(2)}"></label><label>Approval Reference<input name="approval_reference"></label><label>Reason<textarea name="reason"></textarea></label></div></div></div><div class="subcard reconciliation-posting-preview"></div><div id="loan-reconciliation-message"></div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" id="confirm-loan-reconciliation" disabled>Confirm Reclassification, Waiver &amp; Settlement</button></div>`;
+    modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2 id="loan-reconciliation-title">Reconcile Loan</h2><button class="icon-button" data-close aria-label="Close reconciliation">×</button></div><p>Review the settlement reconciliation before posting.</p><div class="reconciliation-values"></div><div class="subcard"><label><input type="checkbox" name="waive_delay_interest"> Waive Remaining Delay Interest</label><div class="delay-interest-waiver-fields hidden"><div class="accounting-grid"><label>Delay Interest Waiver Amount<input name="delay_interest_waiver_amount" type="number" min="0" max="${initial.delayOutstanding.toFixed(2)}" step="0.01" value="${initial.delayOutstanding.toFixed(2)}"></label><label>Approval Reference<input name="approval_reference"></label><label>Reason<textarea name="reason"></textarea></label></div></div></div><div class="subcard reconciliation-posting-preview"></div><div id="loan-reconciliation-message" aria-live="polite"></div><div class="modal-actions sticky-modal-footer"><button type="button" class="secondary" data-close>Cancel</button><button type="button" id="confirm-loan-reconciliation" disabled>Confirm Reclassification, Waiver &amp; Settlement</button></div>`;
     modal.querySelectorAll('[data-close]').forEach((closeButton) => { closeButton.onclick = close; });
     const values = modal.querySelector('.reconciliation-values'), waiverCheckbox = modal.querySelector('[name=waive_delay_interest]'), waiverFields = modal.querySelector('.delay-interest-waiver-fields'), waiverInput = modal.querySelector('[name=delay_interest_waiver_amount]'), approvalInput = modal.querySelector('[name=approval_reference]'), reasonInput = modal.querySelector('[name=reason]'), journalPreview = modal.querySelector('.reconciliation-posting-preview'), message = modal.querySelector('#loan-reconciliation-message'), confirmButton = modal.querySelector('#confirm-loan-reconciliation');
     const validate = () => {
@@ -3249,13 +3296,17 @@ async function openLoanReconciliationPreview(button) {
         const reconciliation = await api(postPath, { method: 'POST', body });
         const result = settlementPreviewState({ ...reconciliation, proposed_status: reconciliation.new_status ?? reconciliation.loan_status ?? reconciliation.proposed_status });
         if (!result.canSettle) { message.innerHTML = '<div class="alert error">The loan settlement could not be confirmed. Review the updated reconciliation before trying again.</div>'; return; }
-        modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Loan Settled Successfully</h2><button class="icon-button" data-close-success>×</button></div>${renderLoanReconciliationSuccess(reconciliation, loan)}<div class="modal-actions sticky-modal-footer"><button type="button" data-close-success>Close</button></div>`;
+        modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2 id="loan-reconciliation-title">Loan Settled Successfully</h2><button class="icon-button" data-close-success aria-label="Close reconciliation">×</button></div>${renderLoanReconciliationSuccess(reconciliation, loan)}<div class="modal-actions sticky-modal-footer"><button type="button" data-close-success>Close</button></div>`;
         modal.querySelectorAll('[data-close-success]').forEach((closeButton) => { closeButton.onclick = close; });
         await refreshReconciledLoan(loanId, reconciliation);
       } catch (error) {
         if (reconciliationPreviewChanged(error)) {
-          try { renderPreview(await api(previewPath, { method: 'POST', body: {} })); modal.querySelector('#loan-reconciliation-message').innerHTML = '<div class="alert warning">The preview is stale because loan balances changed. Review the updated reconciliation before confirming.</div>'; }
-          catch (previewError) { message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(previewError))}</div>`; }
+          try {
+            const refreshedPreview = normalizeLoanReconciliationPreview(await api(previewPath, { method: 'POST', body: {} }));
+            loanReconciliationState.preview = refreshedPreview;
+            renderPreview(refreshedPreview);
+            modal.querySelector('#loan-reconciliation-message').innerHTML = '<div class="alert warning">The preview is stale because loan balances changed. Review the updated reconciliation before confirming.</div>';
+          } catch (previewError) { message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(previewError))}</div>`; }
           return;
         }
         message.innerHTML = `<div class="alert error">${escapeHtml(loanReconciliationErrorMessage(error))}</div>`;
@@ -3264,9 +3315,33 @@ async function openLoanReconciliationPreview(button) {
     validate();
   };
   try {
-    const preview = await api(previewPath, { method: 'POST', body: {} });
-    modal = document.createElement('div'); modal.className = 'modal-overlay historical-accounting-modal'; modal.innerHTML = '<div class="modal-card wide"></div>'; document.body.appendChild(modal); renderPreview(preview);
-  } catch (error) { setInlineAlert(adminLoanDetailMessage, loanReconciliationErrorMessage(error), 'error'); loanReconciliationInProgress = false; button.disabled = false; }
+    const preview = normalizeLoanReconciliationPreview(await api(previewPath, { method: 'POST', body: {} }));
+    loanReconciliationState = { loanId, preview };
+    const root = reconciliationModalRoot();
+    root.replaceChildren();
+    modal = document.createElement('div');
+    modal.id = 'loan-reconciliation-modal';
+    modal.className = 'reconciliation-overlay is-open';
+    modal.hidden = false;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-hidden', 'false');
+    modal.setAttribute('aria-labelledby', 'loan-reconciliation-title');
+    modal.tabIndex = -1;
+    modal.innerHTML = '<div class="reconciliation-modal modal-card wide"></div>';
+    root.appendChild(modal);
+    document.body.classList.add('modal-open');
+    modal.addEventListener('keydown', trapFocus);
+    modal.addEventListener('click', (event) => { if (event.target === modal) close(); });
+    renderPreview(preview);
+    modal.querySelector('[data-close]')?.focus();
+  } catch (error) {
+    console.error('Unable to open loan reconciliation', error);
+    setInlineAlert(adminLoanDetailMessage, loanReconciliationErrorMessage(error), 'error');
+    loanReconciliationInProgress = false;
+    button.disabled = false;
+    button.textContent = buttonLabel;
+  }
 }
 
 async function openManualInterestAccrualDialog(loanOnly = true) {
