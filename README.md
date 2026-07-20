@@ -43,12 +43,20 @@ flutter run -d chrome
 flutter build web --release
 ```
 
-This generates the web build in `build/web`.
+This generates the normal Flutter output in `build/web` when this project is
+configured to use Flutter's standard web runner.
+
+> **Current Railway deployment model:** this repository intentionally serves
+> the committed custom web bundle in `build/web` (`index.html`, `app.js`, and
+> `styles.css`) through `server.js`; it does not run a Flutter build on Railway.
+> Update and commit that bundle whenever changing the production web UI. The
+> `app.js` query version in `index.html` is changed with each release so browsers
+> request the latest script. There is no Flutter service worker in this custom
+> bundle.
 
 ### 3. Start the local Node.js server (serves the Flutter web build)
 
 ```bash
-cd web_server
 npm install
 npm start
 ```
@@ -59,18 +67,21 @@ Then open <http://localhost:3000> in the browser.
 
 Connect this GitHub repo to Railway as a new service.
 
-Railway looks for a `start.sh` script by default. A helper script is included in the repo to install the Node server dependencies and launch the web build:
+Railway uses `nixpacks.toml` to install Node dependencies and runs `npm start`
+from the repository root. The Express server serves the committed `build/web`
+directory:
 
 ```bash
 ./start.sh
 ```
 
-Make sure `build/web` is present and committed (run `flutter build web --release` before committing when you change the app). The `start.sh` script will exit with an error if the build output is missing so the deployment fails fast.
+Make sure `build/web` is present and committed. The deployment does not compile
+Flutter source, so changing `lib/` alone does not update the production web app.
 
 If you prefer to set a custom start command in Railway instead of using the script, use:
 
 ```bash
-npm install --prefix web_server && npm start --prefix web_server
+npm install && npm start
 ```
 
 The Railway URL for this service will be the web app URL that staff/customers can open in Chrome.

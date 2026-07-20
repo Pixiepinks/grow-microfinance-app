@@ -161,7 +161,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       _DashboardMetric(
         title: 'Total Loans',
-        value: dashboard['total_loans'],
+        value: dashboard.containsKey('total_loans')
+            ? dashboard['total_loans']
+            : '—',
         subtitle: 'All loan records',
         icon: Icons.account_balance_wallet_outlined,
       ),
