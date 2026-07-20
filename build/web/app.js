@@ -7243,51 +7243,41 @@ function togglePanels(role) {
   }
 }
 
-function safeMetricNumber(value) {
-  if (value === null || value === undefined || value === '') {
-    return 0;
-  }
-
-  const number = Number(value);
-
-  return Number.isFinite(number) ? number : 0;
-}
-
 function normalizeDashboardMetrics(raw = {}) {
   const source = raw?.data ?? raw ?? {};
+  const metricValue = (snakeCaseKey, camelCaseKey) => {
+    if (Object.prototype.hasOwnProperty.call(source, snakeCaseKey)) {
+      return source[snakeCaseKey];
+    }
+    if (Object.prototype.hasOwnProperty.call(source, camelCaseKey)) {
+      return source[camelCaseKey];
+    }
+    return null;
+  };
 
   return {
-    totalCustomers: safeMetricNumber(
-      source.total_customers ??
-      source.totalCustomers ??
-      0,
-    ),
-    activeLoans: safeMetricNumber(
-      source.active_loans ??
-      source.activeLoans ??
-      0,
-    ),
-    paymentsToday: safeMetricNumber(
-      source.payments_today ??
-      source.paymentsToday ??
-      0,
-    ),
+    totalCustomers: metricValue('total_customers', 'totalCustomers'),
+    totalLoans: metricValue('total_loans', 'totalLoans'),
+    activeLoans: metricValue('active_loans', 'activeLoans'),
+    paymentsToday: metricValue('payments_today', 'paymentsToday'),
   };
 }
 
 function renderDashboardMetrics(metrics) {
   renderMetrics(adminMetrics, [
-    { label: 'Total customers', value: String(metrics.totalCustomers), hint: 'Across all segments' },
-    { label: 'Active loans', value: String(metrics.activeLoans), hint: 'Current portfolio' },
-    { label: 'Payments today', value: String(metrics.paymentsToday), hint: 'Recorded settlements' },
+    { label: 'Total Customers', value: String(metrics.totalCustomers ?? '—'), hint: 'All customer records' },
+    { label: 'Total Loans', value: String(metrics.totalLoans ?? '—'), hint: 'All loan records' },
+    { label: 'Active Loans', value: String(metrics.activeLoans ?? '—'), hint: 'Currently active loans' },
+    { label: 'Payments Today', value: String(metrics.paymentsToday ?? '—'), hint: 'Payments received today' },
   ]);
 }
 
 function renderDashboardMetricsLoading() {
   renderMetrics(adminMetrics, [
-    { label: 'Total customers', value: 'Loading...', hint: 'Across all segments' },
-    { label: 'Active loans', value: 'Loading...', hint: 'Current portfolio' },
-    { label: 'Payments today', value: 'Loading...', hint: 'Recorded settlements' },
+    { label: 'Total Customers', value: 'Loading...', hint: 'All customer records' },
+    { label: 'Total Loans', value: 'Loading...', hint: 'All loan records' },
+    { label: 'Active Loans', value: 'Loading...', hint: 'Currently active loans' },
+    { label: 'Payments Today', value: 'Loading...', hint: 'Payments received today' },
   ]);
 }
 
@@ -7536,17 +7526,16 @@ async function loadAdmin() {
 
     if (dashboardResult.status === 'fulfilled') {
       const response = dashboardResult.value;
-      console.log('Dashboard raw response', response);
       const metrics = normalizeDashboardMetrics(response);
-      console.log('Dashboard normalized metrics', metrics);
       renderDashboardMetrics(metrics);
     } else {
       console.error('Failed to load dashboard metrics', dashboardResult.reason);
       showDashboardMetricsError();
       renderMetrics(adminMetrics, [
-        { label: 'Total customers', value: '—', hint: 'Across all segments' },
-        { label: 'Active loans', value: '—', hint: 'Current portfolio' },
-        { label: 'Payments today', value: '—', hint: 'Recorded settlements' },
+        { label: 'Total Customers', value: '—', hint: 'All customer records' },
+        { label: 'Total Loans', value: '—', hint: 'All loan records' },
+        { label: 'Active Loans', value: '—', hint: 'Currently active loans' },
+        { label: 'Payments Today', value: '—', hint: 'Payments received today' },
       ]);
     }
 
