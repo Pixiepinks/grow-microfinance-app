@@ -2487,22 +2487,29 @@ function ensureAdminLoansUI() {
     const style = document.createElement('style');
     style.id = 'admin-loan-ledger-style';
     style.textContent = `
-      .loan-detail-modal .app-modal-dialog { max-width: min(1180px, 96vw); width: 96vw; }
-      .loan-detail-tabs { display: flex; gap: 0.5rem; margin: 1rem 0; border-bottom: 1px solid rgba(148, 163, 184, 0.25); }
+      .loan-detail-modal { display:flex; align-items:center; justify-content:center; padding:20px; overflow:hidden; background:rgba(15, 23, 42, 0.55); z-index:1200; }
+      .loan-detail-modal .app-modal-dialog { width:min(1200px, calc(100vw - 40px)); max-width:1200px; height:min(90vh, 900px); max-height:90vh; margin:0; }
+      .loan-detail-modal .modal-header { position:sticky; top:0; z-index:3; display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:1rem 1.25rem; background:#fff; border-bottom:1px solid var(--border); }
+      .loan-detail-modal .modal-header h3 { margin:0; }
+      .loan-detail-modal .modal-close-button { flex:0 0 36px; width:36px; min-width:36px; min-height:36px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:1.25rem; line-height:1; }
+      .loan-detail-tabs { position:sticky; top:var(--loan-modal-header-height, 82px); z-index:2; display:flex; flex:0 0 auto; gap:0.5rem; margin:0; padding:0 1.25rem; background:#fff; border-bottom:1px solid rgba(148, 163, 184, 0.25); }
       .loan-detail-tab { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 0.75rem 1rem; cursor: pointer; }
       .loan-detail-tab.active { border-bottom-color: #16a34a; color: #166534; font-weight: 700; }
-      .loan-detail-grid, .ledger-totals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+      .loan-detail-modal .modal-body { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:1rem calc(1.25rem - 6px) 1.25rem 1.25rem; }
+      .loan-detail-modal .modal-loading { min-height:12rem; display:grid; place-items:center; text-align:center; }
+      .loan-summary-grid, .loan-detail-grid, .ledger-totals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
       .loan-detail-stat { border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 0.85rem; padding: 0.75rem; background: rgba(248, 250, 252, 0.8); }
       .loan-detail-stat span { display: block; color: #64748b; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
       .loan-detail-stat strong { display: block; margin-top: 0.25rem; }
       .loan-detail-actions { display: flex; justify-content: flex-end; margin: 0 0 1rem; }
-      .ledger-table-scroll { overflow-x: auto; }
-      .ledger-table-scroll table { min-width: 1900px; }
+      .loan-ledger-table-wrap { width:100%; overflow-x:auto; overflow-y:visible; -webkit-overflow-scrolling:touch; }
+      .loan-ledger-table-wrap table { width:max-content; min-width:1400px; }
       .historical-accounting-modal .modal-card { background:#fff; color:#0f172a; max-height:92vh; overflow:auto; }
       .sticky-modal-footer { position: sticky; bottom: 0; background:#fff; border-top:1px solid rgba(148,163,184,.25); padding-top: .75rem; }
       .accounting-summary-cards { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
       .admin-loans-filter-toolbar { display:grid; grid-template-columns:repeat(auto-fit, minmax(145px, 1fr)); gap:.75rem; align-items:end; margin:1rem 0; } .admin-loans-filter-toolbar label { display:grid; gap:.3rem; font-weight:600; } .admin-loans-search { grid-column:span 2; } .admin-loans-filter-toolbar input, .admin-loans-filter-toolbar select { width:100%; } .admin-loans-filter-actions, .admin-loans-pagination { display:flex; flex-wrap:wrap; align-items:end; gap:.5rem; } .admin-loans-pagination { margin-top:1rem; } .loan-sort { border:0; background:transparent; padding:0; font:inherit; font-weight:inherit; cursor:pointer; white-space:nowrap; } .loan-sort[aria-sort="ascending"]::after { content:" ▲"; font-size:.7em; } .loan-sort[aria-sort="descending"]::after { content:" ▼"; font-size:.7em; } .loan-table-wrapper { overflow-x:auto; }
-      @media (max-width: 720px) { .historical-accounting-modal .accounting-grid, .loan-detail-grid, .ledger-totals-grid { grid-template-columns: 1fr; } .loan-detail-modal .app-modal-dialog { width: 100vw; max-width: 100vw; } .loan-detail-tabs { overflow-x:auto; } .ledger-table-scroll table { min-width: 0; } .ledger-table-scroll thead { display:none; } .ledger-table-scroll tr { display:block; margin-bottom:.75rem; border:1px solid rgba(148,163,184,.35); border-radius:.75rem; padding:.5rem; } .ledger-table-scroll td { display:block; border:0; } .admin-loans-search { grid-column:1 / -1; } .admin-loans-filter-actions { grid-column:1 / -1; } }
+      @media (max-width: 768px) { .loan-detail-modal { padding:12px; } .loan-detail-modal .app-modal-dialog { width:calc(100vw - 24px); height:min(92vh, 900px); max-height:92vh; } .loan-detail-tabs { overflow-x:auto; } .admin-loans-search { grid-column:1 / -1; } .admin-loans-filter-actions { grid-column:1 / -1; } }
+      @media (max-width: 640px) { .loan-detail-modal { padding:0; } .loan-detail-modal .app-modal-dialog { width:100vw; height:100vh; max-width:none; max-height:none; border-radius:0; border:0; } .loan-detail-modal .modal-header { padding:.875rem 1rem; } .loan-detail-tabs { top:var(--loan-modal-header-height, 76px); padding:0 1rem; } .loan-detail-modal .modal-body { padding:1rem calc(1rem - 6px) 1rem 1rem; } }
     `;
     document.head.appendChild(style);
   }
@@ -2519,14 +2526,16 @@ function ensureAdminLoansUI() {
             <h3 id="admin-loan-detail-title">Loan</h3>
             <p id="admin-loan-detail-status" class="muted"></p>
           </div>
-          <button type="button" class="ghost" id="close-admin-loan-detail" aria-label="Close loan detail">Close</button>
+          <button type="button" class="ghost modal-close-button" id="close-admin-loan-detail" aria-label="Close loan detail" title="Close loan detail">×</button>
         </div>
-        <p id="admin-loan-detail-message" class="alert hidden" aria-live="polite"></p>
         <div id="admin-loan-detail-tabs" class="loan-detail-tabs" role="tablist">
           <button type="button" class="loan-detail-tab active" data-admin-loan-tab="details">Details</button>
           <button type="button" class="loan-detail-tab" data-admin-loan-tab="ledger">Ledger</button>
         </div>
-        <div id="admin-loan-detail-content"></div>
+        <div class="modal-body">
+          <p id="admin-loan-detail-message" class="alert hidden" aria-live="polite"></p>
+          <div id="admin-loan-detail-content"></div>
+        </div>
       </div>
     `;
     document.body.appendChild(adminLoanDetailModal);
@@ -2546,6 +2555,9 @@ function ensureAdminLoansUI() {
   adminLoanDetailTabs?.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-admin-loan-tab]')?.dataset.adminLoanTab;
     if (tab) switchAdminLoanDetailTab(tab);
+  });
+  adminLoanDetailModal.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeAdminLoanDetail();
   });
 }
 
@@ -3347,7 +3359,7 @@ function deriveLedgerAccountingStatus(entry = {}) {
 function renderLoanLedger() {
   setInlineAlert(adminLoanDetailMessage, adminLoansState.ledgerError || '', 'error');
   if (adminLoansState.ledgerLoading) {
-    adminLoanDetailContent.innerHTML = '<p class="muted">Loading repayment ledger...</p>';
+    adminLoanDetailContent.innerHTML = '<div class="modal-loading"><p class="muted">Loading repayment ledger...</p></div>';
     return;
   }
   if (adminLoansState.ledgerError) {
@@ -3428,7 +3440,7 @@ function renderLoanLedger() {
   }).join('');
 
   adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div>
-    <div class="ledger-table-scroll"><table class="placeholder-table loan-table"><thead><tr>
+    <div class="loan-ledger-table-wrap"><table class="placeholder-table loan-table"><thead><tr>
       <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Original Interest</th><th>Interest Rebate</th><th>Revised Interest</th><th>Waiver Status</th><th>Interest Accrued</th><th>Interest Accrued Date</th><th>Interest Paid</th><th>Principal Paid</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Delay Interest Accrued</th><th>Delay Interest Paid</th><th>Delay Interest Waived</th><th>Journal Status</th><th>Actions</th>
     </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -3452,6 +3464,10 @@ function renderAdminLoanDetail() {
 
 function closeAdminLoanDetail() {
   adminLoanDetailModal?.classList.add('hidden');
+  restoreBodyScrollingIfNoOverlay();
+  const opener = adminLoanDetailModal?._opener;
+  adminLoanDetailModal._opener = null;
+  if (opener?.isConnected) opener.focus();
 }
 
 async function openAdminLoanDetail(loan) {
@@ -3462,8 +3478,12 @@ async function openAdminLoanDetail(loan) {
   adminLoansState.ledgerTotals = null;
   adminLoansState.ledgerError = null;
   adminLoansState.ledgerLoadedLoanId = null;
+  adminLoanDetailModal._opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   adminLoanDetailModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  adminLoanDetailModal.querySelector('.modal-body')?.scrollTo({ top: 0 });
   renderAdminLoanDetail();
+  adminLoanDetailCloseBtn?.focus();
   await loadAdminLoanLedger();
 }
 
