@@ -30,6 +30,7 @@ const defaultApiConfig = {
     customers: '/customers',
     leads: '/leads',
     leadConvert: '/leads/{id}/convert-to-customer',
+    customerNormalizedProfile: '/admin/customers/{id}/profile-normalized',
   },
 };
 
@@ -770,6 +771,11 @@ let customerSearchLoading = false;
 let customerSearchController = null;
 let customerSearchSequence = 0;
 let customerSearchHighlightedIndex = -1;
+let customerProfileController = null;
+let customerProfileRequestSequence = 0;
+let customerProfileState = 'idle';
+let selectedCustomerProfile = null;
+let selectedExistingLoans = [];
 let publicLeadSection;
 let publicLeadForm;
 let publicLeadMessage;
@@ -6586,6 +6592,8 @@ function openApplyLoanModal() {
 
 function closeApplyLoanModal() {
   if (!applyLoanModal) return;
+  // Invalidate profile work immediately so a closed/reopened wizard cannot show stale data.
+  clearSelectedCustomer();
   applyLoanModal.classList.add('hidden');
   applyLoanModal.classList.remove('open');
   applyLoanModal.setAttribute('aria-hidden', 'true');
@@ -8093,6 +8101,8 @@ function updateStepperUI() {
   });
 
   prevStepBtn.disabled = currentStep === 0;
+  // A selected existing customer must finish normalized-profile loading before Applicant can advance.
+  nextStepBtn.disabled = currentStep === 1 && Boolean(selectedCustomerId) && customerProfileState !== 'ready';
   nextStepBtn.classList.toggle('hidden', currentStep === formSteps.length - 1);
   saveDraftBtn.classList.toggle('hidden', currentStep !== formSteps.length - 1);
   submitApplicationBtn.classList.toggle('hidden', currentStep !== formSteps.length - 1);
@@ -8310,25 +8320,93 @@ function setCustomerSearchMessage(message = '', type = 'error') {
   customerSearchMessageEl.className = `inline-alert ${type}`;
 }
 
-function fillApplicantFieldsFromCustomer(customer = {}) {
-  if (!loanApplicationForm) return;
-  const fieldMap = {
-    full_name: getCustomerDisplayName(customer),
-    nic_number: getCustomerField(customer, ['nic_number', 'nic', 'nicNumber', 'nic_no']),
-    mobile_number: getCustomerField(customer, ['mobile', 'mobile_number', 'phone', 'contact']),
-    email: getCustomerField(customer, ['email', 'email_address']),
-    address_line1: getCustomerField(customer, ['address_line1', 'address', 'address_line', 'addressLine']),
-    address_line2: getCustomerField(customer, ['address_line2']),
-    city: getCustomerField(customer, ['city', 'current_city', 'permanent_city']),
-    district: getCustomerField(customer, ['district', 'current_district', 'permanent_district']),
-    province: getCustomerField(customer, ['province', 'current_province', 'permanent_province']),
-    date_of_birth: getCustomerField(customer, ['date_of_birth', 'dob']),
-  };
+function safeProfileText(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  return /^(null|undefined|nan|none)$/i.test(text) ? '' : text;
+}
 
-  Object.entries(fieldMap).forEach(([name, value]) => {
-    const input = loanApplicationForm.querySelector(`[name="${name}"]`);
-    if (input && value !== undefined && value !== null) input.value = String(value);
-  });
+function normalizeProfileDate(value) {
+  const text = safeProfileText(value);
+  if (!text) return '';
+  const direct = /^(\d{4}-\d{2}-\d{2})/.exec(text);
+  if (direct) {
+    const [year, month, day] = direct[1].split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? direct[1] : '';
+  }
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function setApplicantValue(name, value) {
+  const input = loanApplicationForm?.querySelector(`[name="${name}"]`);
+  if (input) input.value = safeProfileText(value);
+}
+
+function clearCustomerDerivedFields() {
+  ['full_name', 'nic_number', 'mobile_number', 'email', 'address_line1', 'address_line2', 'city', 'district', 'province', 'postal_code', 'date_of_birth', 'monthly_income', 'monthly_expenses', 'existing_loans_description'].forEach((name) => setApplicantValue(name, ''));
+  const existingLoans = loanApplicationForm?.querySelector('[name="has_existing_loans"]');
+  if (existingLoans) existingLoans.checked = false;
+  selectedCustomerProfile = null;
+  selectedExistingLoans = [];
+}
+
+function unwrapNormalizedCustomerProfile(payload) {
+  const profile = payload?.profile ?? payload?.data?.profile ?? payload?.data ?? payload;
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile) || !safeProfileText(profile.customer_id ?? profile.id)) return null;
+  return profile;
+}
+
+function formatExistingLoans(loans) {
+  const rows = Array.isArray(loans) ? loans : [];
+  if (!rows.length) return '';
+  return rows.map((loan) => [
+    `Loan ${safeProfileText(loan.loan_number ?? loan.loan_no ?? loan.number ?? loan.id) || '—'}`,
+    safeProfileText(loan.status) && `Status: ${safeProfileText(loan.status)}`,
+    safeProfileText(loan.outstanding_amount ?? loan.outstanding_balance) && `Outstanding: ${safeProfileText(loan.outstanding_amount ?? loan.outstanding_balance)}`,
+    safeProfileText(loan.installment_amount) && `Installment: ${safeProfileText(loan.installment_amount)}`,
+    safeProfileText(loan.repayment_frequency ?? loan.frequency) && `Frequency: ${safeProfileText(loan.repayment_frequency ?? loan.frequency)}`,
+  ].filter(Boolean).join(' • ')).join('\n');
+}
+
+function applyNormalizedCustomerProfile(profile) {
+  const fieldMap = {
+    full_name: profile.full_name,
+    nic_number: profile.nic_number,
+    mobile_number: profile.mobile ?? profile.mobile_number,
+    email: profile.email,
+    address_line1: profile.current_address_line1 ?? profile.address_line1,
+    address_line2: profile.current_address_line2 ?? profile.address_line2,
+    city: profile.current_city ?? profile.city,
+    district: profile.current_district ?? profile.district,
+    province: profile.current_province ?? profile.province,
+    postal_code: profile.current_postal_code ?? profile.postal_code,
+    monthly_income: profile.monthly_income,
+    monthly_expenses: profile.monthly_expenses,
+  };
+  Object.entries(fieldMap).forEach(([name, value]) => setApplicantValue(name, value));
+  setApplicantValue('date_of_birth', normalizeProfileDate(profile.date_of_birth));
+  const loans = Array.isArray(profile.existing_loans) ? profile.existing_loans : [];
+  const rawDetails = profile.existing_loan_details;
+  const details = (typeof rawDetails === 'string' || typeof rawDetails === 'number' ? safeProfileText(rawDetails) : '') || formatExistingLoans(loans);
+  const hasExistingLoans = profile.has_existing_loans === true || loans.length > 0;
+  const checkbox = loanApplicationForm?.querySelector('[name="has_existing_loans"]');
+  if (checkbox) checkbox.checked = hasExistingLoans;
+  setApplicantValue('existing_loans_description', details);
+  selectedCustomerProfile = profile;
+  selectedExistingLoans = loans;
+}
+
+function profileWarnings(profile) {
+  const warnings = [];
+  if (profile.profile_complete === false) warnings.push('Profile incomplete');
+  for (const value of [profile.missing_fields, profile.conflicts, profile.review_warnings]) {
+    if (Array.isArray(value)) warnings.push(...value.map(safeProfileText).filter(Boolean));
+    else if (safeProfileText(value)) warnings.push(safeProfileText(value));
+  }
+  if (profile.address_review_required === true) warnings.push('Address review required');
+  return [...new Set(warnings)];
 }
 
 function renderSelectedCustomerChip(needsConfirmation = false) {
@@ -8338,50 +8416,86 @@ function renderSelectedCustomerChip(needsConfirmation = false) {
     customerSearchSelectionEl.innerHTML = '';
     return;
   }
-
+  const code = safeProfileText(selectedCustomerProfile?.customer_code ?? selectedCustomer.customer_code ?? selectedCustomer.customer_number);
+  const label = `${selectedCustomerId}${code ? ` / ${code}` : ''} - ${safeProfileText(selectedCustomerProfile?.full_name) || getCustomerDisplayName(selectedCustomer)}`;
+  const warnings = selectedCustomerProfile ? profileWarnings(selectedCustomerProfile) : [];
+  const loans = selectedExistingLoans;
+  const busy = customerProfileState === 'loading';
+  const failed = customerProfileState === 'error';
   customerSearchSelectionEl.classList.remove('hidden');
   customerSearchSelectionEl.innerHTML = `
-    <span><strong>${needsConfirmation ? 'Previous customer:' : 'Selected Customer:'}</strong> ${escapeHtml(selectedCustomerId)} - ${escapeHtml(getCustomerDisplayName(selectedCustomer))}</span>
-    ${needsConfirmation ? '<span class="muted">Select a customer from the search results.</span>' : ''}
-    <button type="button" id="clear-selected-customer" class="ghost">Clear selection</button>
-  `;
+    <span><strong>${needsConfirmation ? 'Previous customer:' : 'Selected Customer:'}</strong> ${escapeHtml(label)}</span>
+    ${busy ? '<p class="muted">Loading customer profile...</p>' : ''}
+    ${customerProfileState === 'ready' ? '<p class="muted">Customer information has been copied into this application. Changes made here do not automatically update the customer master profile.</p>' : ''}
+    ${warnings.length ? `<div class="inline-alert warning"><strong>Profile warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}
+    ${loans.length ? `<div class="inline-alert warning"><strong>Existing active loans</strong><ul>${loans.map((loan) => `<li>${escapeHtml(formatExistingLoans([loan]))}</li>`).join('')}</ul></div>` : ''}
+    ${failed ? '<div class="inline-alert error">Unable to load the normalized customer profile. Please retry. <button type="button" id="retry-customer-profile" class="ghost">Retry</button></div>' : ''}
+    <button type="button" id="clear-selected-customer" class="ghost">Clear selection</button>`;
+  customerSearchSelectionEl.querySelector('#clear-selected-customer')?.addEventListener('click', clearSelectedCustomer);
+  customerSearchSelectionEl.querySelector('#retry-customer-profile')?.addEventListener('click', () => loadNormalizedCustomerProfile(selectedCustomerId));
+}
 
-  customerSearchSelectionEl
-    .querySelector('#clear-selected-customer')
-    ?.addEventListener('click', () => clearSelectedCustomer());
+async function loadNormalizedCustomerProfile(customerId) {
+  const sequence = ++customerProfileRequestSequence;
+  customerProfileController?.abort();
+  customerProfileController = new AbortController();
+  customerProfileState = 'loading';
+  renderSelectedCustomerChip();
+  updateStepperUI();
+  try {
+    const path = endpoint('customerNormalizedProfile').replace('{id}', encodeURIComponent(customerId));
+    const payload = await api.get(path, { signal: customerProfileController.signal });
+    if (sequence !== customerProfileRequestSequence || String(customerId) !== String(selectedCustomerId)) return;
+    const profile = unwrapNormalizedCustomerProfile(payload);
+    if (!profile || String(profile.customer_id ?? profile.id) !== String(customerId)) throw new Error('The normalized profile did not match the selected customer.');
+    applyNormalizedCustomerProfile(profile);
+    customerProfileState = 'ready';
+    setCustomerSearchMessage('', 'success');
+  } catch (error) {
+    if (error?.name === 'AbortError' || sequence !== customerProfileRequestSequence || String(customerId) !== String(selectedCustomerId)) return;
+    console.error('Normalized customer profile failed to load', error);
+    clearCustomerDerivedFields();
+    customerProfileState = 'error';
+  } finally {
+    if (sequence === customerProfileRequestSequence && String(customerId) === String(selectedCustomerId)) {
+      renderSelectedCustomerChip();
+      updateStepperUI();
+    }
+  }
 }
 
 function clearSelectedCustomer() {
+  customerProfileRequestSequence += 1;
+  customerProfileController?.abort();
+  customerProfileController = null;
   selectedCustomer = null;
   selectedCustomerId = null;
+  customerProfileState = 'idle';
+  clearCustomerDerivedFields();
   setActiveCustomerId(null);
   renderSelectedCustomerChip();
+  setCustomerSearchMessage('', 'success');
+  updateStepperUI();
 }
 
 function invalidateSelectedCustomerForNewSearch() {
   if (!selectedCustomerId && !selectedCustomer) return;
-  selectedCustomerId = null;
-  setActiveCustomerId(null);
-  renderSelectedCustomerChip(true);
+  clearSelectedCustomer();
   setCustomerSearchMessage('Select a customer from the search results.', 'error');
 }
 
 function selectCustomerForApplication(customer) {
   const customerId = getCustomerDatabaseId(customer);
-  if (!customerId) {
-    setCustomerSearchMessage('Selected customer does not have a valid ID.', 'error');
-    return;
-  }
-
+  if (!customerId) { setCustomerSearchMessage('Selected customer does not have a valid ID.', 'error'); return; }
+  clearCustomerDerivedFields();
   selectedCustomer = customer;
   selectedCustomerId = customerId;
   setActiveCustomerId(customerId);
-  fillApplicantFieldsFromCustomer(customer);
   customerSearchResults = [];
   customerSearchHighlightedIndex = -1;
   renderCustomerSearchResults();
-  setCustomerSearchMessage('', 'success');
   renderSelectedCustomerChip();
+  loadNormalizedCustomerProfile(customerId);
 }
 
 function clearCustomerResults(message = 'Enter a customer name, NIC, mobile number, or customer ID.') {
@@ -8425,15 +8539,15 @@ function renderCustomerSearchResults() {
       const name = getCustomerDisplayName(customer);
       const nic = getCustomerField(customer, ['nic_number', 'nic', 'nicNumber', 'nic_no']) || '—';
       const mobile = getCustomerField(customer, ['mobile', 'mobile_number', 'phone', 'contact']) || '—';
-      const address = getCustomerField(customer, ['address', 'address_line1', 'address_line', 'addressLine']) || '—';
+      const code = getCustomerField(customer, ['customer_code', 'customerCode', 'customer_number', 'customerNumber']) || '—';
       const isHighlighted = index === customerSearchHighlightedIndex;
       return `
         <tr data-customer-index="${index}" tabindex="0" style="${isHighlighted ? 'background: rgba(37, 99, 235, 0.12);' : ''}">
-          <td>${escapeHtml(displayId)}</td>
+          <td>${escapeHtml(id)}</td>
+          <td>${escapeHtml(code)}</td>
           <td>${escapeHtml(name)}</td>
           <td>${escapeHtml(nic)}</td>
           <td>${escapeHtml(mobile)}</td>
-          <td>${escapeHtml(address)}</td>
           <td><button type="button" class="secondary" data-select-customer-index="${index}">Select</button></td>
         </tr>
       `;
@@ -8444,11 +8558,11 @@ function renderCustomerSearchResults() {
     <table>
       <thead>
         <tr>
-          <th>Customer ID / Number</th>
+          <th>Customer ID</th>
+          <th>Customer Code</th>
           <th>Full Name</th>
           <th>NIC</th>
           <th>Mobile</th>
-          <th>Address</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -8613,11 +8727,14 @@ function buildApplicationPayload() {
     city: values.city || '',
     district: values.district || '',
     province: values.province || '',
+    postal_code: values.postal_code || '',
     date_of_birth: values.date_of_birth || '',
     monthly_income: Number(values.monthly_income) || 0,
     monthly_expenses: Number(values.monthly_expenses) || 0,
     has_existing_loans: hasExistingLoans,
     existing_loans_description: values.existing_loans_description || '',
+    existing_loan_details: values.existing_loans_description || '',
+    existing_loans: selectedExistingLoans,
   };
 
   const termType = normalizeLoanEnum(values.term_type);
