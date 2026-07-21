@@ -26,6 +26,9 @@ class ApiConfig {
     'loanRepayments': '/loans/{id}/repayments',
     'loanApplications': '/loan-applications',
     'customers': '/customers',
+    'adminCustomerSearch': '/admin/customers/search',
+    'adminCustomerNormalizedProfile':
+        '/admin/customers/{id}/profile-normalized',
   };
 
   static String? _baseUrl;

@@ -27,6 +27,15 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   int _currentStep = 0;
   bool _saving = false;
   bool _hasExistingLoans = false;
+  bool _searchingCustomers = false;
+  bool _loadingCustomerProfile = false;
+  String? _customerProfileError;
+  String? _selectedCustomerId;
+  String? _selectedCustomerLabel;
+  String? _profileRequestCustomerId;
+  List<Map<String, dynamic>> _customerResults = [];
+  List<Map<String, dynamic>> _existingLoans = [];
+  List<String> _profileWarnings = [];
   String _selectedLoanType = loanTypes.first;
   DateTime? _dateOfBirth;
   String? _applicationId;
@@ -41,6 +50,8 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
   final TextEditingController _cityController = TextEditingController();
   final TextEditingController _districtController = TextEditingController();
   final TextEditingController _provinceController = TextEditingController();
+  final TextEditingController _postalCodeController = TextEditingController();
+  final TextEditingController _customerSearchController = TextEditingController();
   final TextEditingController _monthlyIncomeController = TextEditingController();
   final TextEditingController _monthlyExpensesController =
       TextEditingController();
@@ -183,6 +194,8 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     _cityController.dispose();
     _districtController.dispose();
     _provinceController.dispose();
+    _postalCodeController.dispose();
+    _customerSearchController.dispose();
     _monthlyIncomeController.dispose();
     _monthlyExpensesController.dispose();
     _existingLoansController.dispose();
@@ -227,7 +240,10 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
             return Row(
               children: [
                 ElevatedButton(
-                  onPressed: details.onStepContinue,
+                  onPressed: _loadingCustomerProfile ||
+                          (_currentStep == 1 && _selectedCustomerId != null && _customerProfileError != null)
+                      ? null
+                      : details.onStepContinue,
                   child: Text(isLast ? 'Review & Save' : 'Next'),
                 ),
                 const SizedBox(width: 12),
@@ -297,9 +313,190 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
     );
   }
 
+  Widget _buildCustomerLookup() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      TextFormField(
+        controller: _customerSearchController,
+        enabled: !_loadingCustomerProfile,
+        decoration: InputDecoration(
+          labelText: 'Find existing customer',
+          hintText: 'Search by customer code, name, NIC or mobile',
+          suffixIcon: _searchingCustomers
+              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+              : IconButton(icon: const Icon(Icons.search), onPressed: _searchCustomers),
+        ),
+        onFieldSubmitted: (_) => _searchCustomers(),
+      ),
+      if (_selectedCustomerId != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            Expanded(child: Text('Selected customer: ${_selectedCustomerLabel ?? _selectedCustomerId}')),
+            TextButton(onPressed: _clearCustomerSelection, child: const Text('Clear Selection')),
+          ]),
+        ),
+      if (_loadingCustomerProfile)
+        const Padding(padding: EdgeInsets.only(top: 8), child: Text('Loading customer profile…')),
+      if (_customerProfileError != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            Expanded(child: Text(_customerProfileError!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+            TextButton(onPressed: _selectedCustomerId == null ? null : () => _loadCustomerProfile(_selectedCustomerId!), child: const Text('Retry')),
+          ]),
+        ),
+      ..._customerResults.map((result) {
+        final id = _value(result['id'] ?? result['customer_id']);
+        return ListTile(
+          dense: true,
+          title: Text(_value(result['full_name']).isEmpty ? 'Customer $id' : _value(result['full_name'])),
+          subtitle: Text([_value(result['customer_code']), _value(result['nic_number']), _value(result['mobile'] ?? result['mobile_number'])].where((value) => value.isNotEmpty).join(' • ')),
+          onTap: id.isEmpty ? null : () => _selectCustomer(result, id),
+        );
+      }),
+    ]);
+  }
+
+  Future<void> _searchCustomers() async {
+    setState(() { _searchingCustomers = true; _customerResults = []; });
+    try {
+      final results = await widget.service.searchCustomers(_customerSearchController.text);
+      if (mounted) setState(() => _customerResults = results);
+    } catch (_) {
+      if (mounted) setState(() => _customerProfileError = 'Unable to search customers. Please try again.');
+    } finally {
+      if (mounted) setState(() => _searchingCustomers = false);
+    }
+  }
+
+  void _selectCustomer(Map<String, dynamic> result, String id) {
+    final label = [_value(result['customer_code']), _value(result['full_name']), _value(result['nic_number']), _value(result['mobile'] ?? result['mobile_number'])].where((value) => value.isNotEmpty).join(' • ');
+    setState(() {
+      _selectedCustomerId = id;
+      _selectedCustomerLabel = label.isEmpty ? 'Customer $id' : label;
+      _customerResults = [];
+      _customerProfileError = null;
+      _loadingCustomerProfile = true;
+      _clearAutofilledApplicantFields();
+    });
+    _loadCustomerProfile(id);
+  }
+
+  Future<void> _loadCustomerProfile(String customerId) async {
+    _profileRequestCustomerId = customerId;
+    setState(() { _loadingCustomerProfile = true; _customerProfileError = null; });
+    try {
+      final profile = await widget.service.fetchNormalizedCustomerProfile(customerId);
+      final returnedId = _value(profile['customer_id'] ?? profile['id']);
+      if (!mounted || _profileRequestCustomerId != customerId || _selectedCustomerId != customerId || returnedId != customerId) return;
+      setState(() {
+        _applyNormalizedProfile(profile);
+        _loadingCustomerProfile = false;
+      });
+    } catch (_) {
+      if (mounted && _selectedCustomerId == customerId) {
+        setState(() { _loadingCustomerProfile = false; _customerProfileError = 'Unable to load the normalized customer profile. Please retry.'; });
+      }
+    }
+  }
+
+  void _applyNormalizedProfile(Map<String, dynamic> profile) {
+    String field(String key, [String? fallback]) => _value(profile[key] ?? (fallback == null ? null : profile[fallback]));
+    _fullNameController.text = field('full_name');
+    _nicController.text = field('nic_number');
+    _mobileController.text = field('mobile', 'mobile_number');
+    _emailController.text = field('email');
+    _address1Controller.text = field('current_address_line1', 'address_line1');
+    _address2Controller.text = field('current_address_line2', 'address_line2');
+    _cityController.text = field('current_city', 'city');
+    _districtController.text = field('current_district', 'district');
+    _provinceController.text = field('current_province', 'province');
+    _postalCodeController.text = field('current_postal_code', 'postal_code');
+    _monthlyIncomeController.text = field('monthly_income');
+    _monthlyExpensesController.text = field('monthly_expenses');
+    final dob = field('date_of_birth');
+    _dateOfBirth = dob.isEmpty ? null : DateTime.tryParse(dob);
+    final loanValue = profile['existing_loan_details'] ?? profile['existing_loans'] ?? [];
+    _existingLoans = loanValue is List ? loanValue.whereType<Map>().map((loan) => Map<String, dynamic>.from(loan)).toList() : [];
+    _hasExistingLoans = profile['has_existing_loans'] == true || _existingLoans.isNotEmpty;
+    _existingLoansController.text = _existingLoans.map(_loanSummary).join('\n');
+    _profileWarnings = _warningsFor(profile);
+    final code = field('customer_code');
+    if (code.isNotEmpty) _selectedCustomerLabel = '$code • ${field('full_name')}';
+  }
+
+  List<String> _warningsFor(Map<String, dynamic> profile) {
+    final warnings = <String>[];
+    if (profile['profile_complete'] == false) warnings.add('Customer profile incomplete.');
+    for (final key in ['missing_fields', 'conflicts', 'review_warnings']) {
+      final value = profile[key];
+      if (value is List) warnings.addAll(value.map(_value).where((value) => value.isNotEmpty));
+      else if (_value(value).isNotEmpty) warnings.add(_value(value));
+    }
+    if (profile['address_review_required'] == true) warnings.add('Address review is required.');
+    return warnings;
+  }
+
+  String _loanSummary(Map<String, dynamic> loan) {
+    final outstanding = _value(loan['outstanding_balance']);
+    final instalment = _value(loan['instalment_amount']);
+    return [
+      _value(loan['loan_number'] ?? loan['number']),
+      _value(loan['status']),
+      if (outstanding.isNotEmpty) 'Outstanding: $outstanding',
+      if (instalment.isNotEmpty) 'Instalment: $instalment',
+      _value(loan['repayment_frequency']),
+    ].where((value) => value.isNotEmpty).join(' • ');
+  }
+
+  String _value(dynamic value) {
+    if (value == null) return '';
+    final text = value.toString().trim();
+    return ['null', 'undefined', 'none', 'nan'].contains(text.toLowerCase()) ? '' : text;
+  }
+
+  void _clearAutofilledApplicantFields() {
+    for (final controller in [_fullNameController, _nicController, _mobileController, _emailController, _address1Controller, _address2Controller, _cityController, _districtController, _provinceController, _postalCodeController, _monthlyIncomeController, _monthlyExpensesController, _existingLoansController]) { controller.clear(); }
+    _dateOfBirth = null; _hasExistingLoans = false; _existingLoans = []; _profileWarnings = [];
+  }
+
+  void _clearCustomerSelection() {
+    setState(() {
+      _profileRequestCustomerId = null;
+      _loadingCustomerProfile = false;
+      _selectedCustomerId = null; _selectedCustomerLabel = null; _customerProfileError = null; _customerResults = [];
+      _clearAutofilledApplicantFields();
+      _formKey.currentState?.reset();
+    });
+  }
+
+  Widget _buildExistingLoans() => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Existing loans', style: TextStyle(fontWeight: FontWeight.bold)),
+    ..._existingLoans.map((loan) => Padding(padding: const EdgeInsets.only(top: 6), child: Text(_loanSummary(loan))),
+  ])));
+
   Widget _buildApplicantDetails() {
     return Column(
       children: [
+        _buildCustomerLookup(),
+        const SizedBox(height: 12),
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(12),
+            child: Text('Customer information is copied into this application. Changes here do not automatically update the customer master profile.'),
+          ),
+        ),
+        if (_profileWarnings.isNotEmpty)
+          Card(
+            color: Colors.amber.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Customer profile warnings', style: TextStyle(fontWeight: FontWeight.bold)),
+                ..._profileWarnings.map((warning) => Text('• $warning')),
+              ]),
+            ),
+          ),
         TextFormField(
           controller: _fullNameController,
           decoration: const InputDecoration(labelText: 'Full Name'),
@@ -348,6 +545,11 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
               ),
             ),
           ],
+        ),
+        TextFormField(
+          controller: _postalCodeController,
+          decoration: const InputDecoration(labelText: 'Postal code'),
+          keyboardType: TextInputType.number,
         ),
         Row(
           children: [
@@ -399,11 +601,13 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Existing loans?'),
+          title: const Text('You currently have other loans'),
           value: _hasExistingLoans,
           onChanged: (val) => setState(() => _hasExistingLoans = val),
         ),
-        if (_hasExistingLoans)
+        if (_existingLoans.isNotEmpty)
+          _buildExistingLoans(),
+        if (_hasExistingLoans && _existingLoans.isEmpty)
           TextFormField(
             controller: _existingLoansController,
             decoration:
@@ -788,12 +992,14 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
       'city': _cityController.text.trim(),
       'district': _districtController.text.trim(),
       'province': _provinceController.text.trim(),
+      'postal_code': _postalCodeController.text.trim(),
       'date_of_birth':
           _dateOfBirth != null ? _dobFormatter.format(_dateOfBirth!) : null,
       'monthly_income': monthlyIncome,
       'monthly_expenses': monthlyExpenses,
       'has_existing_loans': _hasExistingLoans,
       'existing_loans_description': _existingLoansController.text,
+      'existing_loans': _existingLoans,
     };
 
     final loanDetails = {
@@ -809,6 +1015,7 @@ class _LoanApplicationFormScreenState extends State<LoanApplicationFormScreen> {
 
     return {
       'loan_type': normalizedLoanType,
+      if (_selectedCustomerId != null) 'customer_id': _selectedCustomerId,
       'loan_purpose': _loanPurposeController.text,
       'status': draft ? 'DRAFT' : 'SUBMITTED',
       // Flattened fields expected by the API

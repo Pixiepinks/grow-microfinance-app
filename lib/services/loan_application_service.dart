@@ -7,6 +7,52 @@ class LoanApplicationService {
 
   final ApiClient _client;
 
+  /// Search results are deliberately only used to identify a customer. Call
+  /// [fetchNormalizedCustomerProfile] before using any profile fields.
+  Future<List<Map<String, dynamic>>> searchCustomers(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return [];
+    final path = '${ApiConfig.endpoint('adminCustomerSearch')}?q=${Uri.encodeQueryComponent(trimmed)}&limit=10';
+    final payload = await _client.getJsonData(path);
+    if (payload is List) {
+      return payload.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+    }
+    if (payload is Map) {
+      for (final key in ['customers', 'results', 'items', 'data']) {
+        final value = payload[key];
+        if (value is List) {
+          return value.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+        }
+      }
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> fetchNormalizedCustomerProfile(String customerId) async {
+    final payload = await _client.getJsonData(ApiConfig.endpoint(
+      'adminCustomerNormalizedProfile',
+      params: {'id': customerId},
+    ));
+    if (payload is! Map) {
+      throw const FormatException('The customer profile response was invalid.');
+    }
+    final root = Map<String, dynamic>.from(payload);
+    final data = root['data'];
+    final profile = root['profile'] ??
+        (data is Map ? data['profile'] : null) ??
+        (data is Map ? data : null) ??
+        root;
+    if (profile is! Map) {
+      throw const FormatException('The customer profile response did not contain a profile.');
+    }
+    // Preserve warning metadata whether the wrapper is at the root or in data.
+    return {
+      if (data is Map) ...Map<String, dynamic>.from(data),
+      ...root,
+      ...Map<String, dynamic>.from(profile),
+    };
+  }
+
   Future<LoanApplication> createDraft(Map<String, dynamic> data) async {
     final normalized = _normalizePayload(data);
     final json = await _client.postJson(
