@@ -1916,8 +1916,11 @@ td:nth-last-child(-n+3), th:nth-last-child(-n+3) { font-variant-numeric: tabular
 .collection-sheet-summary .metric { border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .collection-sheet-summary .difference-warning, .collection-sheet-difference { background: #fff0f0; color: #a51d2d; font-weight: 800; }
 .collection-sheet-search > label { display: block; max-width: 700px; }
-#cs-selected-loan { display: flex; align-items: end; gap: 12px; margin: 12px 0; }
+#cs-selected-loan { display: flex; align-items: end; gap: 12px; margin: 12px 0; flex-wrap: wrap; }
 #cs-selected-loan.hidden { display: none; }
+.collection-sheet-selection { min-width: 260px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface, #fff); }
+.collection-sheet-selection strong, .collection-sheet-selection span { display: block; }
+.collection-sheet-selection span { margin-top: 4px; }
 .collection-sheet-preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .collection-sheet-preview-grid > div { border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .collection-sheet-print-report { display: none; }
