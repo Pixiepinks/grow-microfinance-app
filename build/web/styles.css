@@ -1898,3 +1898,61 @@ td:nth-last-child(-n+3), th:nth-last-child(-n+3) { font-variant-numeric: tabular
   max-width: none;
   min-width: 0;
 }
+
+/* Collection sheets */
+.collection-sheet-modal-open { overflow: hidden; }
+.collection-sheet-overlay { position: fixed; inset: 0; display: flex; background: rgba(15, 23, 42, .62); z-index: 1500; overflow-y: auto; overscroll-behavior: contain; padding: 24px; align-items: flex-start; }
+.collection-sheet-approval-overlay { z-index: 1600; }
+.collection-sheet-card { width: min(1500px, 98vw); max-width: none; max-height: none; margin: 0 auto 24px; overflow: visible; }
+.collection-sheet-preview-card { width: min(1050px, 96vw); max-height: calc(100vh - 48px); overflow-y: auto; }
+.collection-sheet-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.collection-sheet-heading h3 { margin: 0; }
+.collection-sheet-filters { align-items: end; margin: 20px 0; }
+.collection-sheet-filters label { min-width: 165px; }
+.collection-sheet-list-table table { min-width: 1320px; }
+.collection-sheet-row-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 280px; }
+.collection-sheet-row-actions button { white-space: nowrap; }
+.collection-sheet-summary { display: grid; grid-template-columns: repeat(5, minmax(160px, 1fr)); gap: 12px; margin: 18px 0; }
+.collection-sheet-summary .metric { border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.collection-sheet-summary .difference-warning, .collection-sheet-difference { background: #fff0f0; color: #a51d2d; font-weight: 800; }
+.collection-sheet-search > label { display: block; max-width: 700px; }
+#cs-selected-loan { display: flex; align-items: end; gap: 12px; margin: 12px 0; }
+#cs-selected-loan.hidden { display: none; }
+.collection-sheet-preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.collection-sheet-preview-grid > div { border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.collection-sheet-print-report { display: none; }
+.status-draft { background: #eef2f7; }
+.status-submitted { background: #fff4cc; color: #714f00; }
+.status-posted, .status-reconciled { background: #dff6e9; color: #075d35; }
+.status-reversed { background: #fbe1e4; color: #8a1725; }
+
+@media (max-width: 800px) {
+  .collection-sheet-overlay { padding: 0; }
+  .collection-sheet-card, .collection-sheet-preview-card { width: 100vw; min-height: 100vh; margin: 0; border-radius: 0; padding: 16px; }
+  .collection-sheet-summary, .collection-sheet-preview-grid { grid-template-columns: 1fr; }
+  .collection-sheet-controls { flex-wrap: wrap; }
+  .collection-sheet-controls button { flex: 1 1 100%; }
+  .collection-sheet-filters { display: grid; grid-template-columns: 1fr; }
+  .collection-sheet-filters label, .collection-sheet-filters button { width: 100%; }
+}
+
+@page { size: A4 portrait; margin: 9mm; }
+@media print {
+  body * { visibility: hidden !important; }
+  .collection-sheet-print-report, .collection-sheet-print-report * { visibility: visible !important; }
+  .collection-sheet-print-report { display: block !important; position: fixed; inset: 0; width: 100%; padding: 0; background: white; color: #111; font: 10pt/1.25 Arial, sans-serif; }
+  .collection-sheet-print-report header { text-align: center; border-bottom: 2px solid #111; margin-bottom: 8px; }
+  .collection-sheet-print-report h1 { font-size: 17pt; margin: 0; }
+  .collection-sheet-print-report h2 { font-size: 13pt; margin: 2px 0 6px; letter-spacing: 1.5px; }
+  .collection-sheet-print-report h3 { font-size: 10.5pt; margin: 8px 0 3px; }
+  .collection-sheet-print-report .print-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 6px; }
+  .collection-sheet-print-report .print-meta span { display: grid; }
+  .collection-sheet-print-report table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  .collection-sheet-print-report th, .collection-sheet-print-report td { border: 1px solid #555; padding: 3px 5px; }
+  .collection-sheet-print-report .money { text-align: right; }
+  .print-reconciliation { width: 48%; margin-left: auto; }
+  .print-reconciliation div { display: flex; justify-content: space-between; border-bottom: 1px solid #999; padding: 3px; }
+  .collection-sheet-print-report footer { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; margin-top: 28px; text-align: center; }
+  .signature-line { display: block; border-top: 1px solid #111; margin-bottom: 5px; }
+  nav, button, .filters, .modal-overlay::before, .non-report-controls { display: none !important; }
+}
