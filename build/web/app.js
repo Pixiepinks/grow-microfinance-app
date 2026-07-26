@@ -2568,6 +2568,13 @@ function ensureAdminLoansUI() {
   // Ledger rows are rendered after the dialog opens, so bind this once to the
   // stable dialog rather than to individual dynamic buttons.
   adminLoanDetailModal.addEventListener('click', (event) => {
+    const postSettlementButton = event.target.closest('[data-post-settlement-payment]');
+    if (postSettlementButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      openPostSettlementPayment(postSettlementButton);
+      return;
+    }
     const button = event.target.closest('[data-action="record-payment"]');
     if (!button) return;
     event.preventDefault();
@@ -3425,9 +3432,9 @@ function renderLoanDetailFields(loan) {
     buildScheduleValidationWarning(loan, ledgerRows, ledgerSummary),
   ].join('');
   const repairAction = renderLoanRepairAction(loan);
-  const settlementSummary = settled ? `<div class="subcard"><h3>Settlement Summary</h3><p>The loan has been fully settled.</p><p>Total Paid represents actual customer payments only. Waivers and settlement adjustments are shown separately.</p>${settlementDisplay.breakdownAvailable ? '' : '<p class="muted">Settlement breakdown unavailable</p>'}<div class="action-row"><button type="button" class="secondary" data-view-customer-credit>View Customer Credit</button>${getCustomerCreditAmount(loan)>0 ? '<button type="button" class="secondary" data-refund-customer-credit>Refund Credit</button><button type="button" class="secondary" data-apply-customer-credit>Apply Credit to Another Loan</button>' : ''}</div></div>` : '';
+  const settlementSummary = settled ? `<div class="subcard"><h3>Settlement Summary</h3><p>The loan has been fully settled.</p><p>Total Paid represents actual customer payments only. Waivers and settlement adjustments are shown separately.</p>${settlementDisplay.breakdownAvailable ? '' : '<p class="muted">Settlement breakdown unavailable</p>'}<div class="action-row"><button type="button" data-post-settlement-payment>Record Post-Settlement Payment</button><button type="button" class="secondary" data-view-customer-credit>View Customer Credit</button>${getCustomerCreditAmount(loan)>0 ? '<button type="button" class="secondary" data-refund-customer-credit>Refund Credit</button><button type="button" class="secondary" data-apply-customer-credit>Apply Credit to Another Loan</button>' : ''}</div></div>` : '';
   const legacyWarning = getLoanOutstanding(loan) < 0 ? '<div class="alert warning">Settlement reconciliation required <button type="button" class="secondary" data-reconcile-loan>Reconcile Loan</button></div>' : '';
-  adminLoanDetailContent.innerHTML = `${warnings}${legacyWarning}${settlementSummary}${renderAccountingSummarySection(loan)}${repairAction ? `<div class="loan-detail-actions">${repairAction}</div>` : ''}<div class="loan-detail-grid">${fields
+  adminLoanDetailContent.innerHTML = `${warnings}${legacyWarning}${settlementSummary}${renderPostSettlementTransactions(loan, ledgerSummary)}${renderAccountingSummarySection(loan)}${repairAction ? `<div class="loan-detail-actions">${repairAction}</div>` : ''}<div class="loan-detail-grid">${fields
     .map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join('')}</div>`;
 }
@@ -3452,6 +3459,31 @@ function deriveLedgerAccountingStatus(entry = {}) {
   if (due && isHistoricalDate(due)) return 'Overdue';
   if (due === todayDateOnly()) return 'Due';
   return raw === 'UNKNOWN' ? 'Not due' : titleCase(raw.toLowerCase());
+}
+
+function getPostSettlementTransactions(loan = {}, ledgerSummary = {}) {
+  const candidates = [
+    ledgerSummary?.post_settlement_transactions, ledgerSummary?.postSettlementTransactions,
+    ledgerSummary?.post_settlement_payments, ledgerSummary?.postSettlementPayments,
+    loan?.post_settlement_transactions, loan?.postSettlementTransactions,
+    loan?.post_settlement_payments, loan?.postSettlementPayments,
+  ];
+  return candidates.find(Array.isArray) || [];
+}
+
+function renderPostSettlementTransactions(loan = {}, ledgerSummary = {}) {
+  if (getLoanStatus(loan) !== 'SETTLED') return '';
+  const transactions = getPostSettlementTransactions(loan, ledgerSummary);
+  const rows = transactions.map((transaction) => `<tr>
+    <td>${escapeHtml(formatDate(getLoanField(transaction, ['payment_date','paymentDate','date','created_at','createdAt'], '')) || '—')}</td>
+    <td>${formatCurrency(getLoanField(transaction, ['amount','cash_received','cashReceived'], 0))}</td>
+    <td>${formatCurrency(getLoanField(transaction, ['delay_interest_paid','delayInterestPaid','delay_interest_payment','delayInterestPayment'], 0))}</td>
+    <td>${formatCurrency(getLoanField(transaction, ['customer_credit_created','customerCreditCreated','customer_credit','customerCredit'], 0))}</td>
+    <td>${escapeHtml(getLoanField(transaction, ['payment_method','paymentMethod','collection_method','collectionMethod'], '—'))}</td>
+    <td>${escapeHtml(getLoanField(transaction, ['reference_number','referenceNumber','reference'], '—'))}</td>
+    <td>${renderStatusBadge(getLoanField(transaction, ['journal_status','journalStatus','accounting_status','accountingStatus'], '—'))}</td>
+  </tr>`).join('');
+  return `<div class="subcard"><div class="card-header"><div><div class="eyebrow">Additional payments</div><h3>Post-Settlement Transactions</h3></div><button type="button" data-post-settlement-payment>Record Post-Settlement Payment</button></div><div class="loan-ledger-table-wrap"><table class="placeholder-table loan-table"><thead><tr><th>Date</th><th>Amount</th><th>Delay Interest Paid</th><th>Customer Credit</th><th>Payment Method</th><th>Reference</th><th>Journal Status</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="muted">No post-settlement transactions recorded.</td></tr>'}</tbody></table></div></div>`;
 }
 
 function renderLoanLedger() {
@@ -3499,7 +3531,7 @@ function renderLoanLedger() {
   ].map(([label, value]) => `<div class="loan-detail-stat"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>`).join('') + (credit > 0 ? `<div class="loan-detail-stat"><span>Customer Credit</span><strong>${formatCurrency(credit)}</strong></div>` : '') + (settled ? `<p class="ledger-settlement-explanation">Total Paid represents actual customer payments only. Waivers and settlement adjustments are shown separately.</p>${settlementDisplay.breakdownAvailable ? '' : '<p class="muted">Settlement breakdown unavailable</p>'}` : '');
 
   if (!entries.length) {
-    adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div><p class="muted">No ledger entries found for this loan.</p>`;
+    adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div>${renderPostSettlementTransactions(loan, adminLoansState.ledgerTotals)}<p class="muted">No contractual ledger entries found for this loan.</p>`;
     return;
   }
 
@@ -3537,7 +3569,7 @@ function renderLoanLedger() {
     </tr>`;
   }).join('');
 
-  adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div>
+  adminLoanDetailContent.innerHTML = `${scheduleHtml}<div class="ledger-totals-grid">${totalsHtml}</div>${renderPostSettlementTransactions(loan, adminLoansState.ledgerTotals)}
     <div class="loan-ledger-table-wrap"><table class="placeholder-table loan-table"><thead><tr>
       <th>Installment #</th><th>Period Start</th><th>Due Date</th><th>Days</th><th>Opening Balance</th><th>Original Interest</th><th>Interest Rebate</th><th>Revised Interest</th><th>Waiver Status</th><th>Interest Accrued</th><th>Interest Accrued Date</th><th>Interest Paid</th><th>Principal Paid</th><th>Principal</th><th>Installment Amount</th><th>Closing Balance</th><th>Paid Amount</th><th>Paid Date</th><th>Delay Days</th><th>Delay Interest</th><th>Delay Interest Accrued</th><th>Delay Interest Paid</th><th>Delay Interest Waived</th><th>Journal Status</th><th>Actions</th>
     </tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -3636,6 +3668,98 @@ async function repairAdminLoanSchedule() {
     console.error('Failed to repair loan schedule', error);
     setInlineAlert(adminLoanDetailMessage, error?.message || 'Failed to repair schedule.', 'error');
   }
+}
+
+async function openPostSettlementPayment(opener) {
+  const loan = adminLoansState.selectedLoan || {};
+  const loanId = getLoanId(loan);
+  if (!loanId || getLoanStatus(loan) !== 'SETTLED') {
+    setInlineAlert(adminLoanDetailMessage, 'Post-settlement payments are available only for SETTLED loans.', 'error');
+    return;
+  }
+  document.querySelectorAll('.post-settlement-payment-modal').forEach((existing) => existing.remove());
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay historical-accounting-modal record-payment-modal post-settlement-payment-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'post-settlement-payment-title');
+  modal.innerHTML = '<div class="modal-card wide"><div class="modal-header"><h2 id="post-settlement-payment-title">Record Post-Settlement Payment</h2></div><p class="muted">Loading payment form…</p></div>';
+  document.body.appendChild(modal);
+  document.body.classList.add('modal-open');
+  const close = () => { if (!modal.isConnected) return; modal.remove(); restoreBodyScrollingIfNoOverlay(); if (opener?.isConnected) opener.focus(); };
+  modal.addEventListener('click', (event) => { if (event.target === modal) close(); });
+  modal.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } });
+
+  const [accountsResult, collectorsResult] = await Promise.allSettled([
+    api('/admin/accounting/accounts?active=true'), api('/admin/collectors'),
+  ]);
+  if (!modal.isConnected) return;
+  const accounts = accountsResult.status === 'fulfilled' ? accountItems(accountsResult.value) : [];
+  const collectors = collectorsResult.status === 'fulfilled' ? accountItems(collectorsResult.value) : [];
+  const accountLabel = (account) => `${account.code || account.account_code || ''} ${account.name || account.account_name || ''}`.trim();
+  const accountOptions = accounts.filter((account) => account.posting_allowed !== false && account.allow_manual_posting !== false)
+    .map((account) => `<option value="${escapeHtml(account.id || account.account_id)}">${escapeHtml(accountLabel(account))}</option>`).join('');
+  const collectorOptions = collectors.map((collector) => {
+    const accountId = collector.default_collection_account_id || collector.defaultCollectionAccountId || collector.collection_account_id || collector.collectionAccountId;
+    return accountId ? `<option value="${escapeHtml(accountId)}">Collector — ${escapeHtml(collectionCollectorName(collector) || collector.id)}</option>` : '';
+  }).join('');
+  const delayOutstanding = Math.max(0, Number(getLoanField(adminLoansState.ledgerTotals || loan, ['delay_interest_outstanding','delayInterestOutstanding','outstanding_delay_interest','outstandingDelayInterest','delay_interest_receivable','delayInterestReceivable','accounting_summary.delay_interest_receivable'], getLoanField(loan, ['delay_interest_outstanding','delayInterestOutstanding','outstanding_delay_interest','outstandingDelayInterest'], 0))) || 0);
+  const existingCredit = getCustomerCreditAmount(loan);
+  const metadataWarning = accountsResult.status === 'rejected' || collectorsResult.status === 'rejected' ? '<div class="alert warning">Some receiving-account options could not be loaded. Close and retry before posting.</div>' : '';
+  modal.innerHTML = `<div class="modal-card wide"><div class="modal-header"><h2 id="post-settlement-payment-title">Record Post-Settlement Payment</h2><button class="icon-button" data-close aria-label="Close payment form">×</button></div>${metadataWarning}<div class="loan-detail-grid">
+    <div class="loan-detail-stat"><span>Loan number</span><strong>${escapeHtml(getLoanField(loan, ['loan_number','loanNumber','number','id'], loanId))}</strong></div>
+    <div class="loan-detail-stat"><span>Customer</span><strong>${escapeHtml(getCustomerDisplayNameFromLoan(loan))}</strong></div>
+    <div class="loan-detail-stat"><span>Loan status</span><strong>SETTLED</strong></div>
+    <div class="loan-detail-stat"><span>Outstanding delay interest</span><strong>${formatCurrency(delayOutstanding)}</strong></div>
+    <div class="loan-detail-stat"><span>Existing customer credit</span><strong>${formatCurrency(existingCredit)}</strong></div>
+  </div><div id="post-settlement-error"></div><div class="accounting-grid">
+    <label>Payment amount<input name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required></label>
+    <label>Payment date<input name="payment_date" type="date" value="${todayDateOnly()}" required></label>
+    <label>Payment method<select name="payment_method" required><option value="CASH_COLLECTOR">Cash Collector</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CASH_AT_OFFICE">Cash at Office</option><option value="CHEQUE">Cheque</option><option value="MOBILE_TRANSFER">Mobile Transfer</option><option value="OTHER">Other</option></select></label>
+    <label>Receiving account / collector<select name="receiving_account_id" required><option value="">Select receiving account or collector</option>${collectorOptions}${accountOptions}</select></label>
+    <label>Reference<input name="reference_number"></label><label>Notes<textarea name="notes"></textarea></label>
+  </div><div id="post-settlement-allocation" class="subcard"></div><div class="modal-actions sticky-modal-footer"><button class="secondary" data-close>Cancel</button><button data-submit disabled>Record Post-Settlement Payment</button></div></div>`;
+  modal.querySelectorAll('[data-close]').forEach((button) => button.onclick = close);
+  const amount = modal.querySelector('[name=amount]'), date = modal.querySelector('[name=payment_date]'), method = modal.querySelector('[name=payment_method]'), receiving = modal.querySelector('[name=receiving_account_id]');
+  const reference = modal.querySelector('[name=reference_number]'), notes = modal.querySelector('[name=notes]'), preview = modal.querySelector('#post-settlement-allocation'), error = modal.querySelector('#post-settlement-error'), submit = modal.querySelector('[data-submit]');
+  const validate = () => {
+    const paid = Number(amount.value);
+    const validAmount = Number.isFinite(paid) && paid > 0;
+    const delayPaid = validAmount ? Math.min(paid, delayOutstanding) : 0;
+    const creditCreated = validAmount ? Math.max(0, paid - delayPaid) : 0;
+    preview.innerHTML = `<h3>Payment Allocation</h3><div class="loan-detail-grid"><div class="loan-detail-stat"><span>Delay Interest Payment</span><strong>${formatCurrency(delayPaid)}</strong></div><div class="loan-detail-stat"><span>Customer Credit</span><strong>${formatCurrency(creditCreated)}</strong></div><div class="loan-detail-stat"><span>Total Payment</span><strong>${formatCurrency(validAmount ? paid : 0)}</strong></div></div><div class="alert warning"><strong>Principal and original interest are already settled and will not be changed.</strong></div>`;
+    let message = '';
+    if (amount.value && !validAmount) message = 'Enter a valid payment amount greater than zero.';
+    else if (!date.value) message = 'Payment date is required.';
+    else if (!method.value) message = 'Payment method is required.';
+    else if (!receiving.value) message = 'Receiving account / collector is required.';
+    error.innerHTML = message ? `<div class="alert error">${escapeHtml(message)}</div>` : '';
+    submit.disabled = Boolean(message) || !validAmount || !date.value || !method.value || !receiving.value;
+  };
+  [amount, date, method, receiving].forEach((input) => input.addEventListener('input', validate));
+  validate(); amount.focus();
+  submit.onclick = async () => {
+    validate(); if (submit.disabled) return;
+    const paid = Number(amount.value);
+    if (!Number.isFinite(paid) || paid <= 0) return;
+    submit.disabled = true; error.innerHTML = '';
+    const idempotencyKey = globalThis.crypto?.randomUUID?.() || `post-settlement-${loanId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    try {
+      const result = await api(`/admin/loans/${encodeURIComponent(loanId)}/post-settlement-payment`, { method: 'POST', body: { amount: paid.toFixed(2), payment_date: date.value, payment_method: method.value, receiving_account_id: Number(receiving.value), reference_number: reference.value.trim(), notes: notes.value.trim(), idempotency_key: idempotencyKey } });
+      const delayPaid = Number(getLoanField(result, ['delay_interest_paid','delayInterestPaid','delay_interest_payment','delayInterestPayment'], Math.min(paid, delayOutstanding))) || 0;
+      const creditCreated = Number(getLoanField(result, ['customer_credit_created','customerCreditCreated','customer_credit','customerCredit'], Math.max(0, paid - delayPaid))) || 0;
+      const remainingDelay = Number(getLoanField(result, ['remaining_delay_interest','remainingDelayInterest','delay_interest_outstanding','delayInterestOutstanding'], Math.max(0, delayOutstanding - delayPaid))) || 0;
+      modal.querySelector('.modal-card').innerHTML = `<div class="modal-header"><h2>Payment Recorded Successfully</h2><button class="icon-button" data-success-close>×</button></div><div class="loan-detail-grid">${[['Cash Received', paid],['Delay Interest Paid', delayPaid],['Customer Credit Created', creditCreated],['Remaining Delay Interest', remainingDelay]].map(([label,value]) => `<div class="loan-detail-stat"><span>${label}</span><strong>${formatCurrency(value)}</strong></div>`).join('')}<div class="loan-detail-stat"><span>Loan Status</span><strong>SETTLED</strong></div></div><div class="alert success">Principal and original interest remain unchanged.</div><div class="modal-actions sticky-modal-footer"><button data-success-close>Close</button></div>`;
+      await Promise.allSettled([loadAdminLoans(true), loadAdminLoanLedger(true), loadUndepositedCollections(), loadCollectorBalances(), loadFinancialReports(), accountingLoadJournals()]);
+      const refreshed = adminLoansState.loans.find((item) => String(getLoanId(item)) === String(loanId));
+      if (refreshed) adminLoansState.selectedLoan = { ...refreshed, status: 'SETTLED' };
+      renderAdminLoanDetail();
+      modal.querySelectorAll('[data-success-close]').forEach((button) => button.onclick = close);
+    } catch (requestError) {
+      error.innerHTML = `<div class="alert error">${escapeHtml(requestError?.message || 'Post-settlement payment was not recorded.')}</div>`;
+      validate();
+    }
+  };
 }
 
 async function recordAdminLedgerPayment({ loanId, ledgerEntryId, installmentNo, opener }) {
