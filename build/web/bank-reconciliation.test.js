@@ -30,7 +30,13 @@ assert.equal(getBankReconciliationTransactions({ eligible_transactions: [row] })
 assert.equal(getBankReconciliationTransactions([row])[0].journal_line_id, 41);
 
 const normalized = normalizeBankGlLine({ line_id: 8, entry_id: 3, transaction_date: '2026-02-02', narration: 'Deposit', source_reference: 'NDB-8', credit_amount: '10.50' });
-assert.deepEqual(JSON.parse(JSON.stringify(normalized)), { id: 8, journalEntryId: 3, journalNumber: '—', date: '2026-02-02', description: 'Deposit', reference: 'NDB-8', debit: '0.00', credit: '10.50', runningBalance: '0.00', isReconciled: false, raw: { line_id: 8, entry_id: 3, transaction_date: '2026-02-02', narration: 'Deposit', source_reference: 'NDB-8', credit_amount: '10.50' } });
+assert.equal(normalized.isReconcilable, false);
+assert.equal(normalized.journalStatus, '');
+assert.match(normalized.blockReason, /not eligible/i);
+assert.equal(normalizeBankGlLine({ journal_line_id: 20, is_posted: true, is_reconciled: false }).isReconcilable, true);
+assert.equal(normalizeBankGlLine({ journal_line_id: 21, is_reconcilable: true }).isReconcilable, true);
+assert.equal(normalizeBankGlLine({ journal_line_id: 22, is_posted: true, is_reconciled: true }).isReconcilable, false);
+assert.equal(normalizeBankGlLine({ journal_line_id: 23, journal_status: 'DRAFT', reconciliation_block_reason: 'Journal entry is not posted.' }).blockReason, 'Journal entry is not posted.');
 assert.equal(getJournalLineId({ journal_line_id: 11, line_id: 12, gl_line_id: 13, id: 14 }), 11);
 assert.equal(getJournalLineId({ line_id: 12, gl_line_id: 13, id: 14 }), 12);
 assert.equal(getJournalLineId({ gl_line_id: 13, id: 14 }), 13);
@@ -45,7 +51,10 @@ assert.match(source, /requestId!==bankReconciliationState\.requestSequence/, 'st
 assert.match(source, /class="bank-reconciliation-line-checkbox" value="\$\{escapeHtml\(line\.id\)\}" data-journal-line-id="\$\{escapeHtml\(line\.id\)\}"/, 'unreconciled checkboxes must expose the journal-line ID');
 assert.match(source, /journal_line_ids:journalLineIds/, 'the POST payload must use a journal_line_ids array');
 assert.match(source, /\.bank-reconciliation-line-checkbox:checked/, 'selected IDs must be collected from checked boxes at click time');
+assert.match(source, /filter\(value=>eligibleIds\.has\(String\(value\)\)\)/, 'checked IDs must be intersected with eligible rows');
 assert.match(source, /Number\.isInteger\(value\)&&value>0/, 'journal-line IDs must be positive integers');
-assert.match(source, /Select at least one bank GL transaction before marking it reconciled\./, 'empty selections must be rejected before the API call');
+assert.match(source, /Select at least one posted bank GL transaction\./, 'empty eligible selections must be rejected before the API call');
+assert.match(source, /The following transactions cannot be reconciled:/, 'structured invalid-line errors must identify rejected transactions');
+assert.match(source, /reconciliation_block_reason/, 'the API reconciliation block reason must be displayed');
 
 console.log('Bank reconciliation transaction tests passed.');
