@@ -6974,7 +6974,7 @@ function openApplyLoanModal() {
       throw new Error('Loan wizard returned empty content');
     }
   } catch (error) {
-    console.error('Failed to load Apply Loan wizard:', error);
+    console.error('Unable to initialize Apply Loan wizard', error);
     showApplyLoanError(error.message);
   }
 }
@@ -8491,7 +8491,7 @@ function updateStepperUI() {
 
   prevStepBtn.disabled = currentStep === 0;
   // A selected existing customer must finish normalized-profile loading before Applicant can advance.
-  nextStepBtn.disabled = currentStep === 1 && Boolean(selectedCustomerId) && operationalProfileState !== 'ready';
+  nextStepBtn.disabled = currentStep === 1 && Boolean(selectedCustomerId) && customerProfileState !== 'ready';
   nextStepBtn.classList.toggle('hidden', currentStep === formSteps.length - 1);
   saveDraftBtn.classList.toggle('hidden', currentStep !== formSteps.length - 1);
   submitApplicationBtn.classList.toggle('hidden', currentStep !== formSteps.length - 1);
@@ -8809,13 +8809,13 @@ function renderSelectedCustomerChip(needsConfirmation = false) {
   const label = `${selectedCustomerId}${code ? ` / ${code}` : ''} - ${safeProfileText(selectedCustomerProfile?.full_name) || getCustomerDisplayName(selectedCustomer)}`;
   const warnings = selectedCustomerProfile ? profileWarnings(selectedCustomerProfile) : [];
   const loans = selectedExistingLoans;
-  const busy = operationalProfileState === 'loading';
-  const failed = operationalProfileState === 'error';
+  const busy = customerProfileState === 'loading';
+  const failed = customerProfileState === 'error';
   customerSearchSelectionEl.classList.remove('hidden');
   customerSearchSelectionEl.innerHTML = `
     <span><strong>${needsConfirmation ? 'Previous customer:' : 'Selected Customer:'}</strong> ${escapeHtml(label)}</span>
     ${busy ? '<p class="muted">Loading customer profile...</p>' : ''}
-    ${operationalProfileState === 'ready' ? '<p class="muted">Customer information has been copied into this application. Changes made here do not automatically update the customer master profile.</p>' : ''}
+    ${customerProfileState === 'ready' ? '<p class="muted">Customer information has been copied into this application. Changes made here do not automatically update the customer master profile.</p>' : ''}
     ${warnings.length ? `<div class="inline-alert warning"><strong>Profile warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>` : ''}
     ${loans.length ? `<div class="inline-alert warning"><strong>Existing active loans</strong><ul>${loans.map((loan) => `<li>${escapeHtml(formatExistingLoans([loan]))}</li>`).join('')}</ul></div>` : ''}
     ${failed ? '<div class="inline-alert error">Unable to load the normalized customer profile. Please retry. <button type="button" id="retry-customer-profile" class="ghost">Retry</button></div>' : ''}
@@ -8828,7 +8828,7 @@ async function loadNormalizedCustomerProfile(customerId) {
   const sequence = ++customerProfileRequestSequence;
   customerProfileController?.abort();
   customerProfileController = new AbortController();
-  operationalProfileState = 'loading';
+  customerProfileState = 'loading';
   renderSelectedCustomerChip();
   updateStepperUI();
   try {
@@ -8838,13 +8838,13 @@ async function loadNormalizedCustomerProfile(customerId) {
     const profile = unwrapNormalizedCustomerProfile(payload);
     if (!profile || String(profile.customer_id ?? profile.id) !== String(customerId)) throw new Error('The normalized profile did not match the selected customer.');
     applyNormalizedCustomerProfile(profile);
-    operationalProfileState = 'ready';
+    customerProfileState = 'ready';
     setCustomerSearchMessage('', 'success');
   } catch (error) {
     if (error?.name === 'AbortError' || sequence !== customerProfileRequestSequence || String(customerId) !== String(selectedCustomerId)) return;
     console.error('Normalized customer profile failed to load', error);
     clearCustomerDerivedFields();
-    operationalProfileState = 'error';
+    customerProfileState = 'error';
   } finally {
     if (sequence === customerProfileRequestSequence && String(customerId) === String(selectedCustomerId)) {
       renderSelectedCustomerChip();
@@ -8859,7 +8859,7 @@ function clearSelectedCustomer() {
   customerProfileController = null;
   selectedCustomer = null;
   selectedCustomerId = null;
-  operationalProfileState = 'idle';
+  customerProfileState = 'idle';
   clearCustomerDerivedFields();
   setActiveCustomerId(null);
   renderSelectedCustomerChip();
