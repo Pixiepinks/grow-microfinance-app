@@ -6524,9 +6524,27 @@ function renderCustomerDetail(customerId) {
  * Front-end only: the normalized profile remains the source of financial truth.
  * -------------------------------------------------------------------------- */
 const operationalProfileState = {
-  activeTab: 'overview', loans: [], payments: [], letters: [], audit: [], normalized: {},
-  sectionErrors: {}, letterModalOpen: false, documentModalOpen: false,
+  customerId: null, activeTab: 'overview', loans: [], payments: [], credits: [], letters: [], audit: [], normalized: {},
+  financialSummary: {}, loading: { loans: false, payments: false, credit: false },
+  sectionErrors: {}, requestSequence: 0, letterModalOpen: false, documentModalOpen: false,
 };
+
+function unwrapApiPayload(payload) {
+  if (payload == null) return null;
+  return payload.data?.profile ?? payload.profile ?? payload.data?.customer ?? payload.customer ?? payload.data ?? payload;
+}
+
+function unwrapArray(payload, possibleKeys = []) {
+  if (Array.isArray(payload)) return payload;
+  for (const key of possibleKeys) {
+    if (Array.isArray(payload?.[key])) return payload[key];
+    if (Array.isArray(payload?.data?.[key])) return payload.data[key];
+  }
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
 
 function safeValue(value, fallback = '—') {
   if (value === null || value === undefined || typeof value === 'object') return fallback;
@@ -6574,18 +6592,19 @@ function formatAddress(value, prefix = '') {
 }
 
 function normalizeCustomerProfile(payload) {
-  const data = payload?.data || payload || {};
-  return data.profile || data.customer || data.data?.profile || data.data?.customer || data;
+  return unwrapApiPayload(payload) || {};
 }
 function normalizeCustomerLoans(payload) {
-  const data = payload?.data || payload || {};
-  const rows = data.loans || data.items || data.loan_portfolio?.loans || [];
-  return Array.isArray(rows) ? rows : [];
+  const direct = unwrapArray(payload, ['loans', 'customer_loans']);
+  if (direct.length) return direct.slice().sort((a,b) => {
+    const rank = (loan) => isOperationalActiveLoan(loan) ? 0 : ['SETTLED','CLOSED'].includes(normalizeCustomerStatus(profilePick(loan,['status','loan_status']))) ? 2 : 1;
+    return rank(a)-rank(b) || new Date(profilePick(b,['disbursement_date','created_at'],0))-new Date(profilePick(a,['disbursement_date','created_at'],0));
+  });
+  const portfolio = payload?.loan_portfolio ?? payload?.data?.loan_portfolio;
+  return unwrapArray(portfolio, ['loans', 'items']);
 }
 function normalizeCustomerPayments(payload) {
-  const data = payload?.data || payload || {};
-  const rows = data.payments || data.recent_payments || data.items || [];
-  return Array.isArray(rows) ? rows : [];
+  return unwrapArray(payload, ['payments', 'recent_payments', 'collections', 'receipts']).slice().sort((a,b) => new Date(profilePick(b,['payment_date','paid_date','transaction_date','created_at'],0))-new Date(profilePick(a,['payment_date','paid_date','transaction_date','created_at'],0)));
 }
 function normalizeCustomerDocuments(payload) {
   const data = payload?.data || payload || {};
@@ -6596,6 +6615,51 @@ function normalizeCustomerLetters(payload) {
   const data = payload?.data || payload || {};
   const rows = data.letters || data.notices || data.communications || data.items || [];
   return Array.isArray(rows) ? rows : [];
+}
+function isInternalPlaceholderEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  return value.endsWith('@leads.local') || value.endsWith('@local') || value.includes('placeholder');
+}
+function customerDisplayEmail(customer) {
+  const email = profilePick(customer, ['email', 'email_address']);
+  return isInternalPlaceholderEmail(email) ? '—' : safeValue(email);
+}
+function profileNumber(value) {
+  if (value === null || value === undefined || value === '' || typeof value === 'object') return null;
+  const number = Number(String(value).replace(/,/g, ''));
+  return Number.isFinite(number) ? number : null;
+}
+const operationalActiveLoanStatuses = new Set(['ACTIVE', 'DISBURSED', 'OVERDUE']);
+function isOperationalActiveLoan(loan) { return operationalActiveLoanStatuses.has(normalizeCustomerStatus(profilePick(loan, ['status', 'loan_status']))); }
+function sumProfileValues(rows, keys) {
+  return rows.reduce((sum, row) => sum + (profileNumber(profilePick(row, keys)) ?? 0), 0);
+}
+function firstAvailable(source, keys) { return profileNumber(profilePick(source, keys)); }
+function buildOperationalFinancialSummary(raw = {}) {
+  const envelope = raw?.data ?? raw;
+  const supplied = profilePick(envelope, ['financial_summary', 'financial_profile', 'summary', 'profile.financial_summary', 'customer.financial_summary'], {}) || {};
+  const loans = operationalProfileState.loans, payments = operationalProfileState.payments;
+  const active = loans.filter(isOperationalActiveLoan), settled = loans.filter((l) => ['SETTLED', 'CLOSED'].includes(normalizeCustomerStatus(profilePick(l, ['status', 'loan_status']))));
+  const dates = active.map((l) => profilePick(l, ['next_due_date', 'next_installment_date', 'next_payment_date'])).filter((v) => v && !Number.isNaN(new Date(v).getTime())).sort((a,b) => new Date(a)-new Date(b));
+  const paymentDates = payments.map((p) => profilePick(p, ['payment_date', 'paid_date', 'transaction_date', 'created_at'])).filter(Boolean).sort((a,b) => new Date(b)-new Date(a));
+  const credit = operationalProfileState.credits.reduce((sum, item) => sum + (profileNumber(profilePick(item, ['available_amount', 'available_balance', 'credit_balance'])) ?? 0), 0);
+  const pickNumber = (keys, fallback) => firstAvailable(supplied, keys) ?? firstAvailable(envelope, keys) ?? fallback;
+  return {
+    ...supplied,
+    total_loans: pickNumber(['total_loans', 'loan_count'], loans.length),
+    active_loans: pickNumber(['active_loans', 'activeLoans', 'total_active_loans', 'active_loan_count'], active.length),
+    settled_loans: pickNumber(['settled_loans', 'settled_loan_count'], settled.length),
+    total_outstanding: pickNumber(['total_outstanding', 'outstanding_total', 'customer_outstanding', 'loan_outstanding'], sumProfileValues(loans, ['outstanding', 'outstanding_amount', 'remaining_balance', 'total_outstanding'])),
+    total_paid: pickNumber(['total_cash_paid', 'cash_paid', 'total_paid'], payments.length ? sumProfileValues(payments, ['cash_received', 'amount', 'payment_amount']) : sumProfileValues(loans, ['cash_paid', 'total_cash_paid', 'total_paid', 'paid_amount'])),
+    customer_credit: pickNumber(['customer_credit_balance', 'available_credit', 'available_customer_credit', 'credit_balance', 'customer_credit'], credit),
+    principal_outstanding: pickNumber(['principal_outstanding'], sumProfileValues(loans, ['principal_outstanding', 'outstanding_principal'])),
+    original_interest_outstanding: pickNumber(['original_interest_outstanding', 'interest_outstanding'], sumProfileValues(loans, ['original_interest_outstanding', 'interest_outstanding'])),
+    delay_interest_outstanding: pickNumber(['delay_interest_outstanding', 'outstanding_delay_interest', 'delay_interest_receivable'], sumProfileValues(loans, ['delay_interest_outstanding', 'outstanding_delay_interest', 'delay_interest_receivable'])),
+    next_due_date: profilePick(supplied, ['next_due_date', 'next_installment_date', 'next_payment_date']) ?? profilePick(envelope, ['next_due_date']) ?? dates[0] ?? null,
+    next_installment_amount: pickNumber(['next_installment_amount', 'next_instalment_amount'], firstAvailable(active[0] || {}, ['next_installment_amount', 'next_instalment_amount', 'next_payment_amount'])),
+    days_overdue: pickNumber(['days_overdue', 'overdue_days', 'max_days_overdue'], Math.max(0, ...active.map((l) => firstAvailable(l, ['days_overdue', 'overdue_days']) ?? 0))),
+    last_payment_date: profilePick(supplied, ['last_payment_date']) ?? paymentDates[0] ?? null,
+  };
 }
 function statusBadge(value) {
   const status = safeValue(typeof value === 'object' ? profilePick(value, ['status', 'value', 'name']) : value);
@@ -6623,6 +6687,11 @@ function cpTable(columns, rows, emptyMessage) {
 function cpSection(title, action, content, extra = '') {
   return `<section class="cp-card ${extra}"><header class="cp-card-head"><h3>${escapeHtml(title)}</h3>${action || ''}</header>${content}</section>`;
 }
+function cpFinancialTable(section, columns, rows, emptyMessage) {
+  if (operationalProfileState.loading[section]) return loadingState(`Loading ${section}`);
+  if (operationalProfileState.sectionErrors[section]) return errorState(`Unable to load customer ${section}.`, section);
+  return cpTable(columns, rows, emptyMessage);
+}
 
 function cpLoanValue(loan, keys) { return profilePick(loan, keys); }
 function cpLoanRows(loans, compact = false) {
@@ -6630,14 +6699,14 @@ function cpLoanRows(loans, compact = false) {
     const id = safeValue(cpLoanValue(loan, ['loan_number', 'loan_no', 'number', 'id']));
     const status = cpLoanValue(loan, ['status', 'loan_status']);
     const settled = normalizeCustomerStatus(status) === 'SETTLED';
-    const cells = [id, statusBadge(status), formatProfileCurrency(cpLoanValue(loan, ['principal', 'principal_amount'])), formatProfileCurrency(cpLoanValue(loan, ['total_payable', 'contract_value'])), formatProfileCurrency(cpLoanValue(loan, ['total_paid', 'paid_amount'])), formatProfileCurrency(cpLoanValue(loan, ['total_outstanding', 'outstanding_amount', 'outstanding'])), formatProfileDate(cpLoanValue(loan, ['next_due_date', 'next_due']))];
-    if (!compact) cells.push(formatProfileCurrency(cpLoanValue(loan, ['delay_interest_outstanding', 'delay_interest'])), safeValue(cpLoanValue(loan, ['days_overdue'])), `<div class="cp-row-actions"><button type="button" data-cp-loan="${escapeHtml(safeValue(cpLoanValue(loan, ['id', 'loan_id']), ''))}">View Loan</button><button type="button" ${settled ? 'disabled title="Settled loans cannot receive a standard payment"' : ''} data-cp-payment="${escapeHtml(safeValue(cpLoanValue(loan, ['id', 'loan_id']), ''))}">Record Payment</button></div>`);
+    const cells = [id, statusBadge(status), formatProfileCurrency(cpLoanValue(loan, ['principal', 'principal_amount', 'approved_amount', 'disbursed_amount'])), formatProfileCurrency(cpLoanValue(loan, ['total_payable', 'total_repayment', 'scheduled_total', 'contract_value'])), formatProfileCurrency(cpLoanValue(loan, ['cash_paid', 'total_paid', 'paid_amount'])), formatProfileCurrency(cpLoanValue(loan, ['outstanding', 'outstanding_amount', 'remaining_balance', 'total_outstanding'])), formatProfileDate(cpLoanValue(loan, ['next_due_date', 'next_installment_date', 'next_payment_date', 'next_due']))];
+    if (!compact) cells.push(formatProfileCurrency(cpLoanValue(loan, ['delay_interest_outstanding', 'delay_interest'])), safeValue(cpLoanValue(loan, ['days_overdue', 'overdue_days'])), `<div class="cp-row-actions"><button type="button" data-cp-loan="${escapeHtml(safeValue(cpLoanValue(loan, ['id', 'loan_id']), ''))}">View Loan</button><button type="button" ${settled ? 'disabled title="Settled loans cannot receive a standard payment"' : ''} data-cp-payment="${escapeHtml(safeValue(cpLoanValue(loan, ['id', 'loan_id']), ''))}">Record Payment</button></div>`);
     return `<tr>${cells.map((cell) => `<td>${typeof cell === 'string' && cell.startsWith('<') ? cell : escapeHtml(safeValue(cell))}</td>`).join('')}</tr>`;
   }).join('');
 }
 function cpPaymentRows(payments, compact = false) {
   return payments.slice(0, compact ? 5 : payments.length).map((payment) => {
-    const cells = [formatProfileDate(profilePick(payment, ['payment_date', 'date', 'created_at'])), cpField(payment, ['receipt_number', 'receipt_no', 'reference']), cpField(payment, ['loan_number', 'loan_no', 'loan.number']), formatProfileCurrency(profilePick(payment, ['amount', 'cash_amount', 'payment_amount'])), cpField(payment, ['payment_method', 'method']), cpField(payment, ['collector_name', 'collector.name', 'created_by_name'])];
+    const cells = [formatProfileDate(profilePick(payment, ['payment_date', 'paid_date', 'transaction_date', 'date', 'created_at'])), cpField(payment, ['receipt_number', 'receipt_no', 'reference']), cpField(payment, ['loan_number', 'loan_no', 'loan.loan_number', 'loan.number']), formatProfileCurrency(profilePick(payment, ['amount', 'payment_amount', 'cash_received', 'cash_amount'])), cpField(payment, ['payment_method', 'payment_mode', 'method']), cpField(payment, ['collector_name', 'collector.full_name', 'collector.staff_name', 'collector.name', 'created_by_name'])];
     if (!compact) cells.push(statusBadge(profilePick(payment, ['journal_status', 'status'])), '<button type="button" disabled title="Receipt action is not available from this API">View Receipt</button>');
     return `<tr>${cells.map((cell) => `<td>${typeof cell === 'string' && cell.startsWith('<') ? cell : escapeHtml(safeValue(cell))}</td>`).join('')}</tr>`;
   }).join('');
@@ -6648,18 +6717,17 @@ function renderProfileHeader(customer) {
   const currentAddress = formatAddress(profilePick(customer, ['current_address']), 'current');
   const primaryAddress = currentAddress === '—' ? formatAddress(profilePick(customer, ['address'])) : currentAddress;
   return `<div class="cp-breadcrumb"><button type="button" data-cp-back>← Customers</button><span>/</span><strong>${escapeHtml(name)}</strong><span>/</span><span>${escapeHtml(code)}</span></div>
-  <section class="cp-profile-head cp-card"><div class="cp-identity"><div class="cp-avatar" aria-label="Customer initials">${escapeHtml(cpInitials(name))}</div><div class="cp-identity-main"><div class="cp-name-line"><h1>${escapeHtml(name)}</h1>${statusBadge(profilePick(customer, ['customer_status', 'lead_status'], 'ACTIVE'))}</div><div class="cp-contact-line"><strong>${escapeHtml(code)}</strong><span>NIC: ${escapeHtml(cpField(customer, ['nic_number', 'nic', 'nic_no']))}</span><span>☎ ${escapeHtml(cpField(customer, ['mobile', 'mobile_number', 'phone']))}</span></div><p class="cp-address">⌖ ${escapeHtml(primaryAddress)}</p><div class="cp-status-grid"><div><span>Lead Status</span>${statusBadge(profilePick(customer, ['lead_status']))}</div><div><span>KYC Status</span>${statusBadge(profilePick(customer, ['kyc_status']))}</div><div><span>Eligibility</span>${statusBadge(profilePick(customer, ['eligibility_status']))}</div><div><span>Customer Since</span><strong>${escapeHtml(formatProfileDate(profilePick(customer, ['created_at', 'customer_since'])))}</strong></div></div></div></div>
+  <section class="cp-profile-head cp-card"><div class="cp-identity"><div class="cp-avatar" aria-label="Customer initials">${escapeHtml(cpInitials(name))}</div><div class="cp-identity-main"><div class="cp-name-line"><h1>${escapeHtml(name)}</h1>${profilePick(customer, ['customer_status', 'account_status']) != null ? statusBadge(profilePick(customer, ['customer_status', 'account_status'])) : ''}</div><div class="cp-contact-line"><strong>${escapeHtml(code)}</strong><span>NIC: ${escapeHtml(cpField(customer, ['nic_number', 'nic', 'nic_no']))}</span><span>☎ ${escapeHtml(cpField(customer, ['mobile', 'mobile_number', 'phone']))}</span></div><p class="cp-address">⌖ ${escapeHtml(primaryAddress)}</p><div class="cp-status-grid"><div><span>Lead Status</span>${statusBadge(profilePick(customer, ['lead_status']))}</div><div><span>KYC Status</span>${statusBadge(profilePick(customer, ['kyc_status']))}</div><div><span>Eligibility</span>${statusBadge(profilePick(customer, ['eligibility_status']))}</div><div><span>Customer Since</span><strong>${escapeHtml(formatProfileDate(profilePick(customer, ['created_at', 'customer_since'])))}</strong></div></div></div></div>
   <div class="cp-header-actions"><button type="button" class="cp-primary" data-cp-edit>✎ Edit Customer</button><button type="button" class="cp-blue" data-cp-tab="personal">✎ Edit KYC</button><button type="button" data-cp-new-loan>＋ New Loan Application</button><button type="button" data-cp-letter>✉ Send Letter / Notice</button><details><summary>More ⌄</summary><div class="cp-more-menu"><button data-cp-eligible>Mark Eligible</button><button data-cp-not-eligible>Mark Not Eligible</button><button data-cp-upload>Upload Document</button><button disabled title="Customer ledger endpoint is not available">View Customer Ledger</button><button data-cp-print>Print Customer Profile</button><button data-cp-tab="audit">View Audit History</button></div></details></div></section>`;
 }
 
 function renderKpiCards(customer) {
-  const n = operationalProfileState.normalized || {};
-  const financial = profilePick(n, ['financial_summary', 'financial_profile', 'summary'], n) || {};
-  const active = profilePick(financial, ['active_loans'], operationalProfileState.loans.filter((l) => ['ACTIVE', 'DISBURSED'].includes(normalizeCustomerStatus(profilePick(l, ['status'])))).length || null);
+  const financial = operationalProfileState.financialSummary || {};
+  const active = profilePick(financial, ['active_loans'], operationalProfileState.loans.filter(isOperationalActiveLoan).length);
   const cards = [
     ['▥', 'Active Loans', active, 'loans', 'View Loans'], ['◈', 'Total Outstanding', formatProfileCurrency(profilePick(financial, ['total_outstanding', 'outstanding_amount'])), 'financial', 'View Details'],
     ['☑', 'Total Paid', formatProfileCurrency(profilePick(financial, ['total_paid', 'cash_paid'])), 'payments', 'View Payments'], ['▣', 'Customer Credit', formatProfileCurrency(profilePick(financial, ['customer_credit', 'credit_balance', 'available_customer_credit'])), 'financial', 'View Ledger'],
-    ['▦', 'Next Due Date', formatProfileDate(profilePick(financial, ['next_due_date'])), 'loans', 'View Schedule'], ['!', 'Days Overdue', safeValue(profilePick(financial, ['days_overdue'])), 'financial', 'View Details'],
+    ['▦', 'Next Due Date', formatProfileDate(profilePick(financial, ['next_due_date'])), 'loans', 'View Schedule'], ['!', 'Days Overdue', safeValue(profilePick(financial, ['days_overdue', 'overdue_days'])), 'financial', 'View Details'],
   ];
   return `<section class="cp-kpis">${cards.map(([icon, label, value, tab, link]) => `<article class="cp-kpi"><span class="cp-kpi-icon">${icon}</span><div><small>${escapeHtml(label)}</small><strong>${escapeHtml(safeValue(value))}</strong><button type="button" data-cp-tab="${tab}">${escapeHtml(link)} →</button></div></article>`).join('')}</section>`;
 }
@@ -6672,12 +6740,12 @@ function renderProfileTabs() {
 function renderOverviewTab(c) {
   const permanent = formatAddress(profilePick(c, ['permanent_address']), 'permanent');
   const current = formatAddress(profilePick(c, ['current_address']), 'current');
-  const info = `<div class="cp-info-grid">${cpInfoCard('Contact Information','☎', [['Mobile',cpField(c,['mobile','mobile_number','phone'])],['Email',cpField(c,['email'])],['Current Address',current],['Permanent Address',permanent]])}${cpInfoCard('Personal Information','☺', [['Date of Birth',formatProfileDate(profilePick(c,['date_of_birth']))],['Civil Status',cpField(c,['civil_status'])],['Customer Type',cpField(c,['customer_type'])],['Dependents',cpField(c,['dependents_count','dependents'])],['Household Size',cpField(c,['household_size'])],['Living Since',formatProfileDate(profilePick(c,['current_address_since']))]])}${cpInfoCard('Employment / Business','▣', [['Occupation',cpField(c,['occupation'])],['Employer Name',cpField(c,['employer_name'])],['Employer Address',cpField(c,['employer_address'])],['Monthly Income',formatProfileCurrency(profilePick(c,['monthly_income']))],['Business Name',cpField(c,['business_name'])],['Business Address',cpField(c,['business_address'])],['Business Type',cpField(c,['business_type'])]])}${cpInfoCard('Guarantor Information','♙', [['Name',cpField(c,['guarantor_name','guarantor.name'])],['Relationship',cpField(c,['guarantor_relationship','guarantor.relationship'])],['Mobile',cpField(c,['guarantor_mobile','guarantor.mobile'])],['Address',cpField(c,['guarantor_address','guarantor.address'])]])}</div>`;
-  const loans = cpSection('Loans Summary','<button data-cp-tab="loans">View All Loans →</button>',cpTable(['Loan No.','Status','Principal','Total Payable','Paid','Outstanding','Next Due'],cpLoanRows(operationalProfileState.loans,true),'No loans recorded yet.'),'cp-wide');
-  const payments = cpSection('Recent Payments','<button data-cp-tab="payments">View All Payments →</button>',cpTable(['Date','Receipt No.','Loan No.','Amount','Method','Collector'],cpPaymentRows(operationalProfileState.payments,true),'No payments recorded yet.'),'cp-wide');
-  const f = profilePick(operationalProfileState.normalized,['financial_summary','financial_profile','summary'],{}) || {};
-  const account = cpInfoCard('Account Summary','▤',[['Total Loans (All Time)',profilePick(f,['total_loans'],operationalProfileState.loans.length || null)],['Active Loans',profilePick(f,['active_loans'])],['Settled Loans',profilePick(f,['settled_loans'])],['Total Paid',formatProfileCurrency(profilePick(f,['total_paid']))],['Total Outstanding',formatProfileCurrency(profilePick(f,['total_outstanding']))],['Customer Credit Balance',formatProfileCurrency(profilePick(f,['customer_credit','credit_balance']))]]);
-  const credit = cpInfoCard('Credit Summary','◉',[['Original Interest Outstanding',formatProfileCurrency(profilePick(f,['original_interest_outstanding','interest_outstanding']))],['Principal Outstanding',formatProfileCurrency(profilePick(f,['principal_outstanding']))],['Delay Interest Outstanding',formatProfileCurrency(profilePick(f,['delay_interest_outstanding']))],['Next Due Date',formatProfileDate(profilePick(f,['next_due_date']))],['Next Instalment Amount',formatProfileCurrency(profilePick(f,['next_installment_amount','next_instalment_amount']))],['Days Overdue',safeValue(profilePick(f,['days_overdue']))],['Last Payment Date',formatProfileDate(profilePick(f,['last_payment_date']))]]);
+  const info = `<div class="cp-info-grid">${cpInfoCard('Contact Information','☎', [['Mobile',cpField(c,['mobile','mobile_number','phone'])],['Email',customerDisplayEmail(c)],['Current Address',current],['Permanent Address',permanent]])}${cpInfoCard('Personal Information','☺', [['Date of Birth',formatProfileDate(profilePick(c,['date_of_birth']))],['Civil Status',cpField(c,['civil_status'])],['Customer Type',cpField(c,['customer_type'])],['Dependents',cpField(c,['dependents_count','dependents'])],['Household Size',cpField(c,['household_size'])],['Living Since',formatProfileDate(profilePick(c,['current_address_since']))]])}${cpInfoCard('Employment / Business','▣', [['Occupation',cpField(c,['occupation'])],['Employer Name',cpField(c,['employer_name'])],['Employer Address',cpField(c,['employer_address'])],['Monthly Income',formatProfileCurrency(profilePick(c,['monthly_income']))],['Business Name',cpField(c,['business_name'])],['Business Address',cpField(c,['business_address'])],['Business Type',cpField(c,['business_type'])]])}${cpInfoCard('Guarantor Information','♙', [['Name',cpField(c,['guarantor_name','guarantor.name'])],['Relationship',cpField(c,['guarantor_relationship','guarantor.relationship'])],['Mobile',cpField(c,['guarantor_mobile','guarantor.mobile'])],['Address',cpField(c,['guarantor_address','guarantor.address'])]])}</div>`;
+  const loans = cpSection('Loans Summary','<button data-cp-tab="loans">View All Loans →</button>',cpFinancialTable('loans',['Loan No.','Status','Principal','Total Payable','Paid','Outstanding','Next Due'],cpLoanRows(operationalProfileState.loans,true),'No loans recorded yet.'),'cp-wide');
+  const payments = cpSection('Recent Payments','<button data-cp-tab="payments">View All Payments →</button>',cpFinancialTable('payments',['Date','Receipt No.','Loan No.','Amount','Method','Collector'],cpPaymentRows(operationalProfileState.payments,true),'No payments recorded yet.'),'cp-wide');
+  const f = operationalProfileState.financialSummary || {};
+  const account = cpInfoCard('Account Summary','▤',[['Total Loans (All Time)',profilePick(f,['total_loans'],operationalProfileState.loans.length)],['Active Loans',profilePick(f,['active_loans'])],['Settled Loans',profilePick(f,['settled_loans'])],['Total Paid',formatProfileCurrency(profilePick(f,['total_paid']))],['Total Outstanding',formatProfileCurrency(profilePick(f,['total_outstanding']))],['Customer Credit Balance',formatProfileCurrency(profilePick(f,['customer_credit','credit_balance']))]]);
+  const credit = cpInfoCard('Credit Summary','◉',[['Original Interest Outstanding',formatProfileCurrency(profilePick(f,['original_interest_outstanding','interest_outstanding']))],['Principal Outstanding',formatProfileCurrency(profilePick(f,['principal_outstanding']))],['Delay Interest Outstanding',formatProfileCurrency(profilePick(f,['delay_interest_outstanding']))],['Next Due Date',formatProfileDate(profilePick(f,['next_due_date']))],['Next Instalment Amount',formatProfileCurrency(profilePick(f,['next_installment_amount','next_instalment_amount']))],['Days Overdue',safeValue(profilePick(f,['days_overdue', 'overdue_days']))],['Last Payment Date',formatProfileDate(profilePick(f,['last_payment_date']))]]);
   const letters = cpSection('Letters & Notices','<button class="cp-primary" data-cp-letter>＋ New Letter</button>', operationalProfileState.letters.length ? operationalProfileState.letters.slice(0,3).map((l)=>`<div class="cp-letter-row"><div><strong>${escapeHtml(cpField(l,['type','letter_type']))}</strong><span>${escapeHtml(cpField(l,['letter_number','number']))}</span></div>${statusBadge(profilePick(l,['status']))}<time>${escapeHtml(formatProfileDate(profilePick(l,['date','letter_date','created_at'])))}</time></div>`).join('') + '<button data-cp-tab="letters">View All Letters →</button>' : emptyState('No letters recorded. API persistence is not available.'));
   const docs = renderDocumentsCard(true);
   const quick = cpSection('Quick Actions','',`<div class="cp-quick"><button data-cp-new-loan>▧ New Loan Application</button><button data-cp-payment="">▣ Record Payment</button><button disabled title="Customer credit action is not available">＋ Add Customer Credit</button><button data-cp-letter>✉ Send Letter / Notice</button><button disabled title="Customer ledger endpoint is not available">▤ View Customer Ledger</button><button data-cp-print>⎙ Print Customer Profile</button></div>`);
@@ -6693,11 +6761,11 @@ function renderPersonalTab(c) {
   return `<div class="cp-info-grid cp-personal-grid">${cards.join('')}</div>`;
 }
 
-function renderLoansTab() { return cpSection('Customer Loans','<button class="cp-primary" data-cp-new-loan>＋ New Loan Application</button>',cpTable(['Loan Number','Status','Principal','Total Payable','Total Paid','Outstanding','Next Due Date','Delay Interest','Days Overdue','Actions'],cpLoanRows(operationalProfileState.loans),'No loans recorded for this customer.')); }
-function renderPaymentsTab() { return cpSection('Payment History','',cpTable(['Payment Date','Receipt Number','Loan Number','Amount','Payment Method','Collector','Journal Status','Actions'],cpPaymentRows(operationalProfileState.payments),'No payments recorded yet.')); }
+function renderLoansTab() { return cpSection('Customer Loans','<button class="cp-primary" data-cp-new-loan>＋ New Loan Application</button>',cpFinancialTable('loans',['Loan Number','Status','Principal','Total Payable','Total Paid','Outstanding','Next Due Date','Delay Interest','Days Overdue','Actions'],cpLoanRows(operationalProfileState.loans),'No loans recorded for this customer.')); }
+function renderPaymentsTab() { return cpSection('Payment History','',cpFinancialTable('payments',['Payment Date','Receipt Number','Loan Number','Amount','Payment Method','Collector','Journal Status','Actions'],cpPaymentRows(operationalProfileState.payments),'No payments recorded yet.')); }
 function renderFinancialTab() {
-  const f=profilePick(operationalProfileState.normalized,['financial_summary','financial_profile','summary'],{})||{};
-  return `<div class="cp-financial-grid">${cpInfoCard('Loan Portfolio','▥',[['Total Loans',profilePick(f,['total_loans'],operationalProfileState.loans.length||null)],['Active Loans',profilePick(f,['active_loans'])],['Settled Loans',profilePick(f,['settled_loans'])],['Total Principal',formatProfileCurrency(profilePick(f,['total_principal']))],['Total Paid',formatProfileCurrency(profilePick(f,['total_paid']))],['Total Outstanding',formatProfileCurrency(profilePick(f,['total_outstanding']))]])}${cpInfoCard('Receivables','◉',[['Principal Outstanding',formatProfileCurrency(profilePick(f,['principal_outstanding']))],['Original Interest Outstanding',formatProfileCurrency(profilePick(f,['original_interest_outstanding']))],['Delay Interest Outstanding',formatProfileCurrency(profilePick(f,['delay_interest_outstanding']))],['Fees Outstanding',formatProfileCurrency(profilePick(f,['fees_outstanding']))]])}${cpInfoCard('Customer Credit','▣',[['Available Customer Credit',formatProfileCurrency(profilePick(f,['available_customer_credit','customer_credit']))],['Credit Created',formatProfileCurrency(profilePick(f,['credit_created']))],['Credit Applied',formatProfileCurrency(profilePick(f,['credit_applied']))],['Last Credit Activity',formatProfileDate(profilePick(f,['last_credit_activity']))]])}${cpInfoCard('Repayment Behaviour','▦',[['Next Due Date',formatProfileDate(profilePick(f,['next_due_date']))],['Next Instalment Amount',formatProfileCurrency(profilePick(f,['next_installment_amount','next_instalment_amount']))],['Last Payment Date',formatProfileDate(profilePick(f,['last_payment_date']))],['Days Overdue',safeValue(profilePick(f,['days_overdue']))],['Overdue Instalments',safeValue(profilePick(f,['overdue_installments']))]])}</div><div class="cp-accounting-note">Financial values are displayed exactly as supplied by the authoritative customer profile API. Cash payments, credit and settlement adjustments remain separate.</div>`;
+  const f=operationalProfileState.financialSummary||{};
+  return `<div class="cp-financial-grid">${cpInfoCard('Loan Portfolio','▥',[['Total Loans',profilePick(f,['total_loans'],operationalProfileState.loans.length)],['Active Loans',profilePick(f,['active_loans'])],['Settled Loans',profilePick(f,['settled_loans'])],['Total Principal',formatProfileCurrency(profilePick(f,['total_principal']))],['Total Paid',formatProfileCurrency(profilePick(f,['total_paid']))],['Total Outstanding',formatProfileCurrency(profilePick(f,['total_outstanding']))]])}${cpInfoCard('Receivables','◉',[['Principal Outstanding',formatProfileCurrency(profilePick(f,['principal_outstanding']))],['Original Interest Outstanding',formatProfileCurrency(profilePick(f,['original_interest_outstanding']))],['Delay Interest Outstanding',formatProfileCurrency(profilePick(f,['delay_interest_outstanding']))],['Fees Outstanding',formatProfileCurrency(profilePick(f,['fees_outstanding']))]])}${cpInfoCard('Customer Credit','▣',[['Available Customer Credit',formatProfileCurrency(profilePick(f,['available_customer_credit','customer_credit']))],['Credit Created',formatProfileCurrency(profilePick(f,['credit_created']))],['Credit Applied',formatProfileCurrency(profilePick(f,['credit_applied']))],['Last Credit Activity',formatProfileDate(profilePick(f,['last_credit_activity']))]])}${cpInfoCard('Repayment Behaviour','▦',[['Next Due Date',formatProfileDate(profilePick(f,['next_due_date']))],['Next Instalment Amount',formatProfileCurrency(profilePick(f,['next_installment_amount','next_instalment_amount']))],['Last Payment Date',formatProfileDate(profilePick(f,['last_payment_date']))],['Days Overdue',safeValue(profilePick(f,['days_overdue', 'overdue_days']))],['Overdue Instalments',safeValue(profilePick(f,['overdue_installments']))]])}</div><div class="cp-accounting-note">Financial values are displayed exactly as supplied by the authoritative customer profile API. Cash payments, credit and settlement adjustments remain separate.</div>`;
 }
 
 function renderDocumentsCard(compact=false) {
@@ -6720,7 +6788,7 @@ function renderCustomerProfileTab(customer) {
 function cpLetterModal(customer) {
   if (!operationalProfileState.letterModalOpen) return '';
   const firstLoan=operationalProfileState.loans[0]||{};
-  return `<div class="cp-modal" role="presentation" data-cp-modal-backdrop><section class="cp-modal-dialog cp-letter-dialog" role="dialog" aria-modal="true" aria-labelledby="cp-letter-title"><header><div><small>Customer communication</small><h2 id="cp-letter-title">New Letter / Notice</h2></div><button aria-label="Close letter editor" data-cp-close>✕</button></header><div class="cp-letter-layout"><form class="cp-letter-form"><label>Customer<input value="${escapeHtml(cpName(customer))}" readonly></label><label>Letter Type<select id="cp-letter-type"><option>Payment Reminder</option><option>Overdue Warning</option><option>Final Warning</option><option>Demand Letter</option><option>Settlement Confirmation</option><option>Welcome Letter</option><option>Loan Approval Letter</option><option>Loan Disbursement Letter</option><option>Custom Letter</option></select></label><label>Related Loan<select><option value="">None</option>${operationalProfileState.loans.map(l=>`<option>${escapeHtml(safeValue(profilePick(l,['loan_number','number'])))}</option>`).join('')}</select></label><label>Subject<input id="cp-letter-subject" value="Payment reminder"></label><label>Letter Date<input type="date" value="${new Date().toISOString().slice(0,10)}"></label><label>Due Date<input type="date"></label><label>Delivery Method<select><option>Print</option><option disabled>Email — integration unavailable</option><option disabled>WhatsApp — integration unavailable</option><option>Hand Delivery</option><option>Registered Post</option><option>Courier</option></select></label><label>Recipient Address<textarea>${escapeHtml(formatAddress(profilePick(customer,['current_address']),'current'))}</textarea></label><label>Recipient Mobile<input value="${escapeHtml(cpField(customer,['mobile','mobile_number']))}"></label><label>Recipient Email<input value="${escapeHtml(cpField(customer,['email']))}"></label><label class="cp-span-2">Letter Body<textarea id="cp-letter-body" rows="8">Dear ${escapeHtml(cpName(customer))},\n\nThis is a courteous reminder regarding your loan ${escapeHtml(cpField(firstLoan,['loan_number','number']))}. Please contact GROW Microfinance if you need assistance.\n\nYours faithfully,\nGROW Microfinance</textarea></label><label class="cp-span-2">Internal Notes<textarea rows="2"></textarea></label></form><article class="cp-a4" id="cp-letter-preview"><div class="cp-letter-brand">GROW <span>Microfinance</span></div><time>${escapeHtml(formatProfileDate(new Date()))}</time><p>${escapeHtml(cpName(customer))}<br>${escapeHtml(formatAddress(profilePick(customer,['current_address']),'current'))}</p><h3>Payment reminder</h3><div class="cp-preview-body">Dear ${escapeHtml(cpName(customer))},<br><br>This is a courteous reminder regarding your loan ${escapeHtml(cpField(firstLoan,['loan_number','number']))}. Please contact GROW Microfinance if you need assistance.<br><br>Yours faithfully,<br>GROW Microfinance</div><footer>Authorized Signatory ____________________</footer></article></div><footer class="cp-modal-actions"><span>Sending integration is not available.</span><button disabled title="Letter persistence is not yet available from the API">Save Draft</button><button disabled title="Sending integration is not available">Send</button><button class="cp-primary" data-cp-print-letter>Generate / Print</button></footer></section></div>`;
+  return `<div class="cp-modal" role="presentation" data-cp-modal-backdrop><section class="cp-modal-dialog cp-letter-dialog" role="dialog" aria-modal="true" aria-labelledby="cp-letter-title"><header><div><small>Customer communication</small><h2 id="cp-letter-title">New Letter / Notice</h2></div><button aria-label="Close letter editor" data-cp-close>✕</button></header><div class="cp-letter-layout"><form class="cp-letter-form"><label>Customer<input value="${escapeHtml(cpName(customer))}" readonly></label><label>Letter Type<select id="cp-letter-type"><option>Payment Reminder</option><option>Overdue Warning</option><option>Final Warning</option><option>Demand Letter</option><option>Settlement Confirmation</option><option>Welcome Letter</option><option>Loan Approval Letter</option><option>Loan Disbursement Letter</option><option>Custom Letter</option></select></label><label>Related Loan<select><option value="">None</option>${operationalProfileState.loans.map(l=>`<option>${escapeHtml(safeValue(profilePick(l,['loan_number','number'])))}</option>`).join('')}</select></label><label>Subject<input id="cp-letter-subject" value="Payment reminder"></label><label>Letter Date<input type="date" value="${new Date().toISOString().slice(0,10)}"></label><label>Due Date<input type="date"></label><label>Delivery Method<select><option>Print</option><option disabled>Email — integration unavailable</option><option disabled>WhatsApp — integration unavailable</option><option>Hand Delivery</option><option>Registered Post</option><option>Courier</option></select></label><label>Recipient Address<textarea>${escapeHtml(formatAddress(profilePick(customer,['current_address']),'current'))}</textarea></label><label>Recipient Mobile<input value="${escapeHtml(cpField(customer,['mobile','mobile_number']))}"></label><label>Recipient Email<input value="${escapeHtml(customerDisplayEmail(customer) === '—' ? '' : customerDisplayEmail(customer))}"></label><label class="cp-span-2">Letter Body<textarea id="cp-letter-body" rows="8">Dear ${escapeHtml(cpName(customer))},\n\nThis is a courteous reminder regarding your loan ${escapeHtml(cpField(firstLoan,['loan_number','number']))}. Please contact GROW Microfinance if you need assistance.\n\nYours faithfully,\nGROW Microfinance</textarea></label><label class="cp-span-2">Internal Notes<textarea rows="2"></textarea></label></form><article class="cp-a4" id="cp-letter-preview"><div class="cp-letter-brand">GROW <span>Microfinance</span></div><time>${escapeHtml(formatProfileDate(new Date()))}</time><p>${escapeHtml(cpName(customer))}<br>${escapeHtml(formatAddress(profilePick(customer,['current_address']),'current'))}</p><h3>Payment reminder</h3><div class="cp-preview-body">Dear ${escapeHtml(cpName(customer))},<br><br>This is a courteous reminder regarding your loan ${escapeHtml(cpField(firstLoan,['loan_number','number']))}. Please contact GROW Microfinance if you need assistance.<br><br>Yours faithfully,<br>GROW Microfinance</div><footer>Authorized Signatory ____________________</footer></article></div><footer class="cp-modal-actions"><span>Sending integration is not available.</span><button disabled title="Letter persistence is not yet available from the API">Save Draft</button><button disabled title="Sending integration is not available">Send</button><button class="cp-primary" data-cp-print-letter>Generate / Print</button></footer></section></div>`;
 }
 function cpDocumentModal() {
   if (!operationalProfileState.documentModalOpen) return '';
@@ -6745,6 +6813,7 @@ function bindCustomerProfileEvents() {
     if(target.dataset.cpPayment!==undefined){if(window.paymentLoanId)paymentLoanId.value=target.dataset.cpPayment||'';paymentSheet?.classList.remove('hidden');return;}
     if(target.dataset.cpLoan){if(typeof showAdminLoanDetail === 'function') showAdminLoanDetail(target.dataset.cpLoan); else showToast('Open the Loans workspace to view this loan.');return;}
     if(target.dataset.cpRetry==='documents'){loadCustomerDocuments(customerDetailState.customerId);return;}
+    if(['loans','payments','credit'].includes(target.dataset.cpRetry)){loadOperationalFinancialSection(target.dataset.cpRetry,customerDetailState.customerId);return;}
   };
   root.onkeydown=(event)=>{if(event.key==='Escape'&&(operationalProfileState.letterModalOpen||operationalProfileState.documentModalOpen)){operationalProfileState.letterModalOpen=false;operationalProfileState.documentModalOpen=false;renderCustomerDetailContent();}if((event.key==='ArrowLeft'||event.key==='ArrowRight')&&event.target.matches('[role="tab"]')){const i=cpTabs.findIndex(([id])=>id===operationalProfileState.activeTab);operationalProfileState.activeTab=cpTabs[(i+(event.key==='ArrowRight'?1:-1)+cpTabs.length)%cpTabs.length][0];renderCustomerDetailContent();customerDetailBody.querySelector(`[data-cp-tab="${operationalProfileState.activeTab}"]`)?.focus();}};
   const form=root.querySelector('#cp-upload-form');if(form)form.onsubmit=async(event)=>{event.preventDefault();const button=form.querySelector('[type="submit"]');button.disabled=true;button.textContent='Uploading…';try{const data=new FormData(form);await apiMultipart(`/customers/${encodeURIComponent(customerDetailState.customerId)}/documents`,data);showToast('Document uploaded successfully.');operationalProfileState.documentModalOpen=false;await loadCustomerDocuments(customerDetailState.customerId);}catch(error){showToast(error?.message||'Document upload failed.','error');button.disabled=false;button.textContent='Upload';}};
@@ -6763,23 +6832,57 @@ renderCustomerDetailContent = function renderOperationalCustomerProfile() {
 };
 
 const legacyLoadCustomerDetail = loadCustomerDetail;
+async function loadOperationalFinancialSection(section, id, sequence = operationalProfileState.requestSequence) {
+  const paths = {
+    loans: `/admin/loans?customer_id=${encodeURIComponent(id)}&page=1&page_size=100`,
+    payments: `/admin/payments?customer_id=${encodeURIComponent(id)}&page=1&page_size=100`,
+    credit: `/admin/customers/${encodeURIComponent(id)}/credits`,
+  };
+  operationalProfileState.loading[section] = true;
+  delete operationalProfileState.sectionErrors[section];
+  renderCustomerDetailContent();
+  try {
+    const response = await api.get(paths[section]);
+    if (sequence !== operationalProfileState.requestSequence || String(id) !== String(operationalProfileState.customerId)) return;
+    if (section === 'loans') operationalProfileState.loans = normalizeCustomerLoans(response);
+    if (section === 'payments') operationalProfileState.payments = normalizeCustomerPayments(response);
+    if (section === 'credit') operationalProfileState.credits = unwrapArray(response, ['credits', 'customer_credits']);
+  } catch (error) {
+    if (sequence !== operationalProfileState.requestSequence || String(id) !== String(operationalProfileState.customerId)) return;
+    const hasAuthoritativeData = section === 'loans' ? operationalProfileState.loans.length : section === 'payments' ? operationalProfileState.payments.length : operationalProfileState.credits.length;
+    if (!hasAuthoritativeData) operationalProfileState.sectionErrors[section] = error?.message || `Unable to load customer ${section}.`;
+  } finally {
+    if (sequence === operationalProfileState.requestSequence && String(id) === String(operationalProfileState.customerId)) {
+      operationalProfileState.loading[section] = false;
+      operationalProfileState.financialSummary = buildOperationalFinancialSummary(operationalProfileState.normalized);
+      renderCustomerDetailContent();
+    }
+  }
+}
 loadCustomerDetail = async function loadOperationalCustomerDetail(customerId) {
   const id=customerId?.toString();if(!id)return legacyLoadCustomerDetail(customerId);
-  customerDetailState.loading=true;customerDetailState.error=null;customerDetailState.customerId=id;customerDetailState.documents=[];operationalProfileState.activeTab='overview';operationalProfileState.sectionErrors={};renderCustomerDetailContent();
+  const sequence=++operationalProfileState.requestSequence;
+  customerDetailState.loading=true;customerDetailState.error=null;customerDetailState.customerId=id;customerDetailState.documents=[];
+  operationalProfileState.customerId=id;operationalProfileState.activeTab='overview';operationalProfileState.loans=[];operationalProfileState.payments=[];operationalProfileState.credits=[];operationalProfileState.financialSummary={};operationalProfileState.loading={loans:false,payments:false,credit:false};operationalProfileState.sectionErrors={};renderCustomerDetailContent();
   try{
     let normalizedResponse=null;
     try{normalizedResponse=await api.get(`/admin/customers/${encodeURIComponent(id)}/profile-normalized`);}catch(error){operationalProfileState.sectionErrors.normalized=error?.message||'Normalized profile unavailable.';}
     const base=endpoint('customers',{id})||'/customers';const normalizedBase=base.replace(/\/+$/,'');const detailPath=normalizedBase.endsWith(`/${id}`)?normalizedBase:`${normalizedBase}/${id}`;
     const detailResponse=await api.get(detailPath);const detail=normalizeCustomerProfile(detailResponse);const normalized=normalizeCustomerProfile(normalizedResponse||{});
     let kyc={};try{const response=await loadCustomerKycProfile(id);customerKycProfile=response;kyc=response?.kyc_profile||response?.data?.kyc_profile||response||{};}catch(_){operationalProfileState.sectionErrors.kyc='Extended KYC is unavailable.';}
-    operationalProfileState.normalized=normalizedResponse?.data||normalizedResponse||{};
+    if(sequence!==operationalProfileState.requestSequence||id!==operationalProfileState.customerId)return;
+    operationalProfileState.normalized=normalizedResponse||{};
     customerDetailState.customer={...detail,...normalized,...kyc};
     operationalProfileState.loans=normalizeCustomerLoans(operationalProfileState.normalized);
     operationalProfileState.payments=normalizeCustomerPayments(operationalProfileState.normalized);
     operationalProfileState.letters=normalizeCustomerLetters(operationalProfileState.normalized);
     operationalProfileState.audit=Array.isArray(profilePick(operationalProfileState.normalized,['audit_history','audit','audit_logs'],[]))?profilePick(operationalProfileState.normalized,['audit_history','audit','audit_logs'],[]):[];
-    populateCustomerKycProfileFromCustomer(customerDetailState.customer);await loadCustomerDocuments(id);
-  }catch(error){customerDetailState.error=/404/.test(error?.message||'')?'Customer not found.':error?.message||"Couldn't load customer. Please try again.";}finally{customerDetailState.loading=false;renderCustomerDetailContent();}
+    operationalProfileState.financialSummary=buildOperationalFinancialSummary(operationalProfileState.normalized);
+    populateCustomerKycProfileFromCustomer(customerDetailState.customer);
+    customerDetailState.loading=false;renderCustomerDetailContent();
+    await Promise.allSettled(['loans','payments','credit'].map((section)=>loadOperationalFinancialSection(section,id,sequence)));
+    if(sequence===operationalProfileState.requestSequence)await loadCustomerDocuments(id);
+  }catch(error){if(sequence===operationalProfileState.requestSequence)customerDetailState.error=/404/.test(error?.message||'')?'Customer not found.':error?.message||"Couldn't load customer. Please try again.";}finally{if(sequence===operationalProfileState.requestSequence){customerDetailState.loading=false;renderCustomerDetailContent();}}
 };
 
 function refreshCustomerRouteViews() {
