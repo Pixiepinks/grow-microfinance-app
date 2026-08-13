@@ -192,6 +192,7 @@ const customerDetailState = {
 const customerDetailEditState = {
   isEditing: false,
   isSaving: false,
+  error: '',
   values: {
     nic_number: '',
     address: '',
@@ -5397,6 +5398,7 @@ function resetCustomerDetailState() {
   customerDetailState.documentsError = null;
   customerDetailEditState.isEditing = false;
   customerDetailEditState.isSaving = false;
+  customerDetailEditState.error = '';
   customerDetailEditState.values = {
     nic_number: '',
     address: '',
@@ -5435,13 +5437,16 @@ function getEditableCustomerValues(customer = {}) {
 function beginCustomerDetailEdit() {
   customerDetailEditState.isEditing = true;
   customerDetailEditState.isSaving = false;
+  customerDetailEditState.error = '';
   customerDetailEditState.values = getEditableCustomerValues(customerDetailState.customer || {});
   renderCustomerDetailContent();
+  customerDetailBody?.querySelector('#cp-customer-edit-form input')?.focus();
 }
 
 function cancelCustomerDetailEdit() {
   customerDetailEditState.isEditing = false;
   customerDetailEditState.isSaving = false;
+  customerDetailEditState.error = '';
   customerDetailEditState.values = getEditableCustomerValues(customerDetailState.customer || {});
   setInlineAlert(customerDetailMessage, '');
   renderCustomerDetailContent();
@@ -5462,6 +5467,7 @@ async function saveCustomerDetailEdits(customerId) {
   };
 
   customerDetailEditState.isSaving = true;
+  customerDetailEditState.error = '';
   setInlineAlert(customerDetailMessage, '');
   renderCustomerDetailContent();
 
@@ -5484,12 +5490,13 @@ async function saveCustomerDetailEdits(customerId) {
 
     customerDetailEditState.isEditing = false;
     customerDetailEditState.isSaving = false;
+    customerDetailEditState.error = '';
     showToast('Customer updated successfully.');
     await loadCustomerDetail(customerId);
   } catch (error) {
     customerDetailEditState.isSaving = false;
     const message = error?.message || 'Failed to update customer details. Please try again.';
-    setInlineAlert(customerDetailMessage, message, 'error');
+    customerDetailEditState.error = message;
     renderCustomerDetailContent();
   }
 }
@@ -6795,6 +6802,13 @@ function cpDocumentModal() {
   return `<div class="cp-modal" data-cp-modal-backdrop><section class="cp-modal-dialog cp-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="cp-upload-title"><header><h2 id="cp-upload-title">Upload Customer Document</h2><button aria-label="Close upload" data-cp-close>✕</button></header><form id="cp-upload-form"><label>Document Type<select name="document_type" required><option value="NIC_FRONT">NIC Front</option><option value="NIC_BACK">NIC Back</option><option value="SELFIE_NIC">Selfie with NIC</option><option value="ADDRESS_PROOF">Address Proof</option><option value="OTHER">Other</option></select></label><label>File<input name="file" type="file" accept="image/*,.pdf" required></label><label>Notes<textarea name="notes" rows="3"></textarea></label><footer><button type="button" data-cp-close>Cancel</button><button type="submit" class="cp-primary">Upload</button></footer></form></section></div>`;
 }
 
+function cpCustomerEditModal() {
+  if (!customerDetailEditState.isEditing) return '';
+  const values = customerDetailEditState.values;
+  const disabled = customerDetailEditState.isSaving ? ' disabled' : '';
+  return `<div class="grow-customer-edit-modal" role="presentation" data-cp-edit-backdrop><section class="grow-customer-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="cp-customer-edit-title"><header><div><small>Customer master record</small><h2 id="cp-customer-edit-title">Edit Customer</h2></div><button type="button" aria-label="Close customer editor" data-cp-edit-cancel${disabled}>✕</button></header><form id="cp-customer-edit-form"><div class="grow-customer-edit-note">Edit the fields supported by the customer master endpoint. Extended personal, address, employment, household, guarantor and consent information remains available through <strong>Edit KYC</strong>.</div>${customerDetailEditState.error ? `<div class="grow-customer-edit-error" role="alert">${escapeHtml(customerDetailEditState.error)}</div>` : ''}<div class="grow-customer-edit-fields"><label>NIC<input name="nic_number" value="${escapeHtml(values.nic_number)}" autocomplete="off"${disabled}></label><label class="grow-customer-edit-wide">Address<textarea name="address" rows="4"${disabled}>${escapeHtml(values.address)}</textarea></label><label>Business Type<input name="business_type" value="${escapeHtml(values.business_type)}"${disabled}></label></div><footer><button type="button" data-cp-edit-cancel${disabled}>Cancel</button><button type="submit" class="cp-primary"${disabled}>${customerDetailEditState.isSaving ? 'Saving...' : 'Save Changes'}</button></footer></form></section></div>`;
+}
+
 function bindCustomerProfileEvents() {
   const root=customerDetailBody; if(!root)return;
   root.onclick=async(event)=>{
@@ -6806,6 +6820,7 @@ function bindCustomerProfileEvents() {
     if(target.hasAttribute('data-cp-print')){window.print();return;}
     if(target.hasAttribute('data-cp-letter')){operationalProfileState.letterModalOpen=true;renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-upload')){operationalProfileState.documentModalOpen=true;renderCustomerDetailContent();return;}
+    if(target.hasAttribute('data-cp-edit-cancel')){cancelCustomerDetailEdit();return;}
     if(target.hasAttribute('data-cp-close')){operationalProfileState.letterModalOpen=false;operationalProfileState.documentModalOpen=false;renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-print-letter')){document.body.classList.add('cp-print-letter');window.print();setTimeout(()=>document.body.classList.remove('cp-print-letter'),500);return;}
     if(target.hasAttribute('data-cp-eligible')){await updateCustomerStatus(`/customers/${encodeURIComponent(customerDetailState.customerId)}/mark-eligible`,target);return;}
@@ -6815,7 +6830,9 @@ function bindCustomerProfileEvents() {
     if(target.dataset.cpRetry==='documents'){loadCustomerDocuments(customerDetailState.customerId);return;}
     if(['loans','payments','credit'].includes(target.dataset.cpRetry)){loadOperationalFinancialSection(target.dataset.cpRetry,customerDetailState.customerId);return;}
   };
-  root.onkeydown=(event)=>{if(event.key==='Escape'&&(operationalProfileState.letterModalOpen||operationalProfileState.documentModalOpen)){operationalProfileState.letterModalOpen=false;operationalProfileState.documentModalOpen=false;renderCustomerDetailContent();}if((event.key==='ArrowLeft'||event.key==='ArrowRight')&&event.target.matches('[role="tab"]')){const i=cpTabs.findIndex(([id])=>id===operationalProfileState.activeTab);operationalProfileState.activeTab=cpTabs[(i+(event.key==='ArrowRight'?1:-1)+cpTabs.length)%cpTabs.length][0];renderCustomerDetailContent();customerDetailBody.querySelector(`[data-cp-tab="${operationalProfileState.activeTab}"]`)?.focus();}};
+  root.onkeydown=(event)=>{if(event.key==='Escape'&&customerDetailEditState.isEditing&&!customerDetailEditState.isSaving){cancelCustomerDetailEdit();return;}if(event.key==='Escape'&&(operationalProfileState.letterModalOpen||operationalProfileState.documentModalOpen)){operationalProfileState.letterModalOpen=false;operationalProfileState.documentModalOpen=false;renderCustomerDetailContent();}if((event.key==='ArrowLeft'||event.key==='ArrowRight')&&event.target.matches('[role="tab"]')){const i=cpTabs.findIndex(([id])=>id===operationalProfileState.activeTab);operationalProfileState.activeTab=cpTabs[(i+(event.key==='ArrowRight'?1:-1)+cpTabs.length)%cpTabs.length][0];renderCustomerDetailContent();customerDetailBody.querySelector(`[data-cp-tab="${operationalProfileState.activeTab}"]`)?.focus();}};
+  const editBackdrop=root.querySelector('[data-cp-edit-backdrop]');if(editBackdrop)editBackdrop.onclick=(event)=>{if(event.target===editBackdrop&&!customerDetailEditState.isSaving)cancelCustomerDetailEdit();};
+  const editForm=root.querySelector('#cp-customer-edit-form');if(editForm)editForm.onsubmit=async(event)=>{event.preventDefault();if(customerDetailEditState.isSaving)return;const data=new FormData(editForm);setCustomerDetailEditValue('nic_number',data.get('nic_number')||'');setCustomerDetailEditValue('address',data.get('address')||'');setCustomerDetailEditValue('business_type',data.get('business_type')||'');await saveCustomerDetailEdits(customerDetailState.customerId);};
   const form=root.querySelector('#cp-upload-form');if(form)form.onsubmit=async(event)=>{event.preventDefault();const button=form.querySelector('[type="submit"]');button.disabled=true;button.textContent='Uploading…';try{const data=new FormData(form);await apiMultipart(`/customers/${encodeURIComponent(customerDetailState.customerId)}/documents`,data);showToast('Document uploaded successfully.');operationalProfileState.documentModalOpen=false;await loadCustomerDocuments(customerDetailState.customerId);}catch(error){showToast(error?.message||'Document upload failed.','error');button.disabled=false;button.textContent='Upload';}};
   const body=root.querySelector('#cp-letter-body'), subject=root.querySelector('#cp-letter-subject');const refreshPreview=()=>{const preview=root.querySelector('.cp-preview-body');if(preview&&body)preview.innerText=body.value;const h=root.querySelector('#cp-letter-preview h3');if(h&&subject)h.textContent=subject.value||'Letter';};body?.addEventListener('input',refreshPreview);subject?.addEventListener('input',refreshPreview);
 }
@@ -6827,7 +6844,7 @@ renderCustomerDetailContent = function renderOperationalCustomerProfile() {
   const hide=customerDetailState.loading||!!customerDetailState.error||!customerDetailState.customer;
   customerDetailBody?.classList.toggle('hidden',hide);if(hide||!customerDetailBody)return;
   const customer=customerDetailState.customer;
-  customerDetailBody.innerHTML=`<main class="grow-customer-profile">${renderProfileHeader(customer)}${renderKpiCards(customer)}${renderProfileTabs()}<div class="cp-tab-panel" role="tabpanel">${renderCustomerProfileTab(customer)}</div>${cpLetterModal(customer)}${cpDocumentModal()}<section class="cp-print-only"><h2>GROW Microfinance — Customer Profile</h2><p>Generated ${escapeHtml(formatProfileDate(new Date()))}</p></section></main>`;
+  customerDetailBody.innerHTML=`<main class="grow-customer-profile">${renderProfileHeader(customer)}${renderKpiCards(customer)}${renderProfileTabs()}<div class="cp-tab-panel" role="tabpanel">${renderCustomerProfileTab(customer)}</div>${cpCustomerEditModal()}${cpLetterModal(customer)}${cpDocumentModal()}<section class="cp-print-only"><h2>GROW Microfinance — Customer Profile</h2><p>Generated ${escapeHtml(formatProfileDate(new Date()))}</p></section></main>`;
   bindCustomerProfileEvents();
 };
 
@@ -6861,6 +6878,7 @@ async function loadOperationalFinancialSection(section, id, sequence = operation
 }
 loadCustomerDetail = async function loadOperationalCustomerDetail(customerId) {
   const id=customerId?.toString();if(!id)return legacyLoadCustomerDetail(customerId);
+  if(operationalProfileState.customerId!==null&&String(operationalProfileState.customerId)!==id){customerDetailEditState.isEditing=false;customerDetailEditState.isSaving=false;customerDetailEditState.error='';customerDetailEditState.values={nic_number:'',address:'',business_type:''};}
   const sequence=++operationalProfileState.requestSequence;
   customerDetailState.loading=true;customerDetailState.error=null;customerDetailState.customerId=id;customerDetailState.documents=[];
   operationalProfileState.customerId=id;operationalProfileState.activeTab='overview';operationalProfileState.loans=[];operationalProfileState.payments=[];operationalProfileState.credits=[];operationalProfileState.financialSummary={};operationalProfileState.loading={loans:false,payments:false,credit:false};operationalProfileState.sectionErrors={};renderCustomerDetailContent();
