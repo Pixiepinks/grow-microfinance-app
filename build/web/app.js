@@ -6534,6 +6534,7 @@ const operationalProfileState = {
   customerId: null, activeTab: 'overview', loans: [], payments: [], credits: [], letters: [], audit: [], normalized: {},
   financialSummary: {}, loading: { loans: false, payments: false, credit: false },
   sectionErrors: {}, requestSequence: 0, letterModalOpen: false, documentModalOpen: false,
+  kycModalOpen: false, kycSaving: false, kycError: '',
 };
 
 function unwrapApiPayload(payload) {
@@ -6725,7 +6726,7 @@ function renderProfileHeader(customer) {
   const primaryAddress = currentAddress === '—' ? formatAddress(profilePick(customer, ['address'])) : currentAddress;
   return `<div class="cp-breadcrumb"><button type="button" data-cp-back>← Customers</button><span>/</span><strong>${escapeHtml(name)}</strong><span>/</span><span>${escapeHtml(code)}</span></div>
   <section class="cp-profile-head cp-card"><div class="cp-identity"><div class="cp-avatar" aria-label="Customer initials">${escapeHtml(cpInitials(name))}</div><div class="cp-identity-main"><div class="cp-name-line"><h1>${escapeHtml(name)}</h1>${profilePick(customer, ['customer_status', 'account_status']) != null ? statusBadge(profilePick(customer, ['customer_status', 'account_status'])) : ''}</div><div class="cp-contact-line"><strong>${escapeHtml(code)}</strong><span>NIC: ${escapeHtml(cpField(customer, ['nic_number', 'nic', 'nic_no']))}</span><span>☎ ${escapeHtml(cpField(customer, ['mobile', 'mobile_number', 'phone']))}</span></div><p class="cp-address">⌖ ${escapeHtml(primaryAddress)}</p><div class="cp-status-grid"><div><span>Lead Status</span>${statusBadge(profilePick(customer, ['lead_status']))}</div><div><span>KYC Status</span>${statusBadge(profilePick(customer, ['kyc_status']))}</div><div><span>Eligibility</span>${statusBadge(profilePick(customer, ['eligibility_status']))}</div><div><span>Customer Since</span><strong>${escapeHtml(formatProfileDate(profilePick(customer, ['created_at', 'customer_since'])))}</strong></div></div></div></div>
-  <div class="cp-header-actions"><button type="button" class="cp-primary" data-cp-edit>✎ Edit Customer</button><button type="button" class="cp-blue" data-cp-tab="personal">✎ Edit KYC</button><button type="button" data-cp-new-loan>＋ New Loan Application</button><button type="button" data-cp-letter>✉ Send Letter / Notice</button><details><summary>More ⌄</summary><div class="cp-more-menu"><button data-cp-eligible>Mark Eligible</button><button data-cp-not-eligible>Mark Not Eligible</button><button data-cp-upload>Upload Document</button><button disabled title="Customer ledger endpoint is not available">View Customer Ledger</button><button data-cp-print>Print Customer Profile</button><button data-cp-tab="audit">View Audit History</button></div></details></div></section>`;
+  <div class="cp-header-actions"><button type="button" class="cp-primary" data-cp-edit>✎ Edit Customer</button><button type="button" class="cp-blue" data-cp-edit-kyc>✎ Edit KYC</button><button type="button" data-cp-new-loan>＋ New Loan Application</button><button type="button" data-cp-letter>✉ Send Letter / Notice</button><details><summary>More ⌄</summary><div class="cp-more-menu"><button data-cp-eligible>Mark Eligible</button><button data-cp-not-eligible>Mark Not Eligible</button><button data-cp-upload>Upload Document</button><button disabled title="Customer ledger endpoint is not available">View Customer Ledger</button><button data-cp-print>Print Customer Profile</button><button data-cp-tab="audit">View Audit History</button></div></details></div></section>`;
 }
 
 function renderKpiCards(customer) {
@@ -6802,6 +6803,73 @@ function cpDocumentModal() {
   return `<div class="cp-modal" data-cp-modal-backdrop><section class="cp-modal-dialog cp-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="cp-upload-title"><header><h2 id="cp-upload-title">Upload Customer Document</h2><button aria-label="Close upload" data-cp-close>✕</button></header><form id="cp-upload-form"><label>Document Type<select name="document_type" required><option value="NIC_FRONT">NIC Front</option><option value="NIC_BACK">NIC Back</option><option value="SELFIE_NIC">Selfie with NIC</option><option value="ADDRESS_PROOF">Address Proof</option><option value="OTHER">Other</option></select></label><label>File<input name="file" type="file" accept="image/*,.pdf" required></label><label>Notes<textarea name="notes" rows="3"></textarea></label><footer><button type="button" data-cp-close>Cancel</button><button type="submit" class="cp-primary">Upload</button></footer></form></section></div>`;
 }
 
+function cpKycEditModal(customer) {
+  if (!operationalProfileState.kycModalOpen) return '';
+  const disabled = operationalProfileState.kycSaving ? ' disabled' : '';
+  const value = (key, type = 'text') => {
+    const raw = profilePick(customer, [key], '');
+    if (raw === null || raw === undefined || typeof raw === 'object') return '';
+    const text = String(raw);
+    if (type === 'date') return text.slice(0, 10);
+    if (type === 'month') return text.slice(0, 7);
+    return text;
+  };
+  const input = (label, name, options = {}) => `<label>${escapeHtml(label)}<input name="${name}" type="${options.type || 'text'}" value="${escapeHtml(value(name, options.type))}"${options.min !== undefined ? ` min="${options.min}"` : ''}${options.step ? ` step="${options.step}"` : ''}${disabled}></label>`;
+  const select = (label, name, options) => {
+    const current = value(name);
+    return `<label>${escapeHtml(label)}<select name="${name}"${disabled}>${options.map(([optionValue, text]) => `<option value="${escapeHtml(optionValue)}"${current === optionValue ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></label>`;
+  };
+  const consent = (label, name) => select(label, name, [['', 'Not Recorded'], ['true', 'Granted'], ['false', 'Not Granted']]);
+  return `<div class="grow-customer-kyc-modal" role="presentation" data-cp-kyc-backdrop><section class="grow-customer-kyc-dialog" role="dialog" aria-modal="true" aria-labelledby="cp-kyc-edit-title"><header><div><small>Extended customer information</small><h2 id="cp-kyc-edit-title">Edit KYC</h2></div><button type="button" aria-label="Close KYC editor" data-cp-kyc-cancel${disabled}>✕</button></header><form id="cp-kyc-edit-form">${operationalProfileState.kycError ? `<div class="grow-customer-kyc-error" role="alert">${escapeHtml(operationalProfileState.kycError)}</div>` : ''}<div class="grow-customer-kyc-sections"><fieldset><legend>Personal</legend><div>${input('Date of Birth', 'date_of_birth', { type: 'date' })}${select('Civil Status', 'civil_status', [['', 'Select status'], ['SINGLE', 'Single'], ['MARRIED', 'Married'], ['WIDOWED', 'Widowed'], ['DIVORCED', 'Divorced']])}${select('Customer Type', 'customer_type', [['', 'Select type'], ['SALARIED', 'Salaried'], ['SELF_EMPLOYED', 'Self-employed'], ['OTHER', 'Other']])}</div></fieldset><fieldset><legend>Permanent Address</legend><div>${input('Address Line 1', 'permanent_address_line1')}${input('Address Line 2', 'permanent_address_line2')}${input('City', 'permanent_city')}${input('District', 'permanent_district')}${input('Province', 'permanent_province')}${input('Postal Code', 'permanent_postal_code')}</div></fieldset><fieldset><legend>Current Address</legend><div>${input('Address Line 1', 'current_address_line1')}${input('Address Line 2', 'current_address_line2')}${input('City', 'current_city')}${input('District', 'current_district')}${input('Province', 'current_province')}${input('Postal Code', 'current_postal_code')}${input('Living Since', 'current_address_since', { type: 'month' })}</div></fieldset><fieldset><legend>Household</legend><div>${input('Household Size', 'household_size', { type: 'number', min: 0 })}${input('Dependents', 'dependents_count', { type: 'number', min: 0 })}</div></fieldset><fieldset><legend>Employment</legend><div>${input('Occupation', 'occupation')}${input('Employer Name', 'employer_name')}${input('Employer Address', 'employer_address')}${input('Monthly Income', 'monthly_income', { type: 'number', min: 0, step: '0.01' })}</div></fieldset><fieldset><legend>Business</legend><div>${input('Business Name', 'business_name')}${input('Business Address', 'business_address')}</div></fieldset><fieldset><legend>Guarantor</legend><div>${input('Name', 'guarantor_name')}${input('Relationship', 'guarantor_relationship')}${input('Mobile', 'guarantor_mobile')}</div></fieldset><fieldset><legend>Consents</legend><div>${consent('Data Processing', 'consent_data_processing')}${consent('Credit Checks', 'consent_credit_checks')}</div></fieldset></div><footer><button type="button" data-cp-kyc-cancel${disabled}>Cancel</button><button type="submit" class="cp-primary"${disabled}>${operationalProfileState.kycSaving ? 'Saving...' : 'Save KYC Changes'}</button></footer></form></section></div>`;
+}
+
+async function saveOperationalKyc(form) {
+  if (operationalProfileState.kycSaving || !customerDetailState.customerId) return;
+  const data = new FormData(form);
+  const nullableText = (name) => String(data.get(name) ?? '').trim() || null;
+  const nullableNumber = (name) => {
+    const raw = String(data.get(name) ?? '').trim();
+    return raw === '' ? null : Number(raw);
+  };
+  const nullableBoolean = (name) => {
+    const raw = String(data.get(name) ?? '');
+    return raw === '' ? null : raw === 'true';
+  };
+  const payload = {};
+  ['date_of_birth','civil_status','customer_type','permanent_address_line1','permanent_address_line2','permanent_city','permanent_district','permanent_province','permanent_postal_code','current_address_line1','current_address_line2','current_city','current_district','current_province','current_postal_code','current_address_since','occupation','employer_name','employer_address','business_name','business_address','guarantor_name','guarantor_relationship','guarantor_mobile'].forEach((name) => { payload[name] = nullableText(name); });
+  ['household_size','dependents_count','monthly_income'].forEach((name) => { payload[name] = nullableNumber(name); });
+  payload.consent_data_processing = nullableBoolean('consent_data_processing');
+  payload.consent_credit_checks = nullableBoolean('consent_credit_checks');
+  operationalProfileState.kycSaving = true;
+  operationalProfileState.kycError = '';
+  const submit = form.querySelector('[type="submit"]');
+  const controls = form.querySelectorAll('button,input,select');
+  controls.forEach((control) => { control.disabled = true; });
+  if (submit) submit.textContent = 'Saving...';
+  try {
+    await apiRequest(`/api/admin/customers/${encodeURIComponent(customerDetailState.customerId)}/kyc-profile`, { method: 'PATCH', body: JSON.stringify(payload) });
+    operationalProfileState.kycModalOpen = false;
+    operationalProfileState.kycSaving = false;
+    showToast('KYC information updated successfully.');
+    await loadCustomerDetail(customerDetailState.customerId);
+    operationalProfileState.activeTab = 'personal';
+    renderCustomerDetailContent();
+  } catch (error) {
+    operationalProfileState.kycSaving = false;
+    operationalProfileState.kycError = error?.message || 'Unable to update KYC information. Please review the fields and try again.';
+    controls.forEach((control) => { control.disabled = false; });
+    if (submit) submit.textContent = 'Save KYC Changes';
+    let errorBox = form.querySelector('.grow-customer-kyc-error');
+    if (!errorBox) {
+      errorBox = document.createElement('div');
+      errorBox.className = 'grow-customer-kyc-error';
+      errorBox.setAttribute('role', 'alert');
+      form.prepend(errorBox);
+    }
+    errorBox.textContent = operationalProfileState.kycError;
+  }
+}
+
 function cpCustomerEditModal() {
   if (!customerDetailEditState.isEditing) return '';
   const values = customerDetailEditState.values;
@@ -6816,11 +6884,13 @@ function bindCustomerProfileEvents() {
     if(target.dataset.cpTab){operationalProfileState.activeTab=target.dataset.cpTab;renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-back')){handleCustomerRoute('/admin/customers/all-customers',{pushState:true});return;}
     if(target.hasAttribute('data-cp-edit')){beginCustomerDetailEdit();return;}
+    if(target.hasAttribute('data-cp-edit-kyc')){operationalProfileState.kycModalOpen=true;operationalProfileState.kycError='';operationalProfileState.activeTab='personal';renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-new-loan')){openApplyLoanModal?.({ customerId: customerDetailState.customerId });return;}
     if(target.hasAttribute('data-cp-print')){window.print();return;}
     if(target.hasAttribute('data-cp-letter')){operationalProfileState.letterModalOpen=true;renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-upload')){operationalProfileState.documentModalOpen=true;renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-edit-cancel')){cancelCustomerDetailEdit();return;}
+    if(target.hasAttribute('data-cp-kyc-cancel')&&!operationalProfileState.kycSaving){operationalProfileState.kycModalOpen=false;operationalProfileState.kycError='';renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-close')){operationalProfileState.letterModalOpen=false;operationalProfileState.documentModalOpen=false;renderCustomerDetailContent();return;}
     if(target.hasAttribute('data-cp-print-letter')){document.body.classList.add('cp-print-letter');window.print();setTimeout(()=>document.body.classList.remove('cp-print-letter'),500);return;}
     if(target.hasAttribute('data-cp-eligible')){await updateCustomerStatus(`/customers/${encodeURIComponent(customerDetailState.customerId)}/mark-eligible`,target);return;}
@@ -6830,9 +6900,11 @@ function bindCustomerProfileEvents() {
     if(target.dataset.cpRetry==='documents'){loadCustomerDocuments(customerDetailState.customerId);return;}
     if(['loans','payments','credit'].includes(target.dataset.cpRetry)){loadOperationalFinancialSection(target.dataset.cpRetry,customerDetailState.customerId);return;}
   };
-  root.onkeydown=(event)=>{if(event.key==='Escape'&&customerDetailEditState.isEditing&&!customerDetailEditState.isSaving){cancelCustomerDetailEdit();return;}if(event.key==='Escape'&&(operationalProfileState.letterModalOpen||operationalProfileState.documentModalOpen)){operationalProfileState.letterModalOpen=false;operationalProfileState.documentModalOpen=false;renderCustomerDetailContent();}if((event.key==='ArrowLeft'||event.key==='ArrowRight')&&event.target.matches('[role="tab"]')){const i=cpTabs.findIndex(([id])=>id===operationalProfileState.activeTab);operationalProfileState.activeTab=cpTabs[(i+(event.key==='ArrowRight'?1:-1)+cpTabs.length)%cpTabs.length][0];renderCustomerDetailContent();customerDetailBody.querySelector(`[data-cp-tab="${operationalProfileState.activeTab}"]`)?.focus();}};
+  root.onkeydown=(event)=>{if(event.key==='Escape'&&operationalProfileState.kycModalOpen&&!operationalProfileState.kycSaving){operationalProfileState.kycModalOpen=false;operationalProfileState.kycError='';renderCustomerDetailContent();return;}if(event.key==='Escape'&&customerDetailEditState.isEditing&&!customerDetailEditState.isSaving){cancelCustomerDetailEdit();return;}if(event.key==='Escape'&&(operationalProfileState.letterModalOpen||operationalProfileState.documentModalOpen)){operationalProfileState.letterModalOpen=false;operationalProfileState.documentModalOpen=false;renderCustomerDetailContent();}if((event.key==='ArrowLeft'||event.key==='ArrowRight')&&event.target.matches('[role="tab"]')){const i=cpTabs.findIndex(([id])=>id===operationalProfileState.activeTab);operationalProfileState.activeTab=cpTabs[(i+(event.key==='ArrowRight'?1:-1)+cpTabs.length)%cpTabs.length][0];renderCustomerDetailContent();customerDetailBody.querySelector(`[data-cp-tab="${operationalProfileState.activeTab}"]`)?.focus();}};
   const editBackdrop=root.querySelector('[data-cp-edit-backdrop]');if(editBackdrop)editBackdrop.onclick=(event)=>{if(event.target===editBackdrop&&!customerDetailEditState.isSaving)cancelCustomerDetailEdit();};
+  const kycBackdrop=root.querySelector('[data-cp-kyc-backdrop]');if(kycBackdrop)kycBackdrop.onclick=(event)=>{if(event.target===kycBackdrop&&!operationalProfileState.kycSaving){operationalProfileState.kycModalOpen=false;operationalProfileState.kycError='';renderCustomerDetailContent();}};
   const editForm=root.querySelector('#cp-customer-edit-form');if(editForm)editForm.onsubmit=async(event)=>{event.preventDefault();if(customerDetailEditState.isSaving)return;const data=new FormData(editForm);setCustomerDetailEditValue('nic_number',data.get('nic_number')||'');setCustomerDetailEditValue('address',data.get('address')||'');setCustomerDetailEditValue('business_type',data.get('business_type')||'');await saveCustomerDetailEdits(customerDetailState.customerId);};
+  const kycForm=root.querySelector('#cp-kyc-edit-form');if(kycForm)kycForm.onsubmit=async(event)=>{event.preventDefault();if(!kycForm.reportValidity())return;await saveOperationalKyc(kycForm);};
   const form=root.querySelector('#cp-upload-form');if(form)form.onsubmit=async(event)=>{event.preventDefault();const button=form.querySelector('[type="submit"]');button.disabled=true;button.textContent='Uploading…';try{const data=new FormData(form);await apiMultipart(`/customers/${encodeURIComponent(customerDetailState.customerId)}/documents`,data);showToast('Document uploaded successfully.');operationalProfileState.documentModalOpen=false;await loadCustomerDocuments(customerDetailState.customerId);}catch(error){showToast(error?.message||'Document upload failed.','error');button.disabled=false;button.textContent='Upload';}};
   const body=root.querySelector('#cp-letter-body'), subject=root.querySelector('#cp-letter-subject');const refreshPreview=()=>{const preview=root.querySelector('.cp-preview-body');if(preview&&body)preview.innerText=body.value;const h=root.querySelector('#cp-letter-preview h3');if(h&&subject)h.textContent=subject.value||'Letter';};body?.addEventListener('input',refreshPreview);subject?.addEventListener('input',refreshPreview);
 }
@@ -6844,7 +6916,7 @@ renderCustomerDetailContent = function renderOperationalCustomerProfile() {
   const hide=customerDetailState.loading||!!customerDetailState.error||!customerDetailState.customer;
   customerDetailBody?.classList.toggle('hidden',hide);if(hide||!customerDetailBody)return;
   const customer=customerDetailState.customer;
-  customerDetailBody.innerHTML=`<main class="grow-customer-profile">${renderProfileHeader(customer)}${renderKpiCards(customer)}${renderProfileTabs()}<div class="cp-tab-panel" role="tabpanel">${renderCustomerProfileTab(customer)}</div>${cpCustomerEditModal()}${cpLetterModal(customer)}${cpDocumentModal()}<section class="cp-print-only"><h2>GROW Microfinance — Customer Profile</h2><p>Generated ${escapeHtml(formatProfileDate(new Date()))}</p></section></main>`;
+  customerDetailBody.innerHTML=`<main class="grow-customer-profile">${renderProfileHeader(customer)}${renderKpiCards(customer)}${renderProfileTabs()}<div class="cp-tab-panel" role="tabpanel">${renderCustomerProfileTab(customer)}</div>${cpCustomerEditModal()}${cpKycEditModal(customer)}${cpLetterModal(customer)}${cpDocumentModal()}<section class="cp-print-only"><h2>GROW Microfinance — Customer Profile</h2><p>Generated ${escapeHtml(formatProfileDate(new Date()))}</p></section></main>`;
   bindCustomerProfileEvents();
 };
 
@@ -6878,7 +6950,7 @@ async function loadOperationalFinancialSection(section, id, sequence = operation
 }
 loadCustomerDetail = async function loadOperationalCustomerDetail(customerId) {
   const id=customerId?.toString();if(!id)return legacyLoadCustomerDetail(customerId);
-  if(operationalProfileState.customerId!==null&&String(operationalProfileState.customerId)!==id){customerDetailEditState.isEditing=false;customerDetailEditState.isSaving=false;customerDetailEditState.error='';customerDetailEditState.values={nic_number:'',address:'',business_type:''};}
+  if(operationalProfileState.customerId!==null&&String(operationalProfileState.customerId)!==id){customerDetailEditState.isEditing=false;customerDetailEditState.isSaving=false;customerDetailEditState.error='';customerDetailEditState.values={nic_number:'',address:'',business_type:''};operationalProfileState.kycModalOpen=false;operationalProfileState.kycSaving=false;operationalProfileState.kycError='';}
   const sequence=++operationalProfileState.requestSequence;
   customerDetailState.loading=true;customerDetailState.error=null;customerDetailState.customerId=id;customerDetailState.documents=[];
   operationalProfileState.customerId=id;operationalProfileState.activeTab='overview';operationalProfileState.loans=[];operationalProfileState.payments=[];operationalProfileState.credits=[];operationalProfileState.financialSummary={};operationalProfileState.loading={loans:false,payments:false,credit:false};operationalProfileState.sectionErrors={};renderCustomerDetailContent();
