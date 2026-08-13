@@ -2022,6 +2022,23 @@ button.reconciliation-status { border:0; cursor:pointer; }
 .grow-customer-edit-wide { grid-column:1/-1; }
 .grow-customer-edit-dialog form>footer { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; padding-top:14px; border-top:1px solid #e1e7ee; }
 @media(max-width:760px){.grow-customer-edit-modal{padding:0;place-items:stretch}.grow-customer-edit-dialog{width:100vw;max-height:100vh;min-height:100vh;border-radius:0}.grow-customer-edit-fields{grid-template-columns:1fr}.grow-customer-edit-wide{grid-column:auto}}
+
+/* KYC editor is isolated from every existing profile and workflow dialog. */
+.grow-customer-kyc-modal { position:fixed; z-index:2560; inset:0; display:grid; place-items:center; padding:24px; background:rgba(8,20,37,.7); overflow:auto; }
+.grow-customer-kyc-dialog { width:min(1040px,96vw); max-height:calc(100vh - 48px); display:flex; flex-direction:column; border-radius:13px; background:#fff; box-shadow:0 25px 80px rgba(0,0,0,.28); overflow:hidden; }
+.grow-customer-kyc-dialog>header { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e1e7ee; }
+.grow-customer-kyc-dialog h2 { margin:2px 0 0; font-size:19px; }
+.grow-customer-kyc-dialog header small { color:#708096; }
+.grow-customer-kyc-dialog form { min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+.grow-customer-kyc-sections { padding:20px; overflow-y:auto; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grow-customer-kyc-sections fieldset { min-width:0; margin:0; padding:14px; border:1px solid #dce4ed; border-radius:9px; }
+.grow-customer-kyc-sections legend { padding:0 6px; color:#142541; font-weight:750; }
+.grow-customer-kyc-sections fieldset>div { display:grid; grid-template-columns:1fr 1fr; gap:11px; }
+.grow-customer-kyc-sections label { min-width:0; display:grid; gap:5px; color:#526178; font-weight:650; }
+.grow-customer-kyc-sections input,.grow-customer-kyc-sections select { min-width:0; width:100%; padding:9px 10px; border:1px solid #ced8e3; border-radius:7px; background:#fff; color:#24364d; font:inherit; }
+.grow-customer-kyc-error { flex:0 0 auto; margin:16px 20px 0; padding:11px 12px; border:1px solid #efb7b7; border-radius:8px; background:#fff2f2; color:#9f2424; }
+.grow-customer-kyc-dialog form>footer { flex:0 0 auto; display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #e1e7ee; background:#fff; }
+@media(max-width:760px){.grow-customer-kyc-modal{padding:0;place-items:stretch}.grow-customer-kyc-dialog{width:100vw;max-height:100vh;min-height:100vh;border-radius:0}.grow-customer-kyc-sections{grid-template-columns:1fr;padding:14px}.grow-customer-kyc-sections fieldset>div{grid-template-columns:1fr}.grow-customer-kyc-dialog form>footer{position:sticky;bottom:0}}
 @media print {
   body:not(.cp-print-letter) .grow-customer-profile, body:not(.cp-print-letter) .grow-customer-profile * { visibility:visible!important; }
   body:not(.cp-print-letter) .grow-customer-profile { display:block!important; position:absolute; inset:0; width:100%; background:#fff; color:#111; }
